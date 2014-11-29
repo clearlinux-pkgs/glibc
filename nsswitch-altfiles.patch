@@ -1,0 +1,39 @@
+Subject: glibc: properly specify alternative nsswitch.conf
+Index: glibc-2.21/nss/nsswitch.c
+===================================================================
+--- glibc-2.21.orig/nss/nsswitch.c	2015-03-16 12:34:44.666979933 +0000
++++ glibc-2.21/nss/nsswitch.c	2015-03-16 12:34:51.530980108 +0000
+@@ -120,10 +120,32 @@
+     }
+ 
+   /* Are we initialized yet?  */
+-  if (service_table == NULL)
++  if (service_table == NULL) {
+     /* Read config file.  */
+     service_table = nss_parse_file (_PATH_NSSWITCH_CONF);
+ 
++    /* Read altternative, distro, config file */
++    name_database *service_table_altfiles = NULL;
++    service_table_altfiles = nss_parse_file ("/usr/share/defaults/etc/nsswitch.conf");
++
++    if (service_table_altfiles != NULL) {
++      /* If typical config is missing, use distro default */
++      /* or extend original, with distro defaults */
++      /* first lookup wins */
++      if (service_table == NULL) {
++	service_table = service_table_altfiles;
++      } else {
++	name_database_entry *curr;
++	curr = service_table->entry;
++	while (curr->next != NULL) {
++	  curr = curr->next;
++	}
++	curr->next = service_table_altfiles->entry;
++	free (service_table_altfiles);
++      }
++    }
++  }
++
+   /* Test whether configuration data is available.  */
+   if (service_table != NULL)
+     {

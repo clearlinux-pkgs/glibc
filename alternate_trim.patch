@@ -1,0 +1,28 @@
+--- glibc-2.21/malloc/malloc.c~	2015-02-06 01:40:18.000000000 -0500
++++ glibc-2.21/malloc/malloc.c	2015-07-19 14:30:31.991769775 -0400
+@@ -3814,6 +3814,8 @@
+ 
+   const char *errstr = NULL;
+   int locked = 0;
++  
++  static int alternate;
+ 
+   size = chunksize (p);
+ 
+@@ -4041,8 +4043,14 @@
+       if (av == &main_arena) {
+ #ifndef MORECORE_CANNOT_TRIM
+ 	if ((unsigned long)(chunksize(av->top)) >=
+-	    (unsigned long)(mp_.trim_threshold))
+-	  systrim(mp_.top_pad, av);
++	    (unsigned long)(mp_.trim_threshold)) {
++	     if (alternate) {
++	      systrim(mp_.top_pad, av);
++	      alternate = 0;
++             } else {
++              alternate = 1;
++             }
++	  }
+ #endif
+       } else {
+ 	/* Always try heap_trim(), even if the top chunk is not

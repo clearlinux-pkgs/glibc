@@ -1,0 +1,26 @@
+From 24a088964fd27576c12320860f55a2d61d309369 Mon Sep 17 00:00:00 2001
+From: Dimitri John Ledkov <dimitri.j.ledkov@intel.com>
+Date: Mon, 9 Feb 2015 14:24:25 +0000
+Subject: [PATCH] Set host.conf multi to on by default
+Organization: Intel Corporation (UK) Ltd. - Co. Reg. #1134945 - Pipers Way, Swindon SN3 1RJ
+
+---
+ resolv/res_hconf.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/resolv/res_hconf.c b/resolv/res_hconf.c
+index 73942e8..e890c1f 100644
+--- a/resolv/res_hconf.c
++++ b/resolv/res_hconf.c
+@@ -309,6 +309,8 @@ do_init (void)
+   if (hconf_name == NULL)
+     hconf_name = _PATH_HOSTCONF;
+ 
++  arg_bool (ENV_MULTI, 1, "on", HCONF_FLAG_MULTI);
++
+   fp = fopen (hconf_name, "rce");
+   if (fp)
+     {
+-- 
+2.1.0
+

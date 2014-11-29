@@ -1,0 +1,28 @@
+Improve ld.so malloc efficiency
+
+The dynamic loader internal malloc allocates 4Kb at a time,
+and tries to optimize consecutive malloc()s by hoping that
+the next mmap is after the current memory allocation.
+
+However, the kernel hands out mmap addresses in top-down
+order, so this optimization in practice never happens,
+with the result that we have more mmap's and waste a bunch
+of space for each malloc(). 
+
+This optimization makes the malloc mmap one page extra.
+Worst case, the kernel never puts a backing page behind it,
+but best case it allows the internal malloc() to operate much
+much better.
+
+
+
+--- glibc-2.20/elf/dl-minimal.c~	2014-09-07 04:09:09.000000000 -0400
++++ glibc-2.20/elf/dl-minimal.c	2015-01-24 15:12:51.580681039 -0500
+@@ -74,6 +74,7 @@
+ 	    return NULL;
+ 	  nup = GLRO(dl_pagesize);
+ 	}
++      nup += GLRO(dl_pagesize);
+       page = __mmap (0, nup, PROT_READ|PROT_WRITE,
+ 		     MAP_ANON|MAP_PRIVATE, -1, 0);
+       if (page == MAP_FAILED)

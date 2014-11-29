@@ -1,0 +1,231 @@
+diff --git a/libio/filedoalloc.c b/libio/filedoalloc.c
+index 918a24a..4be1b83 100644
+--- a/libio/filedoalloc.c
++++ b/libio/filedoalloc.c
+@@ -125,7 +125,10 @@ _IO_file_doallocate (fp)
+ 	size = st.st_blksize;
+ #endif
+     }
+-  ALLOC_BUF (p, size, EOF);
++
++  p = malloc (size);
++  if (p == NULL) return EOF;
++
+   _IO_setb (fp, p, p + size, 1);
+   return 1;
+ }
+diff --git a/libio/genops.c b/libio/genops.c
+index 6612997..c787842 100644
+--- a/libio/genops.c
++++ b/libio/genops.c
+@@ -398,7 +398,7 @@ _IO_setb (f, b, eb, a)
+      int a;
+ {
+   if (f->_IO_buf_base && !(f->_flags & _IO_USER_BUF))
+-    FREE_BUF (f->_IO_buf_base, _IO_blen (f));
++    free (f->_IO_buf_base);
+   f->_IO_buf_base = b;
+   f->_IO_buf_end = eb;
+   if (a)
+@@ -587,7 +587,9 @@ _IO_default_doallocate (fp)
+ {
+   char *buf;
+ 
+-  ALLOC_BUF (buf, _IO_BUFSIZ, EOF);
++  buf = malloc (_IO_BUFSIZ);
++  if (buf == NULL) return EOF;
++
+   _IO_setb (fp, buf, buf+_IO_BUFSIZ, 1);
+   return 1;
+ }
+@@ -687,7 +689,7 @@ _IO_default_finish (fp, dummy)
+   struct _IO_marker *mark;
+   if (fp->_IO_buf_base && !(fp->_flags & _IO_USER_BUF))
+     {
+-      FREE_BUF (fp->_IO_buf_base, _IO_blen (fp));
++      free (fp->_IO_buf_base);
+       fp->_IO_buf_base = fp->_IO_buf_end = NULL;
+     }
+ 
+@@ -950,8 +952,6 @@ _IO_unbuffer_write (void)
+   for (fp = (_IO_FILE *) _IO_list_all; fp; fp = fp->_chain)
+     {
+       if (! (fp->_flags & _IO_UNBUFFERED)
+-	  && (! (fp->_flags & _IO_NO_WRITES)
+-	      || (fp->_flags & _IO_IS_APPENDING))
+ 	  /* Iff stream is un-orientated, it wasn't used. */
+ 	  && fp->_mode != 0)
+ 	{
+@@ -967,14 +967,30 @@ _IO_unbuffer_write (void)
+ 	      __sched_yield ();
+ #endif
+ 
+-	  if (! dealloc_buffers && !(fp->_flags & _IO_USER_BUF))
++	  if (!dealloc_buffers)
+ 	    {
+-	      fp->_flags |= _IO_USER_BUF;
+-
+-	      fp->_freeres_list = freeres_list;
+-	      freeres_list = fp;
+-	      fp->_freeres_buf = fp->_IO_buf_base;
+-	      fp->_freeres_size = _IO_blen (fp);
++	      const bool need_freeres = !(fp->_flags & _IO_USER_BUF)
++		  || (!(fp->_flags2 & _IO_FLAGS2_USER_WBUF) && fp->_mode > 0);
++
++	     if (need_freeres)
++		{
++		  fp->_freeres_buf = fp->_freeres_wbuf = NULL;
++		  fp->_freeres_list = freeres_list;
++		  freeres_list = fp;
++
++		  if (!(fp->_flags & _IO_USER_BUF))
++		    {
++		      fp->_flags |= _IO_USER_BUF;
++		      fp->_freeres_buf = fp->_IO_buf_base;
++		    }
++
++		  if (fp->_mode > 0
++		      && !(fp->_flags2 & _IO_FLAGS2_USER_WBUF))
++		    {
++		      fp->_flags2 |= _IO_FLAGS2_USER_WBUF;
++		      fp->_freeres_wbuf = fp->_wide_data->_IO_buf_base;
++		    }
++		}
+ 	    }
+ 
+ 	  _IO_SETBUF (fp, NULL, 0);
+@@ -998,7 +1014,8 @@ libc_freeres_fn (buffer_free)
+ 
+   while (freeres_list != NULL)
+     {
+-      FREE_BUF (freeres_list->_freeres_buf, freeres_list->_freeres_size);
++      free (freeres_list->_freeres_buf);
++      free (freeres_list->_freeres_wbuf);
+ 
+       freeres_list = freeres_list->_freeres_list;
+     }
+diff --git a/libio/libio.h b/libio/libio.h
+index 9ff1fb0..fd139d3 100644
+--- a/libio/libio.h
++++ b/libio/libio.h
+@@ -297,17 +297,17 @@ struct _IO_FILE_complete
+   struct _IO_wide_data *_wide_data;
+   struct _IO_FILE *_freeres_list;
+   void *_freeres_buf;
+-  size_t _freeres_size;
++  void *_freeres_wbuf;
+ # else
+   void *__pad1;
+   void *__pad2;
+   void *__pad3;
+   void *__pad4;
+-  size_t __pad5;
++  void *__pad5;
+ # endif
+   int _mode;
+   /* Make sure we don't get into trouble again.  */
+-  char _unused2[15 * sizeof (int) - 4 * sizeof (void *) - sizeof (size_t)];
++  char _unused2[15 * sizeof (int) - 5 * sizeof (void *)];
+ #endif
+ };
+ 
+diff --git a/libio/libioP.h b/libio/libioP.h
+index d8604ca..bee9eaa 100644
+--- a/libio/libioP.h
++++ b/libio/libioP.h
+@@ -746,45 +746,6 @@ extern _IO_off64_t _IO_seekpos_unlocked (_IO_FILE *, _IO_off64_t, int)
+ #  define ftruncate __ftruncate
+ # endif
+ 
+-# define ROUND_TO_PAGE(_S) \
+-       (((_S) + EXEC_PAGESIZE - 1) & ~(EXEC_PAGESIZE - 1))
+-
+-# define FREE_BUF(_B, _S) \
+-       munmap ((_B), ROUND_TO_PAGE (_S))
+-# define ALLOC_BUF(_B, _S, _R) \
+-       do {								      \
+-	  (_B) = (char *) mmap (0, ROUND_TO_PAGE (_S),			      \
+-				PROT_READ | PROT_WRITE,			      \
+-				MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);	      \
+-	  if ((_B) == (char *) MAP_FAILED)				      \
+-	    return (_R);						      \
+-       } while (0)
+-# define ALLOC_WBUF(_B, _S, _R) \
+-       do {								      \
+-	  (_B) = (wchar_t *) mmap (0, ROUND_TO_PAGE (_S),		      \
+-				   PROT_READ | PROT_WRITE,		      \
+-				   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);	      \
+-	  if ((_B) == (wchar_t *) MAP_FAILED)				      \
+-	    return (_R);						      \
+-       } while (0)
+-
+-#else /* _G_HAVE_MMAP */
+-
+-# define FREE_BUF(_B, _S) \
+-       free(_B)
+-# define ALLOC_BUF(_B, _S, _R) \
+-       do {								      \
+-	  (_B) = (char*)malloc(_S);					      \
+-	  if ((_B) == NULL)						      \
+-	    return (_R);						      \
+-       } while (0)
+-# define ALLOC_WBUF(_B, _S, _R) \
+-       do {								      \
+-	  (_B) = (wchar_t *)malloc(_S);					      \
+-	  if ((_B) == NULL)						      \
+-	    return (_R);						      \
+-       } while (0)
+-
+ #endif /* _G_HAVE_MMAP */
+ 
+ #ifndef OS_FSTAT
+diff --git a/libio/wfiledoalloc.c b/libio/wfiledoalloc.c
+index 12425fd..9c7fbf6 100644
+--- a/libio/wfiledoalloc.c
++++ b/libio/wfiledoalloc.c
+@@ -95,7 +95,10 @@ _IO_wfile_doallocate (fp)
+   size = fp->_IO_buf_end - fp->_IO_buf_base;
+   if ((fp->_flags & _IO_USER_BUF))
+     size = (size + sizeof (wchar_t) - 1) / sizeof (wchar_t);
+-  ALLOC_WBUF (p, size * sizeof (wchar_t), EOF);
++
++  p = calloc (size, sizeof (wchar_t));
++  if (p == NULL) return EOF;
++
+   _IO_wsetb (fp, p, p + size, 1);
+   return 1;
+ }
+diff --git a/libio/wgenops.c b/libio/wgenops.c
+index 69f3b95..afebee5 100644
+--- a/libio/wgenops.c
++++ b/libio/wgenops.c
+@@ -111,7 +111,7 @@ _IO_wsetb (f, b, eb, a)
+      int a;
+ {
+   if (f->_wide_data->_IO_buf_base && !(f->_flags2 & _IO_FLAGS2_USER_WBUF))
+-    FREE_BUF (f->_wide_data->_IO_buf_base, _IO_wblen (f) * sizeof (wchar_t));
++    free (f->_wide_data->_IO_buf_base);
+   f->_wide_data->_IO_buf_base = b;
+   f->_wide_data->_IO_buf_end = eb;
+   if (a)
+@@ -195,8 +195,7 @@ _IO_wdefault_finish (fp, dummy)
+   struct _IO_marker *mark;
+   if (fp->_wide_data->_IO_buf_base && !(fp->_flags2 & _IO_FLAGS2_USER_WBUF))
+     {
+-      FREE_BUF (fp->_wide_data->_IO_buf_base,
+-		_IO_wblen (fp) * sizeof (wchar_t));
++      free (fp->_wide_data->_IO_buf_base);
+       fp->_wide_data->_IO_buf_base = fp->_wide_data->_IO_buf_end = NULL;
+     }
+ 
+@@ -426,7 +425,9 @@ _IO_wdefault_doallocate (fp)
+ {
+   wchar_t *buf;
+ 
+-  ALLOC_WBUF (buf, _IO_BUFSIZ, EOF);
++  buf = malloc (_IO_BUFSIZ);
++  if (buf == NULL) return EOF;
++
+   _IO_wsetb (fp, buf, buf + _IO_BUFSIZ, 1);
+   return 1;
+ }

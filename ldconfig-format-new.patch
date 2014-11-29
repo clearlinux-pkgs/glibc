@@ -1,0 +1,14 @@
+Subject: Make ldconfig default to "new" cache format.
+Index: glibc-2.21/elf/ldconfig.c
+===================================================================
+--- glibc-2.21.orig/elf/ldconfig.c	2015-03-03 14:53:52.206995018 +0000
++++ glibc-2.21/elf/ldconfig.c	2015-03-03 14:54:00.094995204 +0000
+@@ -95,7 +95,7 @@
+ 
+ /* Format to support.  */
+ /* 0: only libc5/glibc2; 1: both; 2: only glibc 2.2.  */
+-int opt_format = 1;
++int opt_format = 2;
+ 
+ /* Build cache.  */
+ static int opt_build_cache = 1;

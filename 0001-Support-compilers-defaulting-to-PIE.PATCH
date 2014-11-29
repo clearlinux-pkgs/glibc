@@ -1,0 +1,122 @@
+From a8de3a1a31c76ae3ad4aac11ea46bf4e3806c9f0 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 14 Jan 2015 06:29:04 -0800
+Subject: [PATCH 1/2] Support compilers defaulting to PIE
+
+If PIE is the default, we need to build programs as PIE.
+
+	[BZ #17841]
+	* Makeconfig (+link): Set to $(+link-pie) if default to PIE.
+	(+link-tests): Set to $(+link-pie-tests) if default to PIE.
+	* config.make.in (build-pie-default): New.
+	* configure.ac (libc_cv_pie_default): New.  Set to yes if -fPIE
+	is default.  AC_SUBST.
+	* configure: Regenerated.
+---
+ Makeconfig     |  5 +++++
+ config.make.in |  1 +
+ configure      | 21 +++++++++++++++++++++
+ configure.ac   | 13 +++++++++++++
+ 4 files changed, 40 insertions(+)
+
+diff --git a/Makeconfig b/Makeconfig
+index 751e9ff..9bd0db3 100644
+--- a/Makeconfig
++++ b/Makeconfig
+@@ -425,6 +425,10 @@ endif
+ # Commands for linking programs with the C library.
+ ifndef +link
+ ifeq (yes,$(build-shared))
++ifeq (yes,$(build-pie-default))
+++link = $(+link-pie)
+++link-tests = $(+link-pie-tests)
++else
+ +link-before-libc = $(CC) -nostdlib -nostartfiles -o $@ \
+ 	      $(sysdep-LDFLAGS) $(LDFLAGS) $(LDFLAGS-$(@F)) \
+ 	      $(combreloc-LDFLAGS) $(relro-LDFLAGS) $(hashstyle-LDFLAGS) \
+@@ -440,6 +444,7 @@ ifeq (yes,$(build-shared))
+ 	$(+link-after-libc)
+ +link-tests = $(+link-before-libc) $(rtld-tests-LDFLAGS) \
+ 	      $(link-libc-tests) $(+link-after-libc)
++endif
+ else
+ +link = $(+link-static)
+ +link-tests = $(+link-static-tests)
+diff --git a/config.make.in b/config.make.in
+index ad4dd30..635932f 100644
+--- a/config.make.in
++++ b/config.make.in
+@@ -81,6 +81,7 @@ nss-crypt = @libc_cv_nss_crypt@
+ # Configuration options.
+ build-shared = @shared@
+ build-pic-default= @libc_cv_pic_default@
++build-pie-default= @libc_cv_pie_default@
+ build-profile = @profile@
+ build-static-nss = @static_nss@
+ add-ons = @add_ons@
+diff --git a/configure b/configure
+index ce0c6a0..3f5d207 100755
+--- a/configure
++++ b/configure
+@@ -596,6 +596,7 @@ mach_interface_list
+ DEFINES
+ static_nss
+ profile
++libc_cv_pie_default
+ libc_cv_pic_default
+ shared
+ static
+@@ -7157,6 +7158,26 @@ fi
+ $as_echo "$libc_cv_pic_default" >&6; }
+ 
+ 
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether -fPIE is default" >&5
++$as_echo_n "checking whether -fPIE is default... " >&6; }
++if ${libc_cv_pie_default+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  libc_cv_pie_default=yes
++cat > conftest.c <<EOF
++#if defined __PIE__ || defined __pie__ || defined PIE || defined pie
++# error PIE is default.
++#endif
++EOF
++if eval "${CC-cc} -S conftest.c 2>&5 1>&5"; then
++  libc_cv_pie_default=no
++fi
++rm -f conftest.*
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $libc_cv_pie_default" >&5
++$as_echo "$libc_cv_pie_default" >&6; }
++
++
+ 
+ 
+ 
+diff --git a/configure.ac b/configure.ac
+index d89aaf0..cb37a83 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2019,6 +2019,19 @@ fi
+ rm -f conftest.*])
+ AC_SUBST(libc_cv_pic_default)
+ 
++AC_CACHE_CHECK([whether -fPIE is default], libc_cv_pie_default,
++[libc_cv_pie_default=yes
++cat > conftest.c <<EOF
++#if defined __PIE__ || defined __pie__ || defined PIE || defined pie
++# error PIE is default.
++#endif
++EOF
++if eval "${CC-cc} -S conftest.c 2>&AS_MESSAGE_LOG_FD 1>&AS_MESSAGE_LOG_FD"; then
++  libc_cv_pie_default=no
++fi
++rm -f conftest.*])
++AC_SUBST(libc_cv_pie_default)
++
+ AC_SUBST(profile)
+ AC_SUBST(static_nss)
+ 
+-- 
+2.1.0
+
