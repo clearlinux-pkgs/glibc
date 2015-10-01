@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.22
-Release:        76
+Release:        77
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -146,7 +146,7 @@ GNU C library extra components.
 mkdir ../glibc-buildroot
 cd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=ivybridge -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000"
+export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
