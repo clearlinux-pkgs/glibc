@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.22
-Release:        77
+Release:        78
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -24,6 +24,7 @@ Patch15:	nonscd.patch
 Patch16:	cve-2014-7817.nopatch
 Patch17:	strcpy.patch
 Patch18:	alternate_trim.patch
+Patch19:	madvise-bss.patch
 
 
 BuildRequires:  grep
@@ -141,6 +142,7 @@ GNU C library extra components.
 %patch15 -p1
 %patch17 -p1
 %patch18 -p1
+%patch19 -p1
 
 %build
 mkdir ../glibc-buildroot

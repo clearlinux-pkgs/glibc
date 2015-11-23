@@ -1,0 +1,10 @@
+--- glibc-2.22/elf/dl-map-segments.h.org	2015-11-23 17:13:52.948724559 -0500
++++ glibc-2.22/elf/dl-map-segments.h	2015-11-23 17:14:42.434105906 -0500
+@@ -139,6 +139,7 @@
+                               -1, 0);
+               if (__glibc_unlikely (mapat == MAP_FAILED))
+                 return DL_MAP_SEGMENTS_ERROR_MAP_ZERO_FILL;
++              __madvise((caddr_t) zeropage, zeroend - zeropage, MADV_MERGEABLE);
+             }
+         }
+ 
