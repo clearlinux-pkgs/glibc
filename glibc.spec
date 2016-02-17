@@ -25,6 +25,7 @@ Patch16:	cve-2015-8777.patch
 Patch17:	strcpy.patch
 Patch18:	alternate_trim.patch
 Patch19:	madvise-bss.patch
+Patch20:	cve-2015-7547.patch
 
 
 BuildRequires:  grep
@@ -144,6 +145,7 @@ GNU C library extra components.
 %patch17 -p1
 %patch18 -p1
 %patch19 -p1
+%patch20 -p1
 
 %build
 mkdir ../glibc-buildroot
