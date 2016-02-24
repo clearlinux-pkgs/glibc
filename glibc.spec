@@ -2,30 +2,29 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.22
+Version:        2.23
 Release:        80
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.22.tar.gz
+Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.23.tar.gz
 Patch1:         0001-Add-avx2-fake-capability-like-tls.patch
-Patch2:		ldso-malloc-size.patch
+Patch2:		    ldso-malloc-size.patch
 Patch3:         0001-Set-host.conf-multi-to-on-by-default.patch
 Patch6:         skip-error-msg-ld.so.conf.patch
 Patch7:         ldconfig-format-new.patch
 Patch8:         ldconfig-do-not-search-non-lib64.patch
 Patch9:         nsswitch-altfiles.patch
 Patch10:        ld-so-cache-in-var.patch
-Patch11:	fewerlocales.patch
+Patch11:	    fewerlocales.patch
 Patch12:        mkdir-ldconfig.patch
-Patch14:        locale-var-cache.patch
-Patch15:	nonscd.patch
-Patch16:	cve-2015-8777.patch
-Patch17:	strcpy.patch
-Patch18:	alternate_trim.patch
-Patch19:	madvise-bss.patch
-Patch20:	cve-2015-7547.patch
+Patch13:        locale-var-cache.patch
+Patch14:	    nonscd.patch
+Patch15:	    fix_cpp_building.patch
+Patch16:	    alternate_trim.patch
+Patch17:	    madvise-bss.patch
+Patch18:	    0001-math-Disable-broken-test.patch
 
 
 BuildRequires:  grep
@@ -139,13 +138,12 @@ GNU C library extra components.
 %patch10 -p1
 %patch11 -p1
 %patch12 -p1
+%patch13 -p1
 %patch14 -p1
 %patch15 -p1
 %patch16 -p1
 %patch17 -p1
 %patch18 -p1
-%patch19 -p1
-%patch20 -p1
 
 %build
 mkdir ../glibc-buildroot
@@ -155,7 +153,7 @@ export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.22/configure \
+../glibc-2.23/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -186,7 +184,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-lock-elision=yes \
     --enable-bind-now  \
     libc_cv_slibdir=%{_libdir} \
-    libc_cv_localedir=/usr/lib/locale
+    libc_cv_complocaledir=/usr/lib/locale
 
 make %{?_smp_mflags}
 
@@ -265,50 +263,50 @@ popd
 %{_libdir}/audit/sotruss-lib.so
 %{_libdir}/gconv
 %{_libdir}/glibc/getconf
-%{_libdir}/ld-2.22.so
+%{_libdir}/ld-2.23.so
 %{_libdir}/ld-linux-x86-64.so.2
-%{_libdir}/libBrokenLocale-2.22.so
+%{_libdir}/libBrokenLocale-2.23.so
 %{_libdir}/libBrokenLocale.so.1
 %{_libdir}/libSegFault.so
-%{_libdir}/libanl-2.22.so
+%{_libdir}/libanl-2.23.so
 %{_libdir}/libanl.so.1
-%{_libdir}/libc-2.22.so
+%{_libdir}/libc-2.23.so
 %{_libdir}/libc.so.6
-%{_libdir}/libcidn-2.22.so
+%{_libdir}/libcidn-2.23.so
 %{_libdir}/libcidn.so.1
-%{_libdir}/libcrypt-2.22.so
+%{_libdir}/libcrypt-2.23.so
 %{_libdir}/libcrypt.so.1
-%{_libdir}/libdl-2.22.so
+%{_libdir}/libdl-2.23.so
 %{_libdir}/libdl.so.2
-%{_libdir}/libm-2.22.so
+%{_libdir}/libm-2.23.so
 %{_libdir}/libm.so.6
 %{_libdir}/libmemusage.so
-%{_libdir}/libnsl-2.22.so
+%{_libdir}/libnsl-2.23.so
 %{_libdir}/libnsl.so.1
-%{_libdir}/libnss_compat-2.22.so
+%{_libdir}/libnss_compat-2.23.so
 %{_libdir}/libnss_compat.so.2
-%{_libdir}/libnss_dns-2.22.so
+%{_libdir}/libnss_dns-2.23.so
 %{_libdir}/libnss_dns.so.2
-%{_libdir}/libnss_files-2.22.so
+%{_libdir}/libnss_files-2.23.so
 %{_libdir}/libnss_files.so.2
-%{_libdir}/libnss_hesiod-2.22.so
+%{_libdir}/libnss_hesiod-2.23.so
 %{_libdir}/libnss_hesiod.so.2
-%{_libdir}/libnss_nis-2.22.so
+%{_libdir}/libnss_nis-2.23.so
 %{_libdir}/libnss_nis.so.2
-%{_libdir}/libnss_nisplus-2.22.so
+%{_libdir}/libnss_nisplus-2.23.so
 %{_libdir}/libnss_nisplus.so.2
 %{_libdir}/libpcprofile.so
-%{_libdir}/libpthread-2.22.so
+%{_libdir}/libpthread-2.23.so
 %{_libdir}/libpthread.so.0
-%{_libdir}/libresolv-2.22.so
+%{_libdir}/libresolv-2.23.so
 %{_libdir}/libresolv.so.2
-%{_libdir}/librt-2.22.so
+%{_libdir}/librt-2.23.so
 %{_libdir}/librt.so.1
 %{_libdir}/libthread_db-1.0.so
 %{_libdir}/libthread_db.so.1
-%{_libdir}/libutil-2.22.so
+%{_libdir}/libutil-2.23.so
 %{_libdir}/libutil.so.1
-/usr/lib64/libmvec-2.22.so
+/usr/lib64/libmvec-2.23.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
@@ -390,7 +388,7 @@ popd
 %{_libdir}/librpcsvc.a
 %{_libdir}/librt.a
 %{_libdir}/libutil.a
-
+/usr/lib64/libmvec_nonshared.a
 /usr/lib64/libmvec.a
 
 
@@ -399,7 +397,7 @@ popd
 
 %files extras
 %{_bindir}/makedb
-%{_libdir}/libnss_db-2.22.so
+%{_libdir}/libnss_db-2.23.so
 %{_libdir}/libnss_db.so.2
 %{_libdir}/libnss_db.so
 %exclude %{_localstatedir}/db/Makefile

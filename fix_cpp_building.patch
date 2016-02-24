@@ -1,0 +1,57 @@
+diff --git a/Makefile b/Makefile
+index 658ccfa..585100a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -251,8 +251,11 @@ tests-clean:
+ 	@$(MAKE) subdir_testclean no_deps=t
+ 
+ tests-special += $(objpfx)c++-types-check.out $(objpfx)check-local-headers.out
+-ifneq ($(CXX),no)
+ 
++ifeq (,$(CXX))
++# This test requires a C++ compiler to verify the types.
++tests-special-unsupported += $(objpfx)c++-types-check.out
++else
+ vpath c++-types.data $(+sysdep_dirs)
+ 
+ $(objpfx)c++-types-check.out: c++-types.data scripts/check-c++-types.sh
+@@ -338,6 +341,24 @@ xtests:
+ 	  > $(objpfx)xtests.sum
+ 	$(call summarize-tests,xtests.sum, for extra tests)
+ 
++# tests-special-unsupported lists tests that we will not try to run at all in
++# this configuration.  Note this runs every time because it does not actually
++# create its target.  The dependency on Makefile is meant to ensure that it
++# runs after a Makefile change to add a tests to the list when it previously
++# ran and produced a .out file.
++# 
++# The tests-special-unsupported target lives in Makefile because there are
++# top-level tests in Makefile, and one or more of those top-level tests should
++# be unsupported in some configurations, and Rules can't be included here due
++# to ordering.  A better solution would be to move all tests-special tests out
++# of the top-level and into subdirs and move this rule into Rules with the
++# matching tests-unsupported target.
++ifneq "$(strip $(tests-special-unsupported))" ""
++$(tests-special-unsupported): Makefile
++	$(..)scripts/evaluate-test.sh $(patsubst $(common-objpfx)%.out,%,$@) \
++				      77 false false > $(@:.out=.test-result)
++endif
++
+ # The realclean target is just like distclean for the parent, but we want
+ # the subdirs to know the difference in case they care.
+ realclean distclean: parent-clean
+diff --git a/Rules b/Rules
+index e237d03..7706fd1 100644
+--- a/Rules
++++ b/Rules
+@@ -210,6 +210,9 @@ $(tests-unsupported:%=$(objpfx)%.out): $(objpfx)%.out: Makefile
+ 				      77 false false > $(@:.out=.test-result)
+ endif
+ 
++# NOTE: There is a tests-special-unsupported target, which should go here, but
++# for now lives in the top-level Makefile.
++
+ endif	# tests
+ 
+ 
+---
