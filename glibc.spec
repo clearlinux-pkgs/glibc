@@ -358,6 +358,7 @@ popd
 %{_libdir}/libcrypt.so
 %{_libdir}/libdl.so
 %{_libdir}/libm.so
+%{_libdir}/libmvec_nonshared.a
 %{_libdir}/libnsl.so
 %{_libdir}/libnss_compat.so
 %{_libdir}/libnss_dns.so
@@ -388,7 +389,6 @@ popd
 %{_libdir}/librpcsvc.a
 %{_libdir}/librt.a
 %{_libdir}/libutil.a
-/usr/lib64/libmvec_nonshared.a
 /usr/lib64/libmvec.a
 
 
