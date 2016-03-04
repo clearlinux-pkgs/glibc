@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        82
+Release:        83
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -25,6 +25,7 @@ Patch15:	    fix_cpp_building.patch
 Patch16:	    alternate_trim.patch
 Patch17:	    madvise-bss.patch
 Patch18:	    0001-math-Disable-broken-test.patch
+Patch19:	    spinaphore.patch
 
 
 BuildRequires:  grep
@@ -144,6 +145,7 @@ GNU C library extra components.
 %patch16 -p1
 %patch17 -p1
 %patch18 -p1
+%patch19 -p1
 
 %build
 mkdir ../glibc-buildroot
