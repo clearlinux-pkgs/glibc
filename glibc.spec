@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        83
+Release:        84
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -26,6 +26,29 @@ Patch16:	    alternate_trim.patch
 Patch17:	    madvise-bss.patch
 Patch18:	    0001-math-Disable-broken-test.patch
 Patch19:	    spinaphore.patch
+
+
+# glibc stable branch backports
+Patch100: 0001-Updated-translations-for-2.23.patch
+Patch101: 0002-Regenerate-libc.pot-for-2.23.patch
+Patch102: 0003-Regenerated-configure-scripts.patch
+Patch103: 0004-x86_64-Set-DL_RUNTIME_UNALIGNED_VEC_SIZE-to-8.patch
+Patch104: 0005-Add-fts64_-to-sysdeps-arm-nacl-libc.abilist.patch
+Patch105: 0006-Don-t-use-long-double-math-functions-if-NO_LONG_DOUB.patch
+Patch106: 0007-NEWS-2.23-Fix-typo-in-bug-19048-text.patch
+Patch107: 0008-Update-NEWS.patch
+Patch108: 0009-sln-use-stat64.patch
+Patch109: 0010-Add-sys-auxv.h-wrapper-to-include-sys.patch
+Patch110: 0011-mips-terminate-the-FDE-before-the-return-trampoline-.patch
+Patch111: 0012-Use-HAS_ARCH_FEATURE-with-Fast_Rep_String.patch
+Patch112: 0013-Mention-BZ-19762-in-NEWS.patch
+Patch113: 0014-Define-_HAVE_STRING_ARCH_mempcpy-to-1-for-x86.patch
+Patch114: 0015-Or-bit_Prefer_MAP_32BIT_EXEC-in-EXTRA_LD_ENVVARS.patch
+Patch115: 0016-Fix-resource-leak-in-resolver-bug-19257.patch
+Patch116: 0017-math-don-t-clobber-old-libm.so-on-install-BZ-19822.patch
+Patch117: 0018-resolv-Always-set-resplen2-out-parameter-in-send_dg-.patch
+Patch118: 0019-S390-Save-and-restore-fprs-vrs-while-resolving-symbo.patch
+Patch119: 0020-S390-Extend-structs-La_s390_regs-La_s390_retval-with.patch
 
 
 BuildRequires:  grep
@@ -146,6 +169,29 @@ GNU C library extra components.
 %patch17 -p1
 %patch18 -p1
 %patch19 -p1
+
+# stable branch backports
+
+%patch100 -p1
+%patch101 -p1
+%patch102 -p1
+%patch103 -p1
+%patch104 -p1
+%patch105 -p1
+%patch106 -p1
+%patch107 -p1
+%patch108 -p1
+%patch109 -p1
+%patch110 -p1
+%patch111 -p1
+%patch112 -p1
+%patch113 -p1
+%patch114 -p1
+%patch115 -p1
+%patch116 -p1
+%patch117 -p1
+%patch118 -p1
+%patch119 -p1
 
 %build
 mkdir ../glibc-buildroot
