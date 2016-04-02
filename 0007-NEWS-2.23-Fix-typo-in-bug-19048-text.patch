@@ -1,0 +1,38 @@
+From d27dabc9964e37a41b9f195b98d652e4508a6307 Mon Sep 17 00:00:00 2001
+From: Carlos O'Donell <carlos@systemhalted.org>
+Date: Wed, 24 Feb 2016 22:04:13 -0500
+Subject: [PATCH 07/20] NEWS (2.23): Fix typo in bug 19048 text.
+
+---
+ ChangeLog | 4 ++++
+ NEWS      | 2 +-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/ChangeLog b/ChangeLog
+index d1a4520..12346b3 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -1,3 +1,7 @@
++2016-02-24  Marko Myllynen  <myllynen@redhat.com>
++
++	* NEWS (2.23): Fix typo in bug 19048 text.
++
+ 2016-02-24  Andreas Schwab  <schwab@suse.de>
+ 
+ 	* math/test-math-isinff.cc (do_test): Only call isinfl and isnanl
+diff --git a/NEWS b/NEWS
+index c0276cf..ddc2066 100644
+--- a/NEWS
++++ b/NEWS
+@@ -38,7 +38,7 @@ Version 2.23
+   unnecessary serialization of memory allocation requests across threads.
+   The defect is now corrected.  Users should see a substantial increase in
+   the concurent throughput of allocation requests for applications which
+-  trigger this bug.  Affected applications typically create create and
++  trigger this bug.  Affected applications typically create and
+   destroy threads frequently.  (Bug 19048 was reported and analyzed by
+   Ericsson.)
+ 
+-- 
+2.8.0
+

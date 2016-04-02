@@ -1,0 +1,61 @@
+From 33ab2ad58eba55de05a05f4adb795e1c172024bb Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 3 Mar 2016 14:51:40 -0800
+Subject: [PATCH 15/20] Or bit_Prefer_MAP_32BIT_EXEC in EXTRA_LD_ENVVARS
+
+We should turn on bit_Prefer_MAP_32BIT_EXEC in EXTRA_LD_ENVVARS without
+overriding other bits.
+
+	[BZ #19758]
+	* sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h
+	(EXTRA_LD_ENVVARS): Or bit_Prefer_MAP_32BIT_EXEC.
+---
+ ChangeLog                                       | 6 ++++++
+ NEWS                                            | 1 +
+ sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h | 2 +-
+ 3 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/ChangeLog b/ChangeLog
+index a539098..4abbd3b 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -1,5 +1,11 @@
+ 2016-03-11  H.J. Lu  <hongjiu.lu@intel.com>
+ 
++	[BZ #19758]
++	* sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h
++	(EXTRA_LD_ENVVARS): Or bit_Prefer_MAP_32BIT_EXEC.
++
++2016-03-11  H.J. Lu  <hongjiu.lu@intel.com>
++
+ 	[BZ #19759]
+ 	* sysdeps/x86/bits/string.h (_HAVE_STRING_ARCH_mempcpy): New.
+ 
+diff --git a/NEWS b/NEWS
+index 663c716..228a481 100644
+--- a/NEWS
++++ b/NEWS
+@@ -14,6 +14,7 @@ Security related changes:
+ The following bugs are resolved with this release:
+ 
+   [19679] gcc-4.9.3 C++ exception handling broken due to unaligned stack
++  [19758] Or bit_Prefer_MAP_32BIT_EXEC in EXTRA_LD_ENVVARS
+   [19759] Don't inline mempcpy for x86
+   [19762] Use HAS_ARCH_FEATURE with Fast_Rep_String
+   [19792] MIPS: backtrace yields infinite backtrace with makecontext
+diff --git a/sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h b/sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h
+index c9db5ea..a759934 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h
++++ b/sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h
+@@ -33,7 +33,7 @@
+   case 21:							      \
+     if (memcmp (envline, "PREFER_MAP_32BIT_EXEC", 21) == 0)	      \
+       GLRO(dl_x86_cpu_features).feature[index_Prefer_MAP_32BIT_EXEC]  \
+-	= bit_Prefer_MAP_32BIT_EXEC;				      \
++	|= bit_Prefer_MAP_32BIT_EXEC;				      \
+     break;
+ 
+ /* Extra unsecure variables.  The names are all stuffed in a single
+-- 
+2.8.0
+

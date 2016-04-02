@@ -1,0 +1,184 @@
+From 0594fd054623b0ac4c481582ab3664a74aadbf69 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 6 Mar 2016 08:23:24 -0800
+Subject: [PATCH 12/20] Use HAS_ARCH_FEATURE with Fast_Rep_String
+
+HAS_ARCH_FEATURE, not HAS_CPU_FEATURE, should be used with
+Fast_Rep_String.
+
+	[BZ #19762]
+	* sysdeps/i386/i686/multiarch/bcopy.S (bcopy): Use
+	HAS_ARCH_FEATURE with Fast_Rep_String.
+	* sysdeps/i386/i686/multiarch/bzero.S (__bzero): Likewise.
+	* sysdeps/i386/i686/multiarch/memcpy.S (memcpy): Likewise.
+	* sysdeps/i386/i686/multiarch/memcpy_chk.S (__memcpy_chk):
+	Likewise.
+	* sysdeps/i386/i686/multiarch/memmove_chk.S (__memmove_chk):
+	Likewise.
+	* sysdeps/i386/i686/multiarch/mempcpy.S (__mempcpy): Likewise.
+	* sysdeps/i386/i686/multiarch/mempcpy_chk.S (__mempcpy_chk):
+	Likewise.
+	* sysdeps/i386/i686/multiarch/memset.S (memset): Likewise.
+	* sysdeps/i386/i686/multiarch/memset_chk.S (__memset_chk):
+	Likewise.
+
+(cherry picked from commit 4e940b2f4b577f3a530e0580373f7c2d569f4d63)
+---
+ ChangeLog                                 | 18 ++++++++++++++++++
+ sysdeps/i386/i686/multiarch/bcopy.S       |  2 +-
+ sysdeps/i386/i686/multiarch/bzero.S       |  2 +-
+ sysdeps/i386/i686/multiarch/memcpy.S      |  2 +-
+ sysdeps/i386/i686/multiarch/memcpy_chk.S  |  2 +-
+ sysdeps/i386/i686/multiarch/memmove_chk.S |  2 +-
+ sysdeps/i386/i686/multiarch/mempcpy.S     |  2 +-
+ sysdeps/i386/i686/multiarch/mempcpy_chk.S |  2 +-
+ sysdeps/i386/i686/multiarch/memset.S      |  2 +-
+ sysdeps/i386/i686/multiarch/memset_chk.S  |  2 +-
+ 10 files changed, 27 insertions(+), 9 deletions(-)
+
+diff --git a/ChangeLog b/ChangeLog
+index 559f860..1417e38 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -1,3 +1,21 @@
++2016-03-10  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #19762]
++	* sysdeps/i386/i686/multiarch/bcopy.S (bcopy): Use
++	HAS_ARCH_FEATURE with Fast_Rep_String.
++	* sysdeps/i386/i686/multiarch/bzero.S (__bzero): Likewise.
++	* sysdeps/i386/i686/multiarch/memcpy.S (memcpy): Likewise.
++	* sysdeps/i386/i686/multiarch/memcpy_chk.S (__memcpy_chk):
++	Likewise.
++	* sysdeps/i386/i686/multiarch/memmove_chk.S (__memmove_chk):
++	Likewise.
++	* sysdeps/i386/i686/multiarch/mempcpy.S (__mempcpy): Likewise.
++	* sysdeps/i386/i686/multiarch/mempcpy_chk.S (__mempcpy_chk):
++	Likewise.
++	* sysdeps/i386/i686/multiarch/memset.S (memset): Likewise.
++	* sysdeps/i386/i686/multiarch/memset_chk.S (__memset_chk):
++	Likewise.
++
+ 2016-03-09  Aurelien Jarno  <aurelien@aurel32.net>
+ 
+ 	[BZ #19792]
+diff --git a/sysdeps/i386/i686/multiarch/bcopy.S b/sysdeps/i386/i686/multiarch/bcopy.S
+index d5b408d..ce6661b 100644
+--- a/sysdeps/i386/i686/multiarch/bcopy.S
++++ b/sysdeps/i386/i686/multiarch/bcopy.S
+@@ -36,7 +36,7 @@ ENTRY(bcopy)
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__bcopy_ssse3)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__bcopy_ssse3_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/bzero.S b/sysdeps/i386/i686/multiarch/bzero.S
+index 3bad417..738ca69 100644
+--- a/sysdeps/i386/i686/multiarch/bzero.S
++++ b/sysdeps/i386/i686/multiarch/bzero.S
+@@ -31,7 +31,7 @@ ENTRY(__bzero)
+ 	HAS_CPU_FEATURE (SSE2)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX ( __bzero_sse2)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__bzero_sse2_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/memcpy.S b/sysdeps/i386/i686/multiarch/memcpy.S
+index 27913ea..652b5a2 100644
+--- a/sysdeps/i386/i686/multiarch/memcpy.S
++++ b/sysdeps/i386/i686/multiarch/memcpy.S
+@@ -38,7 +38,7 @@ ENTRY(memcpy)
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memcpy_ssse3)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memcpy_ssse3_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/memcpy_chk.S b/sysdeps/i386/i686/multiarch/memcpy_chk.S
+index 39bc3c2..0eee32c 100644
+--- a/sysdeps/i386/i686/multiarch/memcpy_chk.S
++++ b/sysdeps/i386/i686/multiarch/memcpy_chk.S
+@@ -39,7 +39,7 @@ ENTRY(__memcpy_chk)
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memcpy_chk_ssse3)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memcpy_chk_ssse3_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/memmove_chk.S b/sysdeps/i386/i686/multiarch/memmove_chk.S
+index c27892d..a29bbc9 100644
+--- a/sysdeps/i386/i686/multiarch/memmove_chk.S
++++ b/sysdeps/i386/i686/multiarch/memmove_chk.S
+@@ -36,7 +36,7 @@ ENTRY(__memmove_chk)
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memmove_chk_ssse3)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memmove_chk_ssse3_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/mempcpy.S b/sysdeps/i386/i686/multiarch/mempcpy.S
+index 141ff2e..b46f3fc 100644
+--- a/sysdeps/i386/i686/multiarch/mempcpy.S
++++ b/sysdeps/i386/i686/multiarch/mempcpy.S
+@@ -38,7 +38,7 @@ ENTRY(__mempcpy)
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__mempcpy_ssse3)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__mempcpy_ssse3_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/mempcpy_chk.S b/sysdeps/i386/i686/multiarch/mempcpy_chk.S
+index 2788b66..30f3629 100644
+--- a/sysdeps/i386/i686/multiarch/mempcpy_chk.S
++++ b/sysdeps/i386/i686/multiarch/mempcpy_chk.S
+@@ -39,7 +39,7 @@ ENTRY(__mempcpy_chk)
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__mempcpy_chk_ssse3)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__mempcpy_chk_ssse3_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/memset.S b/sysdeps/i386/i686/multiarch/memset.S
+index 268df0c..14180e4 100644
+--- a/sysdeps/i386/i686/multiarch/memset.S
++++ b/sysdeps/i386/i686/multiarch/memset.S
+@@ -31,7 +31,7 @@ ENTRY(memset)
+ 	HAS_CPU_FEATURE (SSE2)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memset_sse2)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memset_sse2_rep)
+ 2:	ret
+diff --git a/sysdeps/i386/i686/multiarch/memset_chk.S b/sysdeps/i386/i686/multiarch/memset_chk.S
+index d18b53f..d73f202 100644
+--- a/sysdeps/i386/i686/multiarch/memset_chk.S
++++ b/sysdeps/i386/i686/multiarch/memset_chk.S
+@@ -31,7 +31,7 @@ ENTRY(__memset_chk)
+ 	HAS_CPU_FEATURE (SSE2)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memset_chk_sse2)
+-	HAS_CPU_FEATURE (Fast_Rep_String)
++	HAS_ARCH_FEATURE (Fast_Rep_String)
+ 	jz	2f
+ 	LOAD_FUNC_GOT_EAX (__memset_chk_sse2_rep)
+ 2:	ret
+-- 
+2.8.0
+
