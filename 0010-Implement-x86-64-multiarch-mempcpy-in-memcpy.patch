@@ -1,0 +1,302 @@
+From a9a14991fb2d3e69f80d25e9bbf2f6b0bcf11c3d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 28 Mar 2016 13:13:36 -0700
+Subject: [PATCH 10/18] Implement x86-64 multiarch mempcpy in memcpy
+
+Implement x86-64 multiarch mempcpy in memcpy to share most of code.  It
+reduces code size of libc.so.
+
+	[BZ #18858]
+	* sysdeps/x86_64/multiarch/Makefile (sysdep_routines): Remove
+	mempcpy-ssse3, mempcpy-ssse3-back, mempcpy-avx-unaligned
+	and mempcpy-avx512-no-vzeroupper.
+	* sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S (MEMPCPY_CHK):
+	New.
+	(MEMPCPY): Likewise.
+	* sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S
+	(MEMPCPY_CHK): New.
+	(MEMPCPY): Likewise.
+	* sysdeps/x86_64/multiarch/memcpy-ssse3-back.S (MEMPCPY_CHK): New.
+	(MEMPCPY): Likewise.
+	* sysdeps/x86_64/multiarch/memcpy-ssse3.S (MEMPCPY_CHK): New.
+	(MEMPCPY): Likewise.
+	* sysdeps/x86_64/multiarch/mempcpy-avx-unaligned.S: Removed.
+	* sysdeps/x86_64/multiarch/mempcpy-avx512-no-vzeroupper.S:
+	Likewise.
+	* sysdeps/x86_64/multiarch/mempcpy-ssse3-back.S: Likewise.
+	* sysdeps/x86_64/multiarch/mempcpy-ssse3.S: Likewise.
+
+(cherry picked from commit c365e615f7429aee302f8af7bf07ae262278febb)
+---
+ sysdeps/x86_64/multiarch/Makefile                  |  8 ++++----
+ sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S    | 18 +++++++++++++++++-
+ .../x86_64/multiarch/memcpy-avx512-no-vzeroupper.S | 16 ++++++++++++++++
+ sysdeps/x86_64/multiarch/memcpy-ssse3-back.S       | 16 ++++++++++++++++
+ sysdeps/x86_64/multiarch/memcpy-ssse3.S            | 16 ++++++++++++++++
+ sysdeps/x86_64/multiarch/mempcpy-avx-unaligned.S   | 22 ----------------------
+ .../multiarch/mempcpy-avx512-no-vzeroupper.S       | 22 ----------------------
+ sysdeps/x86_64/multiarch/mempcpy-ssse3-back.S      |  4 ----
+ sysdeps/x86_64/multiarch/mempcpy-ssse3.S           |  4 ----
+ 9 files changed, 69 insertions(+), 57 deletions(-)
+ delete mode 100644 sysdeps/x86_64/multiarch/mempcpy-avx-unaligned.S
+ delete mode 100644 sysdeps/x86_64/multiarch/mempcpy-avx512-no-vzeroupper.S
+ delete mode 100644 sysdeps/x86_64/multiarch/mempcpy-ssse3-back.S
+ delete mode 100644 sysdeps/x86_64/multiarch/mempcpy-ssse3.S
+
+diff --git a/sysdeps/x86_64/multiarch/Makefile b/sysdeps/x86_64/multiarch/Makefile
+index d234f4a..39c0905 100644
+--- a/sysdeps/x86_64/multiarch/Makefile
++++ b/sysdeps/x86_64/multiarch/Makefile
+@@ -8,10 +8,10 @@ ifeq ($(subdir),string)
+ sysdep_routines += strncat-c stpncpy-c strncpy-c strcmp-ssse3 \
+ 		   strcmp-sse2-unaligned strncmp-ssse3 \
+ 		   memcmp-sse4 memcpy-ssse3 memcpy-sse2-unaligned \
+-		   memcpy-avx512-no-vzeroupper mempcpy-ssse3 memmove-ssse3 \
+-		   memcpy-ssse3-back mempcpy-ssse3-back memmove-avx-unaligned \
+-		   memcpy-avx-unaligned mempcpy-avx-unaligned \
+-		   mempcpy-avx512-no-vzeroupper memmove-ssse3-back \
++		   memcpy-avx512-no-vzeroupper memmove-ssse3 \
++		   memcpy-ssse3-back memmove-avx-unaligned \
++		   memcpy-avx-unaligned \
++		   memmove-ssse3-back \
+ 		   memmove-avx512-no-vzeroupper strcasecmp_l-ssse3 \
+ 		   strncase_l-ssse3 strcat-ssse3 strncat-ssse3\
+ 		   strcpy-ssse3 strncpy-ssse3 stpcpy-ssse3 stpncpy-ssse3 \
+diff --git a/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S b/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
+index b615d06..dd4187f 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
++++ b/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
+@@ -25,11 +25,26 @@
+ 
+ #include "asm-syntax.h"
+ #ifndef MEMCPY
+-# define MEMCPY	__memcpy_avx_unaligned
++# define MEMCPY		__memcpy_avx_unaligned
+ # define MEMCPY_CHK	__memcpy_chk_avx_unaligned
++# define MEMPCPY	__mempcpy_avx_unaligned
++# define MEMPCPY_CHK	__mempcpy_chk_avx_unaligned
+ #endif
+ 
+ 	.section .text.avx,"ax",@progbits
++#if !defined USE_AS_MEMPCPY && !defined USE_AS_MEMMOVE
++ENTRY (MEMPCPY_CHK)
++	cmpq	%rdx, %rcx
++	jb	HIDDEN_JUMPTARGET (__chk_fail)
++END (MEMPCPY_CHK)
++
++ENTRY (MEMPCPY)
++	movq	%rdi, %rax
++	addq	%rdx, %rax
++	jmp	L(start)
++END (MEMPCPY)
++#endif
++
+ #if !defined USE_AS_BCOPY
+ ENTRY (MEMCPY_CHK)
+ 	cmpq	%rdx, %rcx
+@@ -42,6 +57,7 @@ ENTRY (MEMCPY)
+ #ifdef USE_AS_MEMPCPY
+ 	add	%rdx, %rax
+ #endif
++L(start):
+ 	cmp	$256, %rdx
+ 	jae	L(256bytesormore)
+ 	cmp	$16, %dl
+diff --git a/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S b/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S
+index 3d567fc..285bb83 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S
++++ b/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S
+@@ -27,9 +27,24 @@
+ #ifndef MEMCPY
+ # define MEMCPY		__memcpy_avx512_no_vzeroupper
+ # define MEMCPY_CHK	__memcpy_chk_avx512_no_vzeroupper
++# define MEMPCPY	__mempcpy_avx512_no_vzeroupper
++# define MEMPCPY_CHK	__mempcpy_chk_avx512_no_vzeroupper
+ #endif
+ 
+ 	.section .text.avx512,"ax",@progbits
++#if !defined USE_AS_MEMPCPY && !defined USE_AS_MEMMOVE
++ENTRY (MEMPCPY_CHK)
++	cmpq	%rdx, %rcx
++	jb	HIDDEN_JUMPTARGET (__chk_fail)
++END (MEMPCPY_CHK)
++
++ENTRY (MEMPCPY)
++	movq	%rdi, %rax
++	addq	%rdx, %rax
++	jmp	L(start)
++END (MEMPCPY)
++#endif
++
+ #if !defined USE_AS_BCOPY
+ ENTRY (MEMCPY_CHK)
+ 	cmpq	%rdx, %rcx
+@@ -42,6 +57,7 @@ ENTRY (MEMCPY)
+ #ifdef USE_AS_MEMPCPY
+ 	add	%rdx, %rax
+ #endif
++L(start):
+ 	lea	(%rsi, %rdx), %rcx
+ 	lea	(%rdi, %rdx), %r9
+ 	cmp	$512, %rdx
+diff --git a/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S b/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S
+index 08b41e9..b4890f4 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S
++++ b/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S
+@@ -29,6 +29,8 @@
+ #ifndef MEMCPY
+ # define MEMCPY		__memcpy_ssse3_back
+ # define MEMCPY_CHK	__memcpy_chk_ssse3_back
++# define MEMPCPY	__mempcpy_ssse3_back
++# define MEMPCPY_CHK	__mempcpy_chk_ssse3_back
+ #endif
+ 
+ #define JMPTBL(I, B)	I - B
+@@ -44,6 +46,19 @@
+   ud2
+ 
+ 	.section .text.ssse3,"ax",@progbits
++#if !defined USE_AS_MEMPCPY && !defined USE_AS_MEMMOVE
++ENTRY (MEMPCPY_CHK)
++	cmpq	%rdx, %rcx
++	jb	HIDDEN_JUMPTARGET (__chk_fail)
++END (MEMPCPY_CHK)
++
++ENTRY (MEMPCPY)
++	movq	%rdi, %rax
++	addq	%rdx, %rax
++	jmp	L(start)
++END (MEMPCPY)
++#endif
++
+ #if !defined USE_AS_BCOPY
+ ENTRY (MEMCPY_CHK)
+ 	cmpq	%rdx, %rcx
+@@ -66,6 +81,7 @@ ENTRY (MEMCPY)
+ 	BRANCH_TO_JMPTBL_ENTRY (L(table_144_bytes_bwd), %rdx, 4)
+ L(copy_forward):
+ #endif
++L(start):
+ 	cmp	$144, %rdx
+ 	jae	L(144bytesormore)
+ 
+diff --git a/sysdeps/x86_64/multiarch/memcpy-ssse3.S b/sysdeps/x86_64/multiarch/memcpy-ssse3.S
+index 95de969..1ca88c0 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-ssse3.S
++++ b/sysdeps/x86_64/multiarch/memcpy-ssse3.S
+@@ -29,6 +29,8 @@
+ #ifndef MEMCPY
+ # define MEMCPY		__memcpy_ssse3
+ # define MEMCPY_CHK	__memcpy_chk_ssse3
++# define MEMPCPY	__mempcpy_ssse3
++# define MEMPCPY_CHK	__mempcpy_chk_ssse3
+ #endif
+ 
+ #define JMPTBL(I, B)	I - B
+@@ -44,6 +46,19 @@
+   ud2
+ 
+ 	.section .text.ssse3,"ax",@progbits
++#if !defined USE_AS_MEMPCPY && !defined USE_AS_MEMMOVE
++ENTRY (MEMPCPY_CHK)
++	cmpq	%rdx, %rcx
++	jb	HIDDEN_JUMPTARGET (__chk_fail)
++END (MEMPCPY_CHK)
++
++ENTRY (MEMPCPY)
++	movq	%rdi, %rax
++	addq	%rdx, %rax
++	jmp	L(start)
++END (MEMPCPY)
++#endif
++
+ #if !defined USE_AS_BCOPY
+ ENTRY (MEMCPY_CHK)
+ 	cmpq	%rdx, %rcx
+@@ -66,6 +81,7 @@ ENTRY (MEMCPY)
+ 	jmp	L(copy_backward)
+ L(copy_forward):
+ #endif
++L(start):
+ 	cmp	$79, %rdx
+ 	lea     L(table_less_80bytes)(%rip), %r11
+ 	ja	L(80bytesormore)
+diff --git a/sysdeps/x86_64/multiarch/mempcpy-avx-unaligned.S b/sysdeps/x86_64/multiarch/mempcpy-avx-unaligned.S
+deleted file mode 100644
+index 241378e..0000000
+--- a/sysdeps/x86_64/multiarch/mempcpy-avx-unaligned.S
++++ /dev/null
+@@ -1,22 +0,0 @@
+-/* mempcpy with AVX
+-   Copyright (C) 2014-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#define USE_AS_MEMPCPY
+-#define MEMCPY		__mempcpy_avx_unaligned
+-#define MEMCPY_CHK	__mempcpy_chk_avx_unaligned
+-#include "memcpy-avx-unaligned.S"
+diff --git a/sysdeps/x86_64/multiarch/mempcpy-avx512-no-vzeroupper.S b/sysdeps/x86_64/multiarch/mempcpy-avx512-no-vzeroupper.S
+deleted file mode 100644
+index fcc0945..0000000
+--- a/sysdeps/x86_64/multiarch/mempcpy-avx512-no-vzeroupper.S
++++ /dev/null
+@@ -1,22 +0,0 @@
+-/* mempcpy optimized with AVX512 for KNL hardware.
+-   Copyright (C) 2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#define USE_AS_MEMPCPY
+-#define MEMCPY		__mempcpy_avx512_no_vzeroupper
+-#define MEMCPY_CHK	__mempcpy_chk_avx512_no_vzeroupper
+-#include "memcpy-avx512-no-vzeroupper.S"
+diff --git a/sysdeps/x86_64/multiarch/mempcpy-ssse3-back.S b/sysdeps/x86_64/multiarch/mempcpy-ssse3-back.S
+deleted file mode 100644
+index 82ffacb..0000000
+--- a/sysdeps/x86_64/multiarch/mempcpy-ssse3-back.S
++++ /dev/null
+@@ -1,4 +0,0 @@
+-#define USE_AS_MEMPCPY
+-#define MEMCPY		__mempcpy_ssse3_back
+-#define MEMCPY_CHK	__mempcpy_chk_ssse3_back
+-#include "memcpy-ssse3-back.S"
+diff --git a/sysdeps/x86_64/multiarch/mempcpy-ssse3.S b/sysdeps/x86_64/multiarch/mempcpy-ssse3.S
+deleted file mode 100644
+index 822d98e..0000000
+--- a/sysdeps/x86_64/multiarch/mempcpy-ssse3.S
++++ /dev/null
+@@ -1,4 +0,0 @@
+-#define USE_AS_MEMPCPY
+-#define MEMCPY		__mempcpy_ssse3
+-#define MEMCPY_CHK	__mempcpy_chk_ssse3
+-#include "memcpy-ssse3.S"
+-- 
+2.8.0
+

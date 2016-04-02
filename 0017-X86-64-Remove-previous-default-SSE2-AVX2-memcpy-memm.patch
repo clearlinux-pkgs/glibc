@@ -1,0 +1,2733 @@
+From 997e6c0db2c351f4a7b688c3134c1f77a0aa49de Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 31 Mar 2016 12:46:57 -0700
+Subject: [PATCH 17/18] X86-64: Remove previous default/SSE2/AVX2
+ memcpy/memmove
+
+Since the new SSE2/AVX2 memcpy/memmove are faster than the previous ones,
+we can remove the previous SSE2/AVX2 memcpy/memmove and replace them with
+the new ones.
+
+No change in IFUNC selection if SSE2 and AVX2 memcpy/memmove weren't used
+before.  If SSE2 or AVX2 memcpy/memmove were used, the new SSE2 or AVX2
+memcpy/memmove optimized with Enhanced REP MOVSB will be used for
+processors with ERMS.  The new AVX512 memcpy/memmove will be used for
+processors with AVX512 which prefer vzeroupper.
+
+Since the new SSE2 memcpy/memmove are faster than the previous default
+memcpy/memmove used in libc.a and ld.so, we also remove the previous
+default memcpy/memmove and make them the default memcpy/memmove.
+
+Together, it reduces the size of libc.so by about 6 KB and the size of
+ld.so by about 2 KB.
+
+It also fixes the placement of __mempcpy_erms and __memmove_erms.
+
+	[BZ #19776]
+	* sysdeps/x86_64/memcpy.S: Make it dummy.
+	* sysdeps/x86_64/mempcpy.S: Likewise.
+	* sysdeps/x86_64/memmove.S: New file.
+	* sysdeps/x86_64/memmove_chk.S: Likewise.
+	* sysdeps/x86_64/multiarch/memmove.S: Likewise.
+	* sysdeps/x86_64/multiarch/memmove_chk.S: Likewise.
+	* sysdeps/x86_64/memmove.c: Removed.
+	* sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S: Likewise.
+	* sysdeps/x86_64/multiarch/memcpy-sse2-unaligned.S: Likewise.
+	* sysdeps/x86_64/multiarch/memmove-avx-unaligned.S: Likewise.
+	* sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S:
+	Likewise.
+	* sysdeps/x86_64/multiarch/memmove.c: Likewise.
+	* sysdeps/x86_64/multiarch/memmove_chk.c: Likewise.
+	* sysdeps/x86_64/multiarch/Makefile (sysdep_routines): Remove
+	memcpy-sse2-unaligned, memmove-avx-unaligned,
+	memcpy-avx-unaligned and memmove-sse2-unaligned-erms.
+	* sysdeps/x86_64/multiarch/ifunc-impl-list.c
+	(__libc_ifunc_impl_list): Replace
+	__memmove_chk_avx512_unaligned_2 with
+	__memmove_chk_avx512_unaligned.  Remove
+	__memmove_chk_avx_unaligned_2.  Replace
+	__memmove_chk_sse2_unaligned_2 with
+	__memmove_chk_sse2_unaligned.  Remove __memmove_chk_sse2 and
+	__memmove_avx_unaligned_2.  Replace __memmove_avx512_unaligned_2
+	with __memmove_avx512_unaligned.  Replace
+	__memmove_sse2_unaligned_2 with __memmove_sse2_unaligned.
+	Remove __memmove_sse2.  Replace __memcpy_chk_avx512_unaligned_2
+	with __memcpy_chk_avx512_unaligned.  Remove
+	__memcpy_chk_avx_unaligned_2.  Replace
+	__memcpy_chk_sse2_unaligned_2 with __memcpy_chk_sse2_unaligned.
+	Remove __memcpy_chk_sse2.  Remove __memcpy_avx_unaligned_2.
+	Replace __memcpy_avx512_unaligned_2 with
+	__memcpy_avx512_unaligned.  Remove __memcpy_sse2_unaligned_2
+	and __memcpy_sse2.  Replace __mempcpy_chk_avx512_unaligned_2
+	with __mempcpy_chk_avx512_unaligned.  Remove
+	__mempcpy_chk_avx_unaligned_2.  Replace
+	__mempcpy_chk_sse2_unaligned_2 with
+	__mempcpy_chk_sse2_unaligned.  Remove __mempcpy_chk_sse2.
+	Replace __mempcpy_avx512_unaligned_2 with
+	__mempcpy_avx512_unaligned.  Remove __mempcpy_avx_unaligned_2.
+	Replace __mempcpy_sse2_unaligned_2 with
+	__mempcpy_sse2_unaligned.  Remove __mempcpy_sse2.
+	* sysdeps/x86_64/multiarch/memcpy.S (__new_memcpy): Support
+	__memcpy_avx512_unaligned_erms and __memcpy_avx512_unaligned.
+	Use __memcpy_avx_unaligned_erms and __memcpy_sse2_unaligned_erms
+	if processor has ERMS.  Default to __memcpy_sse2_unaligned.
+	(ENTRY): Removed.
+	(END): Likewise.
+	(ENTRY_CHK): Likewise.
+	(libc_hidden_builtin_def): Likewise.
+	Don't include ../memcpy.S.
+	* sysdeps/x86_64/multiarch/memcpy_chk.S (__memcpy_chk): Support
+	__memcpy_chk_avx512_unaligned_erms and
+	__memcpy_chk_avx512_unaligned.  Use
+	__memcpy_chk_avx_unaligned_erms and
+	__memcpy_chk_sse2_unaligned_erms if if processor has ERMS.
+	Default to __memcpy_chk_sse2_unaligned.
+	* sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S: Skip if
+	not in libc.
+	* sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S:
+	Likewise.
+	* sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+	(MEMCPY_SYMBOL): New.
+	(MEMPCPY_SYMBOL): Likewise.
+	(MEMMOVE_CHK_SYMBOL): Likewise.
+	(__mempcpy_erms, __memmove_erms): Moved before __mempcpy_chk
+	with unaligned_erms.
+	Replace MEMMOVE_SYMBOL with MEMMOVE_CHK_SYMBOL on __mempcpy_chk
+	symbols.  Replace MEMMOVE_SYMBOL with MEMPCPY_SYMBOL on
+	__mempcpy symbols.  Change function suffix from unaligned_2 to
+	unaligned.  Provide alias for __memcpy_chk in libc.a.  Provide
+	alias for memcpy in libc.a and ld.so.
+	* sysdeps/x86_64/multiarch/mempcpy.S (__mempcpy): Support
+	__mempcpy_avx512_unaligned_erms and __mempcpy_avx512_unaligned.
+	Use __mempcpy_avx_unaligned_erms and __mempcpy_sse2_unaligned_erms
+	if processor has ERMS.  Default to __mempcpy_sse2_unaligned.
+	(ENTRY): Removed.
+	(END): Likewise.
+	(ENTRY_CHK): Likewise.
+	(libc_hidden_builtin_def): Likewise.
+	Don't include ../mempcpy.S.
+	(mempcpy): New.  Add a weak alias.
+	* sysdeps/x86_64/multiarch/mempcpy_chk.S (__mempcpy_chk): Support
+	__mempcpy_chk_avx512_unaligned_erms and
+	__mempcpy_chk_avx512_unaligned.  Use
+	__mempcpy_chk_avx_unaligned_erms and
+	__mempcpy_chk_sse2_unaligned_erms if if processor has ERMS.
+	Default to __mempcpy_chk_sse2_unaligned.
+---
+ sysdeps/x86_64/memcpy.S                            | 585 +--------------------
+ sysdeps/x86_64/memmove.S                           |  69 +++
+ sysdeps/x86_64/memmove.c                           |  26 -
+ sysdeps/x86_64/memmove_chk.S                       |  33 ++
+ sysdeps/x86_64/mempcpy.S                           |   9 +-
+ sysdeps/x86_64/multiarch/Makefile                  |   6 +-
+ sysdeps/x86_64/multiarch/ifunc-impl-list.c         |  63 +--
+ sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S    | 391 --------------
+ sysdeps/x86_64/multiarch/memcpy-sse2-unaligned.S   | 175 ------
+ sysdeps/x86_64/multiarch/memcpy.S                  |  62 +--
+ sysdeps/x86_64/multiarch/memcpy_chk.S              |  40 +-
+ .../x86_64/multiarch/memmove-avx-unaligned-erms.S  |  16 +-
+ sysdeps/x86_64/multiarch/memmove-avx-unaligned.S   |  22 -
+ .../multiarch/memmove-avx512-unaligned-erms.S      |   2 +-
+ .../x86_64/multiarch/memmove-sse2-unaligned-erms.S |   9 -
+ .../x86_64/multiarch/memmove-vec-unaligned-erms.S  | 180 ++++---
+ sysdeps/x86_64/multiarch/memmove.S                 |  98 ++++
+ sysdeps/x86_64/multiarch/memmove.c                 |  73 ---
+ sysdeps/x86_64/multiarch/memmove_chk.S             |  71 +++
+ sysdeps/x86_64/multiarch/memmove_chk.c             |  46 --
+ sysdeps/x86_64/multiarch/mempcpy.S                 |  74 +--
+ sysdeps/x86_64/multiarch/mempcpy_chk.S             |  38 +-
+ 22 files changed, 514 insertions(+), 1574 deletions(-)
+ create mode 100644 sysdeps/x86_64/memmove.S
+ delete mode 100644 sysdeps/x86_64/memmove.c
+ create mode 100644 sysdeps/x86_64/memmove_chk.S
+ delete mode 100644 sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
+ delete mode 100644 sysdeps/x86_64/multiarch/memcpy-sse2-unaligned.S
+ delete mode 100644 sysdeps/x86_64/multiarch/memmove-avx-unaligned.S
+ delete mode 100644 sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
+ create mode 100644 sysdeps/x86_64/multiarch/memmove.S
+ delete mode 100644 sysdeps/x86_64/multiarch/memmove.c
+ create mode 100644 sysdeps/x86_64/multiarch/memmove_chk.S
+ delete mode 100644 sysdeps/x86_64/multiarch/memmove_chk.c
+
+diff --git a/sysdeps/x86_64/memcpy.S b/sysdeps/x86_64/memcpy.S
+index f6e3d93..d98500a 100644
+--- a/sysdeps/x86_64/memcpy.S
++++ b/sysdeps/x86_64/memcpy.S
+@@ -1,584 +1 @@
+-/*
+-   Optimized memcpy for x86-64.
+-
+-   Copyright (C) 2007-2016 Free Software Foundation, Inc.
+-   Contributed by Evandro Menezes <evandro.menezes@amd.com>, 2007.
+-
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.
+-*/
+-
+-#include <sysdep.h>
+-#include "asm-syntax.h"
+-
+-/* Stack slots in the red-zone. */
+-
+-#ifdef USE_AS_MEMPCPY
+-#  define RETVAL	(0)
+-#else
+-#  define RETVAL	(-8)
+-#  if defined SHARED && !defined USE_MULTIARCH && IS_IN (libc)
+-#    define memcpy	__memcpy
+-#    undef libc_hidden_builtin_def
+-#    define libc_hidden_builtin_def(name) \
+-	.globl __GI_memcpy; __GI_memcpy = __memcpy
+-#  endif
+-#endif
+-#define SAVE0	(RETVAL - 8)
+-#define SAVE1	(SAVE0	- 8)
+-#define SAVE2	(SAVE1	- 8)
+-#define SAVE3	(SAVE2	- 8)
+-
+-        .text
+-
+-#if defined PIC && IS_IN (libc)
+-ENTRY_CHK (__memcpy_chk)
+-
+-	cmpq	%rdx, %rcx
+-	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-
+-END_CHK (__memcpy_chk)
+-#endif
+-
+-ENTRY(memcpy)				/* (void *, const void*, size_t) */
+-
+-/* Handle tiny blocks. */
+-
+-L(1try):				/* up to 32B */
+-	cmpq	$32, %rdx
+-#ifndef USE_AS_MEMPCPY
+-	movq	%rdi, %rax		/* save return value */
+-#endif
+-	jae	L(1after)
+-
+-L(1):					/* 1-byte once */
+-	testb	$1, %dl
+-	jz	L(1a)
+-
+-	movzbl	(%rsi),	%ecx
+-	movb	%cl, (%rdi)
+-
+-	incq	%rsi
+-	incq	%rdi
+-
+-	.p2align 4,, 4
+-
+-L(1a):					/* 2-byte once */
+-	testb	$2, %dl
+-	jz	L(1b)
+-
+-	movzwl	(%rsi),	%ecx
+-	movw	%cx, (%rdi)
+-
+-	addq	$2, %rsi
+-	addq	$2, %rdi
+-
+-	.p2align 4,, 4
+-
+-L(1b):					/* 4-byte once */
+-	testb	$4, %dl
+-	jz	L(1c)
+-
+-	movl	(%rsi),	%ecx
+-	movl	%ecx, (%rdi)
+-
+-	addq	$4, %rsi
+-	addq	$4, %rdi
+-
+-	.p2align 4,, 4
+-
+-L(1c):					/* 8-byte once */
+-	testb	$8, %dl
+-	jz	L(1d)
+-
+-	movq	(%rsi), %rcx
+-	movq	%rcx, (%rdi)
+-
+-	addq	$8, %rsi
+-	addq	$8, %rdi
+-
+-	.p2align 4,, 4
+-
+-L(1d):					/* 16-byte loop */
+-	andl	$0xf0, %edx
+-	jz	L(exit)
+-
+-	.p2align 4
+-
+-L(1loop):
+-	movq	 (%rsi), %rcx
+-	movq	8(%rsi), %r8
+-	movq	%rcx,  (%rdi)
+-	movq	 %r8, 8(%rdi)
+-
+-	subl	$16, %edx
+-
+-	leaq	16(%rsi), %rsi
+-	leaq	16(%rdi), %rdi
+-
+-	jnz	L(1loop)
+-
+-	.p2align 4,, 4
+-
+-L(exit):				/* exit */
+-#ifdef USE_AS_MEMPCPY
+-	movq	%rdi, %rax		/* return value */
+-#else
+-	rep
+-#endif
+-	retq
+-
+-	.p2align 4
+-
+-L(1after):
+-#ifndef USE_AS_MEMPCPY
+-	movq	%rax, RETVAL(%rsp)	/* save return value */
+-#endif
+-
+-/* Align to the natural word size. */
+-
+-L(aligntry):
+-	movl	%esi, %ecx      	/* align by source */
+-
+-	andl	$7, %ecx
+-	jz	L(alignafter)  		/* already aligned */
+-
+-L(align):		      		/* align */
+-	leaq	-8(%rcx, %rdx), %rdx	/* calculate remaining bytes */
+-	subl	$8, %ecx
+-
+-	.p2align 4
+-
+-L(alignloop):				/* 1-byte alignment loop */
+-	movzbl	(%rsi), %eax
+-	movb	%al, (%rdi)
+-
+-	incl	%ecx
+-
+-	leaq	1(%rsi), %rsi
+-	leaq	1(%rdi), %rdi
+-
+-	jnz	L(alignloop)
+-
+-	.p2align 4
+-
+-L(alignafter):
+-
+-/* Handle mid-sized blocks. */
+-
+-L(32try):				/* up to 1KB */
+-	cmpq	$1024, %rdx
+-	ja	L(32after)
+-
+-L(32):					/* 32-byte loop */
+-	movl	%edx, %ecx
+-	shrl	$5, %ecx
+-	jz	L(32skip)
+-
+-	.p2align 4
+-
+-L(32loop):
+-	decl	%ecx
+-
+-	movq	  (%rsi), %rax
+-	movq	 8(%rsi), %r8
+-	movq	16(%rsi), %r9
+-	movq	24(%rsi), %r10
+-
+-	movq	%rax,   (%rdi)
+-	movq	 %r8,  8(%rdi)
+-	movq	 %r9, 16(%rdi)
+-	movq	%r10, 24(%rdi)
+-
+-	leaq	32(%rsi), %rsi
+-	leaq	32(%rdi), %rdi
+-
+-	jz	L(32skip)		/* help out smaller blocks */
+-
+-	decl	%ecx
+-
+-	movq	  (%rsi), %rax
+-	movq	 8(%rsi), %r8
+-	movq	16(%rsi), %r9
+-	movq	24(%rsi), %r10
+-
+-	movq	%rax,   (%rdi)
+-	movq	 %r8,  8(%rdi)
+-	movq	 %r9, 16(%rdi)
+-	movq	%r10, 24(%rdi)
+-
+-	leaq	32(%rsi), %rsi
+-	leaq	32(%rdi), %rdi
+-
+-	jnz	L(32loop)
+-
+-	.p2align 4
+-
+-L(32skip):
+-	andl	$31, %edx		/* check for left overs */
+-#ifdef USE_AS_MEMPCPY
+-	jnz	L(1)
+-
+-	movq	%rdi, %rax
+-#else
+-	movq	RETVAL(%rsp), %rax
+-	jnz	L(1)
+-
+-	rep
+-#endif
+-	retq				/* exit */
+-
+-	.p2align 4
+-
+-L(32after):
+-
+-/*
+-	In order to minimize code-size in RTLD, algorithms specific for
+-	larger blocks are excluded when building for RTLD.
+-*/
+-
+-/* Handle blocks smaller than 1/2 L1. */
+-
+-L(fasttry):				/* first 1/2 L1 */
+-#if IS_IN (libc)			/* only up to this algorithm outside of libc.so */
+-	mov	__x86_data_cache_size_half(%rip), %R11_LP
+-	cmpq	%rdx, %r11		/* calculate the smaller of */
+-	cmovaq	%rdx, %r11		/* remaining bytes and 1/2 L1 */
+-#endif
+-
+-L(fast):				/* good ol' MOVS */
+-#if IS_IN (libc)
+-	movq	%r11, %rcx
+-	andq	$-8, %r11
+-#else
+-	movq	%rdx, %rcx
+-#endif
+-	shrq	$3, %rcx
+-	jz	L(fastskip)
+-
+-	rep
+-	movsq
+-
+-	.p2align 4,, 4
+-
+-L(fastskip):
+-#if IS_IN (libc)
+-	subq	%r11, %rdx		/* check for more */
+-	testq	$-8, %rdx
+-	jnz	L(fastafter)
+-#endif
+-
+-	andl	$7, %edx		/* check for left overs */
+-#ifdef USE_AS_MEMPCPY
+-	jnz	L(1)
+-
+-	movq	%rdi, %rax
+-#else
+-	movq	RETVAL(%rsp), %rax
+-	jnz	L(1)
+-
+-	rep
+-#endif
+-	retq				/* exit */
+-
+-#if IS_IN (libc)			/* none of the algorithms below for RTLD */
+-
+-	.p2align 4
+-
+-L(fastafter):
+-
+-/* Handle large blocks smaller than 1/2 L2. */
+-
+-L(pretry):				/* first 1/2 L2 */
+-	mov	__x86_shared_cache_size_half (%rip), %R8_LP
+-	cmpq	%rdx, %r8		/* calculate the lesser of */
+-	cmovaq	%rdx, %r8		/* remaining bytes and 1/2 L2 */
+-
+-L(pre):					/* 64-byte with prefetching */
+-	movq	%r8, %rcx
+-	andq	$-64, %r8
+-	shrq	$6, %rcx
+-	jz	L(preskip)
+-
+-	movq	%r14, SAVE0(%rsp)
+-	cfi_rel_offset (%r14, SAVE0)
+-	movq	%r13, SAVE1(%rsp)
+-	cfi_rel_offset (%r13, SAVE1)
+-	movq	%r12, SAVE2(%rsp)
+-	cfi_rel_offset (%r12, SAVE2)
+-	movq	%rbx, SAVE3(%rsp)
+-	cfi_rel_offset (%rbx, SAVE3)
+-
+-	cmpl	$0, __x86_prefetchw(%rip)
+-	jz	L(preloop)		/* check if PREFETCHW OK */
+-
+-	.p2align 4
+-
+-/* ... when PREFETCHW is available (less cache-probe traffic in MP systems). */
+-
+-L(prewloop):				/* cache-line in state M */
+-	decq	%rcx
+-
+-	movq	   (%rsi), %rax
+-	movq	 8 (%rsi), %rbx
+-	movq	16 (%rsi), %r9
+-	movq	24 (%rsi), %r10
+-	movq	32 (%rsi), %r11
+-	movq	40 (%rsi), %r12
+-	movq	48 (%rsi), %r13
+-	movq	56 (%rsi), %r14
+-
+-	prefetcht0	 0 + 896 (%rsi)
+-	prefetcht0	64 + 896 (%rsi)
+-
+-	movq	%rax,   (%rdi)
+-	movq	%rbx,  8(%rdi)
+-	movq	 %r9, 16(%rdi)
+-	movq	%r10, 24(%rdi)
+-	movq	%r11, 32(%rdi)
+-	movq	%r12, 40(%rdi)
+-	movq	%r13, 48(%rdi)
+-	movq	%r14, 56(%rdi)
+-
+-	leaq	64(%rsi), %rsi
+-	leaq	64(%rdi), %rdi
+-
+-	jz	L(prebail)
+-
+-	decq	%rcx
+-
+-	movq	  (%rsi), %rax
+-	movq	 8(%rsi), %rbx
+-	movq	16(%rsi), %r9
+-	movq	24(%rsi), %r10
+-	movq	32(%rsi), %r11
+-	movq	40(%rsi), %r12
+-	movq	48(%rsi), %r13
+-	movq	56(%rsi), %r14
+-
+-	movq	%rax,   (%rdi)
+-	movq	%rbx,  8(%rdi)
+-	movq	 %r9, 16(%rdi)
+-	movq	%r10, 24(%rdi)
+-	movq	%r11, 32(%rdi)
+-	movq	%r12, 40(%rdi)
+-	movq	%r13, 48(%rdi)
+-	movq	%r14, 56(%rdi)
+-
+-	prefetchw	896 - 64(%rdi)
+-	prefetchw	896 -  0(%rdi)
+-
+-	leaq	64(%rsi), %rsi
+-	leaq	64(%rdi), %rdi
+-
+-	jnz	L(prewloop)
+-	jmp	L(prebail)
+-
+-	.p2align 4
+-
+-/* ... when PREFETCHW is not available. */
+-
+-L(preloop):				/* cache-line in state E */
+-	decq	%rcx
+-
+-	movq	  (%rsi), %rax
+-	movq	 8(%rsi), %rbx
+-	movq	16(%rsi), %r9
+-	movq	24(%rsi), %r10
+-	movq	32(%rsi), %r11
+-	movq	40(%rsi), %r12
+-	movq	48(%rsi), %r13
+-	movq	56(%rsi), %r14
+-
+-	prefetcht0	896 +  0(%rsi)
+-	prefetcht0	896 + 64(%rsi)
+-
+-	movq	%rax,   (%rdi)
+-	movq	%rbx,  8(%rdi)
+-	movq	 %r9, 16(%rdi)
+-	movq	%r10, 24(%rdi)
+-	movq	%r11, 32(%rdi)
+-	movq	%r12, 40(%rdi)
+-	movq	%r13, 48(%rdi)
+-	movq	%r14, 56(%rdi)
+-
+-	leaq	64 (%rsi), %rsi
+-	leaq	64 (%rdi), %rdi
+-
+-	jz	L(prebail)
+-
+-	decq	%rcx
+-
+-	movq	  (%rsi), %rax
+-	movq	 8(%rsi), %rbx
+-	movq	16(%rsi), %r9
+-	movq	24(%rsi), %r10
+-	movq	32(%rsi), %r11
+-	movq	40(%rsi), %r12
+-	movq	48(%rsi), %r13
+-	movq	56(%rsi), %r14
+-
+-	prefetcht0	896 - 64(%rdi)
+-	prefetcht0	896 -  0(%rdi)
+-
+-	movq	%rax,   (%rdi)
+-	movq	%rbx,  8(%rdi)
+-	movq	 %r9, 16(%rdi)
+-	movq	%r10, 24(%rdi)
+-	movq	%r11, 32(%rdi)
+-	movq	%r12, 40(%rdi)
+-	movq	%r13, 48(%rdi)
+-	movq	%r14, 56(%rdi)
+-
+-	leaq	64(%rsi), %rsi
+-	leaq	64(%rdi), %rdi
+-
+-	jnz	L(preloop)
+-
+-L(prebail):
+-	movq	SAVE3(%rsp), %rbx
+-	cfi_restore (%rbx)
+-	movq	SAVE2(%rsp), %r12
+-	cfi_restore (%r12)
+-	movq	SAVE1(%rsp), %r13
+-	cfi_restore (%r13)
+-	movq	SAVE0(%rsp), %r14
+-	cfi_restore (%r14)
+-
+-/*       .p2align 4 */
+-
+-L(preskip):
+-	subq	%r8, %rdx		/* check for more */
+-	testq	$-64, %rdx
+-	jnz	L(preafter)
+-
+-	andl	$63, %edx		/* check for left overs */
+-#ifdef USE_AS_MEMPCPY
+-	jnz	L(1)
+-
+-	movq	%rdi, %rax
+-#else
+-	movq	RETVAL(%rsp), %rax
+-	jnz	L(1)
+-
+-	rep
+-#endif
+-	retq				/* exit */
+-
+-	.p2align 4
+-
+-L(preafter):
+-
+-/* Handle huge blocks. */
+-
+-L(NTtry):
+-
+-L(NT):					/* non-temporal 128-byte */
+-	movq	%rdx, %rcx
+-	shrq	$7, %rcx
+-	jz	L(NTskip)
+-
+-	movq	%r14, SAVE0(%rsp)
+-	cfi_rel_offset (%r14, SAVE0)
+-	movq	%r13, SAVE1(%rsp)
+-	cfi_rel_offset (%r13, SAVE1)
+-	movq	%r12, SAVE2(%rsp)
+-	cfi_rel_offset (%r12, SAVE2)
+-
+-       .p2align 4
+-
+-L(NTloop):
+-	prefetchnta	768(%rsi)
+-	prefetchnta	832(%rsi)
+-
+-	decq	%rcx
+-
+-	movq	  (%rsi), %rax
+-	movq	 8(%rsi), %r8
+-	movq	16(%rsi), %r9
+-	movq	24(%rsi), %r10
+-	movq	32(%rsi), %r11
+-	movq	40(%rsi), %r12
+-	movq	48(%rsi), %r13
+-	movq	56(%rsi), %r14
+-
+-	movntiq	%rax,   (%rdi)
+-	movntiq	 %r8,  8(%rdi)
+-	movntiq	 %r9, 16(%rdi)
+-	movntiq	%r10, 24(%rdi)
+-	movntiq	%r11, 32(%rdi)
+-	movntiq	%r12, 40(%rdi)
+-	movntiq	%r13, 48(%rdi)
+-	movntiq	%r14, 56(%rdi)
+-
+-	movq	 64(%rsi), %rax
+-	movq	 72(%rsi), %r8
+-	movq	 80(%rsi), %r9
+-	movq	 88(%rsi), %r10
+-	movq	 96(%rsi), %r11
+-	movq	104(%rsi), %r12
+-	movq	112(%rsi), %r13
+-	movq	120(%rsi), %r14
+-
+-	movntiq	%rax,  64(%rdi)
+-	movntiq	 %r8,  72(%rdi)
+-	movntiq	 %r9,  80(%rdi)
+-	movntiq	%r10,  88(%rdi)
+-	movntiq	%r11,  96(%rdi)
+-	movntiq	%r12, 104(%rdi)
+-	movntiq	%r13, 112(%rdi)
+-	movntiq	%r14, 120(%rdi)
+-
+-	leaq	128(%rsi), %rsi
+-	leaq	128(%rdi), %rdi
+-
+-	jnz	L(NTloop)
+-
+-	sfence				/* serialize memory stores */
+-
+-	movq	SAVE2(%rsp), %r12
+-	cfi_restore (%r12)
+-	movq	SAVE1(%rsp), %r13
+-	cfi_restore (%r13)
+-	movq	SAVE0(%rsp), %r14
+-	cfi_restore (%r14)
+-
+-L(NTskip):
+-	andl	$127, %edx		/* check for left overs */
+-#ifdef USE_AS_MEMPCPY
+-	jnz	L(1)
+-
+-	movq	%rdi, %rax
+-#else
+-	movq	RETVAL(%rsp), %rax
+-	jnz	L(1)
+-
+-	rep
+-#endif
+-	retq				/* exit */
+-
+-#endif /* IS_IN (libc) */
+-
+-END(memcpy)
+-
+-#ifndef USE_AS_MEMPCPY
+-libc_hidden_builtin_def (memcpy)
+-# if defined SHARED && !defined USE_MULTIARCH && IS_IN (libc)
+-#  undef memcpy
+-#  include <shlib-compat.h>
+-versioned_symbol (libc, __memcpy, memcpy, GLIBC_2_14);
+-# endif
+-#endif
++/* Implemented in memcpy.S.  */
+diff --git a/sysdeps/x86_64/memmove.S b/sysdeps/x86_64/memmove.S
+new file mode 100644
+index 0000000..a90cec1
+--- /dev/null
++++ b/sysdeps/x86_64/memmove.S
+@@ -0,0 +1,69 @@
++/* Optimized memmove for x86-64.
++   Copyright (C) 2016 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++
++#define VEC_SIZE	16
++#define VEC(i)		xmm##i
++/* Use movups and movaps for smaller code sizes.  */
++#define VMOVU		movups
++#define VMOVA		movaps
++
++#define SECTION(p)		p
++
++#ifdef USE_MULTIARCH
++# if !defined SHARED || !IS_IN (libc)
++#  define MEMCPY_SYMBOL(p,s)		memcpy
++# endif
++#else
++# if defined SHARED && IS_IN (libc)
++#  define MEMCPY_SYMBOL(p,s)		__memcpy
++# else
++#  define MEMCPY_SYMBOL(p,s)		memcpy
++# endif
++#endif
++#if !defined SHARED || !defined USE_MULTIARCH || !IS_IN (libc)
++# define MEMPCPY_SYMBOL(p,s)		__mempcpy
++#endif
++#ifndef MEMMOVE_SYMBOL
++# define MEMMOVE_CHK_SYMBOL(p,s)	p
++# define MEMMOVE_SYMBOL(p,s)		memmove
++#endif
++
++#include "multiarch/memmove-vec-unaligned-erms.S"
++
++#ifndef USE_MULTIARCH
++libc_hidden_builtin_def (memmove)
++# if defined SHARED && IS_IN (libc)
++strong_alias (memmove, __memcpy)
++libc_hidden_ver (memmove, memcpy)
++# endif
++libc_hidden_def (__mempcpy)
++weak_alias (__mempcpy, mempcpy)
++libc_hidden_builtin_def (mempcpy)
++
++# if defined SHARED && IS_IN (libc)
++#  undef memcpy
++#  include <shlib-compat.h>
++versioned_symbol (libc, __memcpy, memcpy, GLIBC_2_14);
++
++#  if SHLIB_COMPAT (libc, GLIBC_2_2_5, GLIBC_2_14)
++compat_symbol (libc, memmove, memcpy, GLIBC_2_2_5);
++#  endif
++# endif
++#endif
+diff --git a/sysdeps/x86_64/memmove.c b/sysdeps/x86_64/memmove.c
+deleted file mode 100644
+index 07f8185..0000000
+--- a/sysdeps/x86_64/memmove.c
++++ /dev/null
+@@ -1,26 +0,0 @@
+-/* Copyright (C) 2011-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#include "string/memmove.c"
+-
+-#if !defined memmove && IS_IN (libc)
+-#include <shlib-compat.h>
+-
+-#if SHLIB_COMPAT (libc, GLIBC_2_2_5, GLIBC_2_14)
+-compat_symbol (libc, memmove, memcpy, GLIBC_2_2_5);
+-#endif
+-#endif
+diff --git a/sysdeps/x86_64/memmove_chk.S b/sysdeps/x86_64/memmove_chk.S
+new file mode 100644
+index 0000000..ee154f1
+--- /dev/null
++++ b/sysdeps/x86_64/memmove_chk.S
+@@ -0,0 +1,33 @@
++/* Checking memmove for x86-64.
++   Copyright (C) 2016 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include "asm-syntax.h"
++
++#ifndef SHARED
++	/* For libc.so this is defined in memmove.S.
++	   For libc.a, this is a separate source to avoid
++	   memmove bringing in __chk_fail and all routines
++	   it calls.  */
++        .text
++ENTRY (__memmove_chk)
++	cmpq	%rdx, %rcx
++	jb	__chk_fail
++	jmp	memmove
++END (__memmove_chk)
++#endif
+diff --git a/sysdeps/x86_64/mempcpy.S b/sysdeps/x86_64/mempcpy.S
+index acee5e5..d98500a 100644
+--- a/sysdeps/x86_64/mempcpy.S
++++ b/sysdeps/x86_64/mempcpy.S
+@@ -1,8 +1 @@
+-#define USE_AS_MEMPCPY
+-#define memcpy __mempcpy
+-#define __memcpy_chk __mempcpy_chk
+-#include <sysdeps/x86_64/memcpy.S>
+-
+-libc_hidden_def (__mempcpy)
+-weak_alias (__mempcpy, mempcpy)
+-libc_hidden_builtin_def (mempcpy)
++/* Implemented in memcpy.S.  */
+diff --git a/sysdeps/x86_64/multiarch/Makefile b/sysdeps/x86_64/multiarch/Makefile
+index 35752a8..d6636cb 100644
+--- a/sysdeps/x86_64/multiarch/Makefile
++++ b/sysdeps/x86_64/multiarch/Makefile
+@@ -7,10 +7,9 @@ ifeq ($(subdir),string)
+ 
+ sysdep_routines += strncat-c stpncpy-c strncpy-c strcmp-ssse3 \
+ 		   strcmp-sse2-unaligned strncmp-ssse3 \
+-		   memcmp-sse4 memcpy-ssse3 memcpy-sse2-unaligned \
++		   memcmp-sse4 memcpy-ssse3 \
+ 		   memmove-ssse3 \
+-		   memcpy-ssse3-back memmove-avx-unaligned \
+-		   memcpy-avx-unaligned \
++		   memcpy-ssse3-back \
+ 		   memmove-ssse3-back \
+ 		   memmove-avx512-no-vzeroupper strcasecmp_l-ssse3 \
+ 		   strncase_l-ssse3 strcat-ssse3 strncat-ssse3\
+@@ -21,7 +20,6 @@ sysdep_routines += strncat-c stpncpy-c strncpy-c strcmp-ssse3 \
+ 		   strchr-sse2-no-bsf memcmp-ssse3 strstr-sse2-unaligned \
+ 		   strcspn-c strpbrk-c strspn-c varshift \
+ 		   memset-avx512-no-vzeroupper \
+-		   memmove-sse2-unaligned-erms \
+ 		   memmove-avx-unaligned-erms \
+ 		   memmove-avx512-unaligned-erms \
+ 		   memset-avx2-unaligned-erms \
+diff --git a/sysdeps/x86_64/multiarch/ifunc-impl-list.c b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
+index ca05ff6..449b046 100644
+--- a/sysdeps/x86_64/multiarch/ifunc-impl-list.c
++++ b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
+@@ -54,7 +54,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memmove_chk_avx512_no_vzeroupper)
+ 	      IFUNC_IMPL_ADD (array, i, __memmove_chk,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+-			      __memmove_chk_avx512_unaligned_2)
++			      __memmove_chk_avx512_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memmove_chk,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+ 			      __memmove_chk_avx512_unaligned_erms)
+@@ -64,9 +64,6 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memmove_chk_avx_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memmove_chk,
+ 			      HAS_ARCH_FEATURE (AVX_Usable),
+-			      __memmove_chk_avx_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, __memmove_chk,
+-			      HAS_ARCH_FEATURE (AVX_Usable),
+ 			      __memmove_chk_avx_unaligned_erms)
+ 	      IFUNC_IMPL_ADD (array, i, __memmove_chk,
+ 			      HAS_CPU_FEATURE (SSSE3),
+@@ -75,11 +72,9 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      HAS_CPU_FEATURE (SSSE3),
+ 			      __memmove_chk_ssse3)
+ 	      IFUNC_IMPL_ADD (array, i, __memmove_chk, 1,
+-			      __memmove_chk_sse2_unaligned_2)
++			      __memmove_chk_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memmove_chk, 1,
+-			      __memmove_chk_sse2_unaligned_erms)
+-	      IFUNC_IMPL_ADD (array, i, __memmove_chk, 1,
+-			      __memmove_chk_sse2))
++			      __memmove_chk_sse2_unaligned_erms))
+ 
+   /* Support sysdeps/x86_64/multiarch/memmove.S.  */
+   IFUNC_IMPL (i, name, memmove,
+@@ -88,9 +83,6 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memmove_avx_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memmove,
+ 			      HAS_ARCH_FEATURE (AVX_Usable),
+-			      __memmove_avx_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, memmove,
+-			      HAS_ARCH_FEATURE (AVX_Usable),
+ 			      __memmove_avx_unaligned_erms)
+ #ifdef HAVE_AVX512_ASM_SUPPORT
+ 	      IFUNC_IMPL_ADD (array, i, memmove,
+@@ -98,7 +90,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memmove_avx512_no_vzeroupper)
+ 	      IFUNC_IMPL_ADD (array, i, memmove,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+-			      __memmove_avx512_unaligned_2)
++			      __memmove_avx512_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memmove,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+ 			      __memmove_avx512_unaligned_erms)
+@@ -109,10 +101,9 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memmove_ssse3)
+ 	      IFUNC_IMPL_ADD (array, i, memmove, 1, __memmove_erms)
+ 	      IFUNC_IMPL_ADD (array, i, memmove, 1,
+-			      __memmove_sse2_unaligned_2)
++			      __memmove_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memmove, 1,
+-			      __memmove_sse2_unaligned_erms)
+-	      IFUNC_IMPL_ADD (array, i, memmove, 1, __memmove_sse2))
++			      __memmove_sse2_unaligned_erms))
+ 
+   /* Support sysdeps/x86_64/multiarch/memset_chk.S.  */
+   IFUNC_IMPL (i, name, __memset_chk,
+@@ -326,7 +317,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memcpy_chk_avx512_no_vzeroupper)
+ 	      IFUNC_IMPL_ADD (array, i, __memcpy_chk,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+-			      __memcpy_chk_avx512_unaligned_2)
++			      __memcpy_chk_avx512_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memcpy_chk,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+ 			      __memcpy_chk_avx512_unaligned_erms)
+@@ -336,9 +327,6 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memcpy_chk_avx_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memcpy_chk,
+ 			      HAS_ARCH_FEATURE (AVX_Usable),
+-			      __memcpy_chk_avx_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, __memcpy_chk,
+-			      HAS_ARCH_FEATURE (AVX_Usable),
+ 			      __memcpy_chk_avx_unaligned_erms)
+ 	      IFUNC_IMPL_ADD (array, i, __memcpy_chk,
+ 			      HAS_CPU_FEATURE (SSSE3),
+@@ -347,11 +335,9 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      HAS_CPU_FEATURE (SSSE3),
+ 			      __memcpy_chk_ssse3)
+ 	      IFUNC_IMPL_ADD (array, i, __memcpy_chk, 1,
+-			      __memcpy_chk_sse2_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, __memcpy_chk, 1,
+-			      __memcpy_chk_sse2_unaligned_erms)
++			      __memcpy_chk_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memcpy_chk, 1,
+-			      __memcpy_chk_sse2))
++			      __memcpy_chk_sse2_unaligned_erms))
+ 
+   /* Support sysdeps/x86_64/multiarch/memcpy.S.  */
+   IFUNC_IMPL (i, name, memcpy,
+@@ -360,9 +346,6 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memcpy_avx_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memcpy,
+ 			      HAS_ARCH_FEATURE (AVX_Usable),
+-			      __memcpy_avx_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, memcpy,
+-			      HAS_ARCH_FEATURE (AVX_Usable),
+ 			      __memcpy_avx_unaligned_erms)
+ 	      IFUNC_IMPL_ADD (array, i, memcpy, HAS_CPU_FEATURE (SSSE3),
+ 			      __memcpy_ssse3_back)
+@@ -374,18 +357,15 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __memcpy_avx512_no_vzeroupper)
+ 	      IFUNC_IMPL_ADD (array, i, memcpy,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+-			      __memcpy_avx512_unaligned_2)
++			      __memcpy_avx512_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memcpy,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+ 			      __memcpy_avx512_unaligned_erms)
+ #endif
+ 	      IFUNC_IMPL_ADD (array, i, memcpy, 1, __memcpy_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memcpy, 1,
+-			      __memcpy_sse2_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, memcpy, 1,
+ 			      __memcpy_sse2_unaligned_erms)
+-	      IFUNC_IMPL_ADD (array, i, memcpy, 1, __memcpy_erms)
+-	      IFUNC_IMPL_ADD (array, i, memcpy, 1, __memcpy_sse2))
++	      IFUNC_IMPL_ADD (array, i, memcpy, 1, __memcpy_erms))
+ 
+   /* Support sysdeps/x86_64/multiarch/mempcpy_chk.S.  */
+   IFUNC_IMPL (i, name, __mempcpy_chk,
+@@ -395,7 +375,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __mempcpy_chk_avx512_no_vzeroupper)
+ 	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+-			      __mempcpy_chk_avx512_unaligned_2)
++			      __mempcpy_chk_avx512_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+ 			      __mempcpy_chk_avx512_unaligned_erms)
+@@ -405,9 +385,6 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __mempcpy_chk_avx_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk,
+ 			      HAS_ARCH_FEATURE (AVX_Usable),
+-			      __mempcpy_chk_avx_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk,
+-			      HAS_ARCH_FEATURE (AVX_Usable),
+ 			      __mempcpy_chk_avx_unaligned_erms)
+ 	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk,
+ 			      HAS_CPU_FEATURE (SSSE3),
+@@ -416,11 +393,9 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      HAS_CPU_FEATURE (SSSE3),
+ 			      __mempcpy_chk_ssse3)
+ 	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk, 1,
+-			      __mempcpy_chk_sse2_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk, 1,
+-			      __mempcpy_chk_sse2_unaligned_erms)
++			      __mempcpy_chk_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __mempcpy_chk, 1,
+-			      __mempcpy_chk_sse2))
++			      __mempcpy_chk_sse2_unaligned_erms))
+ 
+   /* Support sysdeps/x86_64/multiarch/mempcpy.S.  */
+   IFUNC_IMPL (i, name, mempcpy,
+@@ -430,7 +405,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __mempcpy_avx512_no_vzeroupper)
+ 	      IFUNC_IMPL_ADD (array, i, mempcpy,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+-			      __mempcpy_avx512_unaligned_2)
++			      __mempcpy_avx512_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, mempcpy,
+ 			      HAS_ARCH_FEATURE (AVX512F_Usable),
+ 			      __mempcpy_avx512_unaligned_erms)
+@@ -440,20 +415,16 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 			      __mempcpy_avx_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, mempcpy,
+ 			      HAS_ARCH_FEATURE (AVX_Usable),
+-			      __mempcpy_avx_unaligned_2)
+-	      IFUNC_IMPL_ADD (array, i, mempcpy,
+-			      HAS_ARCH_FEATURE (AVX_Usable),
+ 			      __mempcpy_avx_unaligned_erms)
+ 	      IFUNC_IMPL_ADD (array, i, mempcpy, HAS_CPU_FEATURE (SSSE3),
+ 			      __mempcpy_ssse3_back)
+ 	      IFUNC_IMPL_ADD (array, i, mempcpy, HAS_CPU_FEATURE (SSSE3),
+ 			      __mempcpy_ssse3)
+ 	      IFUNC_IMPL_ADD (array, i, mempcpy, 1,
+-			      __mempcpy_sse2_unaligned_2)
++			      __mempcpy_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, mempcpy, 1,
+ 			      __mempcpy_sse2_unaligned_erms)
+-	      IFUNC_IMPL_ADD (array, i, mempcpy, 1, __mempcpy_erms)
+-	      IFUNC_IMPL_ADD (array, i, mempcpy, 1, __mempcpy_sse2))
++	      IFUNC_IMPL_ADD (array, i, mempcpy, 1, __mempcpy_erms))
+ 
+   /* Support sysdeps/x86_64/multiarch/strncmp.S.  */
+   IFUNC_IMPL (i, name, strncmp,
+diff --git a/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S b/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
+deleted file mode 100644
+index dd4187f..0000000
+--- a/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
++++ /dev/null
+@@ -1,391 +0,0 @@
+-/* memcpy with AVX
+-   Copyright (C) 2014-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#include <sysdep.h>
+-
+-#if IS_IN (libc) \
+-    && (defined SHARED \
+-        || defined USE_AS_MEMMOVE \
+-	|| !defined USE_MULTIARCH)
+-
+-#include "asm-syntax.h"
+-#ifndef MEMCPY
+-# define MEMCPY		__memcpy_avx_unaligned
+-# define MEMCPY_CHK	__memcpy_chk_avx_unaligned
+-# define MEMPCPY	__mempcpy_avx_unaligned
+-# define MEMPCPY_CHK	__mempcpy_chk_avx_unaligned
+-#endif
+-
+-	.section .text.avx,"ax",@progbits
+-#if !defined USE_AS_MEMPCPY && !defined USE_AS_MEMMOVE
+-ENTRY (MEMPCPY_CHK)
+-	cmpq	%rdx, %rcx
+-	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMPCPY_CHK)
+-
+-ENTRY (MEMPCPY)
+-	movq	%rdi, %rax
+-	addq	%rdx, %rax
+-	jmp	L(start)
+-END (MEMPCPY)
+-#endif
+-
+-#if !defined USE_AS_BCOPY
+-ENTRY (MEMCPY_CHK)
+-	cmpq	%rdx, %rcx
+-	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMCPY_CHK)
+-#endif
+-
+-ENTRY (MEMCPY)
+-	mov	%rdi, %rax
+-#ifdef USE_AS_MEMPCPY
+-	add	%rdx, %rax
+-#endif
+-L(start):
+-	cmp	$256, %rdx
+-	jae	L(256bytesormore)
+-	cmp	$16, %dl
+-	jb	L(less_16bytes)
+-	cmp	$128, %dl
+-	jb	L(less_128bytes)
+-	vmovdqu (%rsi), %xmm0
+-	lea	(%rsi, %rdx), %rcx
+-	vmovdqu 0x10(%rsi), %xmm1
+-	vmovdqu 0x20(%rsi), %xmm2
+-	vmovdqu 0x30(%rsi), %xmm3
+-	vmovdqu 0x40(%rsi), %xmm4
+-	vmovdqu 0x50(%rsi), %xmm5
+-	vmovdqu 0x60(%rsi), %xmm6
+-	vmovdqu 0x70(%rsi), %xmm7
+-	vmovdqu -0x80(%rcx), %xmm8
+-	vmovdqu -0x70(%rcx), %xmm9
+-	vmovdqu -0x60(%rcx), %xmm10
+-	vmovdqu -0x50(%rcx), %xmm11
+-	vmovdqu -0x40(%rcx), %xmm12
+-	vmovdqu -0x30(%rcx), %xmm13
+-	vmovdqu -0x20(%rcx), %xmm14
+-	vmovdqu -0x10(%rcx), %xmm15
+-	lea	(%rdi, %rdx), %rdx
+-	vmovdqu %xmm0, (%rdi)
+-	vmovdqu %xmm1, 0x10(%rdi)
+-	vmovdqu %xmm2, 0x20(%rdi)
+-	vmovdqu %xmm3, 0x30(%rdi)
+-	vmovdqu %xmm4, 0x40(%rdi)
+-	vmovdqu %xmm5, 0x50(%rdi)
+-	vmovdqu %xmm6, 0x60(%rdi)
+-	vmovdqu %xmm7, 0x70(%rdi)
+-	vmovdqu %xmm8, -0x80(%rdx)
+-	vmovdqu %xmm9, -0x70(%rdx)
+-	vmovdqu %xmm10, -0x60(%rdx)
+-	vmovdqu %xmm11, -0x50(%rdx)
+-	vmovdqu %xmm12, -0x40(%rdx)
+-	vmovdqu %xmm13, -0x30(%rdx)
+-	vmovdqu %xmm14, -0x20(%rdx)
+-	vmovdqu %xmm15, -0x10(%rdx)
+-	ret
+-	.p2align 4
+-L(less_128bytes):
+-	cmp	$64, %dl
+-	jb	L(less_64bytes)
+-	vmovdqu (%rsi), %xmm0
+-	lea	(%rsi, %rdx), %rcx
+-	vmovdqu 0x10(%rsi), %xmm1
+-	vmovdqu 0x20(%rsi), %xmm2
+-	lea	(%rdi, %rdx), %rdx
+-	vmovdqu 0x30(%rsi), %xmm3
+-	vmovdqu -0x40(%rcx), %xmm4
+-	vmovdqu -0x30(%rcx), %xmm5
+-	vmovdqu -0x20(%rcx), %xmm6
+-	vmovdqu -0x10(%rcx), %xmm7
+-	vmovdqu %xmm0, (%rdi)
+-	vmovdqu %xmm1, 0x10(%rdi)
+-	vmovdqu %xmm2, 0x20(%rdi)
+-	vmovdqu %xmm3, 0x30(%rdi)
+-	vmovdqu %xmm4, -0x40(%rdx)
+-	vmovdqu %xmm5, -0x30(%rdx)
+-	vmovdqu %xmm6, -0x20(%rdx)
+-	vmovdqu %xmm7, -0x10(%rdx)
+-	ret
+-
+-	.p2align 4
+-L(less_64bytes):
+-	cmp	$32, %dl
+-	jb	L(less_32bytes)
+-	vmovdqu (%rsi), %xmm0
+-	vmovdqu 0x10(%rsi), %xmm1
+-	vmovdqu -0x20(%rsi, %rdx), %xmm6
+-	vmovdqu -0x10(%rsi, %rdx), %xmm7
+-	vmovdqu %xmm0, (%rdi)
+-	vmovdqu %xmm1, 0x10(%rdi)
+-	vmovdqu %xmm6, -0x20(%rdi, %rdx)
+-	vmovdqu %xmm7, -0x10(%rdi, %rdx)
+-	ret
+-
+-	.p2align 4
+-L(less_32bytes):
+-	vmovdqu (%rsi), %xmm0
+-	vmovdqu -0x10(%rsi, %rdx), %xmm7
+-	vmovdqu %xmm0, (%rdi)
+-	vmovdqu %xmm7, -0x10(%rdi, %rdx)
+-	ret
+-
+-	.p2align 4
+-L(less_16bytes):
+-	cmp	$8, %dl
+-	jb	L(less_8bytes)
+-	movq -0x08(%rsi, %rdx),	%rcx
+-	movq (%rsi),	%rsi
+-	movq %rsi, (%rdi)
+-	movq %rcx, -0x08(%rdi, %rdx)
+-	ret
+-
+-	.p2align 4
+-L(less_8bytes):
+-	cmp	$4, %dl
+-	jb	L(less_4bytes)
+-	mov -0x04(%rsi, %rdx), %ecx
+-	mov (%rsi),	%esi
+-	mov %esi, (%rdi)
+-	mov %ecx, -0x04(%rdi, %rdx)
+-	ret
+-
+-L(less_4bytes):
+-	cmp	$1, %dl
+-	jbe	L(less_2bytes)
+-	mov -0x02(%rsi, %rdx),	%cx
+-	mov (%rsi),	%si
+-	mov %si, (%rdi)
+-	mov %cx, -0x02(%rdi, %rdx)
+-	ret
+-
+-L(less_2bytes):
+-	jb	L(less_0bytes)
+-	mov	(%rsi), %cl
+-	mov	%cl,	(%rdi)
+-L(less_0bytes):
+-	ret
+-
+-	.p2align 4
+-L(256bytesormore):
+-#ifdef USE_AS_MEMMOVE
+-	mov	%rdi, %rcx
+-	sub	%rsi, %rcx
+-	cmp	%rdx, %rcx
+-	jc	L(copy_backward)
+-#endif
+-	cmp	$2048, %rdx
+-	jae	L(gobble_data_movsb)
+-	mov	%rax, %r8
+-	lea	(%rsi, %rdx), %rcx
+-	mov	%rdi, %r10
+-	vmovdqu -0x80(%rcx), %xmm5
+-	vmovdqu -0x70(%rcx), %xmm6
+-	mov	$0x80, %rax
+-	and	$-32, %rdi
+-	add	$32, %rdi
+-	vmovdqu -0x60(%rcx), %xmm7
+-	vmovdqu -0x50(%rcx), %xmm8
+-	mov	%rdi, %r11
+-	sub	%r10, %r11
+-	vmovdqu -0x40(%rcx), %xmm9
+-	vmovdqu -0x30(%rcx), %xmm10
+-	sub	%r11, %rdx
+-	vmovdqu -0x20(%rcx), %xmm11
+-	vmovdqu -0x10(%rcx), %xmm12
+-	vmovdqu	(%rsi), %ymm4
+-	add	%r11, %rsi
+-	sub	%eax, %edx
+-L(goble_128_loop):
+-	vmovdqu (%rsi), %ymm0
+-	vmovdqu 0x20(%rsi), %ymm1
+-	vmovdqu 0x40(%rsi), %ymm2
+-	vmovdqu 0x60(%rsi), %ymm3
+-	add	%rax, %rsi
+-	vmovdqa %ymm0, (%rdi)
+-	vmovdqa %ymm1, 0x20(%rdi)
+-	vmovdqa %ymm2, 0x40(%rdi)
+-	vmovdqa %ymm3, 0x60(%rdi)
+-	add	%rax, %rdi
+-	sub	%eax, %edx
+-	jae	L(goble_128_loop)
+-	add	%eax, %edx
+-	add	%rdi, %rdx
+-	vmovdqu	%ymm4, (%r10)
+-	vzeroupper
+-	vmovdqu %xmm5, -0x80(%rdx)
+-	vmovdqu %xmm6, -0x70(%rdx)
+-	vmovdqu %xmm7, -0x60(%rdx)
+-	vmovdqu %xmm8, -0x50(%rdx)
+-	vmovdqu %xmm9, -0x40(%rdx)
+-	vmovdqu %xmm10, -0x30(%rdx)
+-	vmovdqu %xmm11, -0x20(%rdx)
+-	vmovdqu %xmm12, -0x10(%rdx)
+-	mov	%r8, %rax
+-	ret
+-
+-	.p2align 4
+-L(gobble_data_movsb):
+-#ifdef SHARED_CACHE_SIZE_HALF
+-	mov	$SHARED_CACHE_SIZE_HALF, %rcx
+-#else
+-	mov	__x86_shared_cache_size_half(%rip), %rcx
+-#endif
+-	shl	$3, %rcx
+-	cmp	%rcx, %rdx
+-	jae	L(gobble_big_data_fwd)
+-	mov	%rdx, %rcx
+-	rep	movsb
+-	ret
+-
+-	.p2align 4
+-L(gobble_big_data_fwd):
+-	lea	(%rsi, %rdx), %rcx
+-	vmovdqu	(%rsi), %ymm4
+-	vmovdqu -0x80(%rsi,%rdx), %xmm5
+-	vmovdqu -0x70(%rcx), %xmm6
+-	vmovdqu -0x60(%rcx), %xmm7
+-	vmovdqu -0x50(%rcx), %xmm8
+-	vmovdqu -0x40(%rcx), %xmm9
+-	vmovdqu -0x30(%rcx), %xmm10
+-	vmovdqu -0x20(%rcx), %xmm11
+-	vmovdqu -0x10(%rcx), %xmm12
+-	mov	%rdi, %r8
+-	and	$-32, %rdi
+-	add	$32, %rdi
+-	mov	%rdi, %r10
+-	sub	%r8, %r10
+-	sub	%r10, %rdx
+-	add	%r10, %rsi
+-	lea	(%rdi, %rdx), %rcx
+-	add	$-0x80, %rdx
+-L(gobble_mem_fwd_loop):
+-	prefetchnta 0x1c0(%rsi)
+-	prefetchnta 0x280(%rsi)
+-	vmovdqu	(%rsi), %ymm0
+-	vmovdqu	0x20(%rsi), %ymm1
+-	vmovdqu	0x40(%rsi), %ymm2
+-	vmovdqu	0x60(%rsi), %ymm3
+-	sub	$-0x80, %rsi
+-	vmovntdq	%ymm0, (%rdi)
+-	vmovntdq	%ymm1, 0x20(%rdi)
+-	vmovntdq	%ymm2, 0x40(%rdi)
+-	vmovntdq	%ymm3, 0x60(%rdi)
+-	sub	$-0x80, %rdi
+-	add	$-0x80, %rdx
+-	jb	L(gobble_mem_fwd_loop)
+-	sfence
+-	vmovdqu	%ymm4, (%r8)
+-	vzeroupper
+-	vmovdqu %xmm5, -0x80(%rcx)
+-	vmovdqu %xmm6, -0x70(%rcx)
+-	vmovdqu %xmm7, -0x60(%rcx)
+-	vmovdqu %xmm8, -0x50(%rcx)
+-	vmovdqu %xmm9, -0x40(%rcx)
+-	vmovdqu %xmm10, -0x30(%rcx)
+-	vmovdqu %xmm11, -0x20(%rcx)
+-	vmovdqu %xmm12, -0x10(%rcx)
+-	ret
+-
+-#ifdef USE_AS_MEMMOVE
+-	.p2align 4
+-L(copy_backward):
+-#ifdef SHARED_CACHE_SIZE_HALF
+-	mov	$SHARED_CACHE_SIZE_HALF, %rcx
+-#else
+-	mov	__x86_shared_cache_size_half(%rip), %rcx
+-#endif
+-	shl	$3, %rcx
+-	vmovdqu (%rsi), %xmm5
+-	vmovdqu 0x10(%rsi), %xmm6
+-	add	%rdx, %rdi
+-	vmovdqu 0x20(%rsi), %xmm7
+-	vmovdqu 0x30(%rsi), %xmm8
+-	lea	-0x20(%rdi), %r10
+-	mov %rdi, %r11
+-	vmovdqu 0x40(%rsi), %xmm9
+-	vmovdqu 0x50(%rsi), %xmm10
+-	and	$0x1f, %r11
+-	vmovdqu 0x60(%rsi), %xmm11
+-	vmovdqu 0x70(%rsi), %xmm12
+-	xor	%r11, %rdi
+-	add	%rdx, %rsi
+-	vmovdqu	-0x20(%rsi), %ymm4
+-	sub	%r11, %rsi
+-	sub	%r11, %rdx
+-	cmp	%rcx, %rdx
+-	ja	L(gobble_big_data_bwd)
+-	add	$-0x80, %rdx
+-L(gobble_mem_bwd_llc):
+-	vmovdqu	-0x20(%rsi), %ymm0
+-	vmovdqu	-0x40(%rsi), %ymm1
+-	vmovdqu	-0x60(%rsi), %ymm2
+-	vmovdqu	-0x80(%rsi), %ymm3
+-	lea	-0x80(%rsi), %rsi
+-	vmovdqa	%ymm0, -0x20(%rdi)
+-	vmovdqa	%ymm1, -0x40(%rdi)
+-	vmovdqa	%ymm2, -0x60(%rdi)
+-	vmovdqa	%ymm3, -0x80(%rdi)
+-	lea	-0x80(%rdi), %rdi
+-	add	$-0x80, %rdx
+-	jb	L(gobble_mem_bwd_llc)
+-	vmovdqu	%ymm4, (%r10)
+-	vzeroupper
+-	vmovdqu %xmm5, (%rax)
+-	vmovdqu %xmm6, 0x10(%rax)
+-	vmovdqu %xmm7, 0x20(%rax)
+-	vmovdqu %xmm8, 0x30(%rax)
+-	vmovdqu %xmm9, 0x40(%rax)
+-	vmovdqu %xmm10, 0x50(%rax)
+-	vmovdqu %xmm11, 0x60(%rax)
+-	vmovdqu %xmm12, 0x70(%rax)
+-	ret
+-
+-	.p2align 4
+-L(gobble_big_data_bwd):
+-	add	$-0x80, %rdx
+-L(gobble_mem_bwd_loop):
+-	prefetchnta -0x1c0(%rsi)
+-	prefetchnta -0x280(%rsi)
+-	vmovdqu	-0x20(%rsi), %ymm0
+-	vmovdqu	-0x40(%rsi), %ymm1
+-	vmovdqu	-0x60(%rsi), %ymm2
+-	vmovdqu	-0x80(%rsi), %ymm3
+-	lea	-0x80(%rsi), %rsi
+-	vmovntdq	%ymm0, -0x20(%rdi)
+-	vmovntdq	%ymm1, -0x40(%rdi)
+-	vmovntdq	%ymm2, -0x60(%rdi)
+-	vmovntdq	%ymm3, -0x80(%rdi)
+-	lea	-0x80(%rdi), %rdi
+-	add	$-0x80, %rdx
+-	jb	L(gobble_mem_bwd_loop)
+-	sfence
+-	vmovdqu	%ymm4, (%r10)
+-	vzeroupper
+-	vmovdqu %xmm5, (%rax)
+-	vmovdqu %xmm6, 0x10(%rax)
+-	vmovdqu %xmm7, 0x20(%rax)
+-	vmovdqu %xmm8, 0x30(%rax)
+-	vmovdqu %xmm9, 0x40(%rax)
+-	vmovdqu %xmm10, 0x50(%rax)
+-	vmovdqu %xmm11, 0x60(%rax)
+-	vmovdqu %xmm12, 0x70(%rax)
+-	ret
+-#endif
+-END (MEMCPY)
+-#endif
+diff --git a/sysdeps/x86_64/multiarch/memcpy-sse2-unaligned.S b/sysdeps/x86_64/multiarch/memcpy-sse2-unaligned.S
+deleted file mode 100644
+index c450983..0000000
+--- a/sysdeps/x86_64/multiarch/memcpy-sse2-unaligned.S
++++ /dev/null
+@@ -1,175 +0,0 @@
+-/* memcpy with unaliged loads
+-   Copyright (C) 2013-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#if IS_IN (libc)
+-
+-#include <sysdep.h>
+-
+-#include "asm-syntax.h"
+-
+-
+-ENTRY(__memcpy_sse2_unaligned)
+-	movq	%rsi, %rax
+-	leaq	(%rdx,%rdx), %rcx
+-	subq	%rdi, %rax
+-	subq	%rdx, %rax
+-	cmpq	%rcx, %rax
+-	jb	L(overlapping)
+-	cmpq	$16, %rdx
+-	jbe	L(less_16)
+-	movdqu	(%rsi), %xmm8
+-	cmpq	$32, %rdx
+-	movdqu	%xmm8, (%rdi)
+-	movdqu	-16(%rsi,%rdx), %xmm8
+-	movdqu	%xmm8, -16(%rdi,%rdx)
+-	ja	.L31
+-L(return):
+-	movq	%rdi, %rax
+-	ret
+-	.p2align 4,,10
+-	.p2align 4
+-.L31:
+-	movdqu	16(%rsi), %xmm8
+-	cmpq	$64, %rdx
+-	movdqu	%xmm8, 16(%rdi)
+-	movdqu	-32(%rsi,%rdx), %xmm8
+-	movdqu	%xmm8, -32(%rdi,%rdx)
+-	jbe	L(return)
+-	movdqu	32(%rsi), %xmm8
+-	cmpq	$128, %rdx
+-	movdqu	%xmm8, 32(%rdi)
+-	movdqu	-48(%rsi,%rdx), %xmm8
+-	movdqu	%xmm8, -48(%rdi,%rdx)
+-	movdqu	48(%rsi), %xmm8
+-	movdqu	%xmm8, 48(%rdi)
+-	movdqu	-64(%rsi,%rdx), %xmm8
+-	movdqu	%xmm8, -64(%rdi,%rdx)
+-	jbe	L(return)
+-	leaq	64(%rdi), %rcx
+-	addq	%rdi, %rdx
+-	andq	$-64, %rdx
+-	andq	$-64, %rcx
+-	movq	%rcx, %rax
+-	subq	%rdi, %rax
+-	addq	%rax, %rsi
+-	cmpq	%rdx, %rcx
+-	je	L(return)
+-	movq	%rsi, %r10
+-	subq	%rcx, %r10
+-	leaq	16(%r10), %r9
+-	leaq	32(%r10), %r8
+-	leaq	48(%r10), %rax
+-	.p2align 4,,10
+-	.p2align 4
+-L(loop):
+-	movdqu	(%rcx,%r10), %xmm8
+-	movdqa	%xmm8, (%rcx)
+-	movdqu	(%rcx,%r9), %xmm8
+-	movdqa	%xmm8, 16(%rcx)
+-	movdqu	(%rcx,%r8), %xmm8
+-	movdqa	%xmm8, 32(%rcx)
+-	movdqu	(%rcx,%rax), %xmm8
+-	movdqa	%xmm8, 48(%rcx)
+-	addq	$64, %rcx
+-	cmpq	%rcx, %rdx
+-	jne	L(loop)
+-	jmp	L(return)
+-L(overlapping):
+-	cmpq	%rsi, %rdi
+-	jae	.L3
+-	testq	%rdx, %rdx
+-	.p2align 4,,5
+-	je	L(return)
+-	movq	%rdx, %r9
+-	leaq	16(%rsi), %rcx
+-	leaq	16(%rdi), %r8
+-	shrq	$4, %r9
+-	movq	%r9, %rax
+-	salq	$4, %rax
+-	cmpq	%rcx, %rdi
+-	setae	%cl
+-	cmpq	%r8, %rsi
+-	setae	%r8b
+-	orl	%r8d, %ecx
+-	cmpq	$15, %rdx
+-	seta	%r8b
+-	testb	%r8b, %cl
+-	je	.L16
+-	testq	%rax, %rax
+-	je	.L16
+-	xorl	%ecx, %ecx
+-	xorl	%r8d, %r8d
+-.L7:
+-	movdqu	(%rsi,%rcx), %xmm8
+-	addq	$1, %r8
+-	movdqu	%xmm8, (%rdi,%rcx)
+-	addq	$16, %rcx
+-	cmpq	%r8, %r9
+-	ja	.L7
+-	cmpq	%rax, %rdx
+-	je	L(return)
+-.L21:
+-	movzbl	(%rsi,%rax), %ecx
+-	movb	%cl, (%rdi,%rax)
+-	addq	$1, %rax
+-	cmpq	%rax, %rdx
+-	ja	.L21
+-	jmp	L(return)
+-L(less_16):
+-	testb	$24, %dl
+-	jne	L(between_9_16)
+-	testb	$4, %dl
+-	.p2align 4,,5
+-	jne	L(between_5_8)
+-	testq	%rdx, %rdx
+-	.p2align 4,,2
+-	je	L(return)
+-	movzbl	(%rsi), %eax
+-	testb	$2, %dl
+-	movb	%al, (%rdi)
+-	je	L(return)
+-	movzwl	-2(%rsi,%rdx), %eax
+-	movw	%ax, -2(%rdi,%rdx)
+-	jmp	L(return)
+-.L3:
+-	leaq	-1(%rdx), %rax
+-	.p2align 4,,10
+-	.p2align 4
+-.L11:
+-	movzbl	(%rsi,%rax), %edx
+-	movb	%dl, (%rdi,%rax)
+-	subq	$1, %rax
+-	jmp	.L11
+-L(between_9_16):
+-	movq	(%rsi), %rax
+-	movq	%rax, (%rdi)
+-	movq	-8(%rsi,%rdx), %rax
+-	movq	%rax, -8(%rdi,%rdx)
+-	jmp	L(return)
+-.L16:
+-	xorl	%eax, %eax
+-	jmp	.L21
+-L(between_5_8):
+-	movl	(%rsi), %eax
+-	movl	%eax, (%rdi)
+-	movl	-4(%rsi,%rdx), %eax
+-	movl	%eax, -4(%rdi,%rdx)
+-	jmp	L(return)
+-END(__memcpy_sse2_unaligned)
+-
+-#endif
+diff --git a/sysdeps/x86_64/multiarch/memcpy.S b/sysdeps/x86_64/multiarch/memcpy.S
+index 5b045d7..f6771a4 100644
+--- a/sysdeps/x86_64/multiarch/memcpy.S
++++ b/sysdeps/x86_64/multiarch/memcpy.S
+@@ -19,7 +19,6 @@
+    <http://www.gnu.org/licenses/>.  */
+ 
+ #include <sysdep.h>
+-#include <shlib-compat.h>
+ #include <init-arch.h>
+ 
+ /* Define multiple versions only for the definition in lib and for
+@@ -30,21 +29,34 @@
+ ENTRY(__new_memcpy)
+ 	.type	__new_memcpy, @gnu_indirect_function
+ 	LOAD_RTLD_GLOBAL_RO_RDX
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++# ifdef HAVE_AVX512_ASM_SUPPORT
+ 	HAS_ARCH_FEATURE (AVX512F_Usable)
+ 	jz	1f
++	lea	__memcpy_avx512_no_vzeroupper(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	jz	1f
+-	lea    __memcpy_avx512_no_vzeroupper(%rip), %RAX_LP
++	jnz	2f
++	lea	__memcpy_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__memcpy_avx512_unaligned(%rip), %RAX_LP
+ 	ret
+-#endif
++# endif
+ 1:	lea	__memcpy_avx_unaligned(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
+-	jnz	2f
++	jz	L(Fast_Unaligned_Load)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memcpy_avx_unaligned_erms(%rip), %RAX_LP
++	ret
++L(Fast_Unaligned_Load):
+ 	lea	__memcpy_sse2_unaligned(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Fast_Unaligned_Copy)
+-	jnz	2f
+-	lea	__memcpy_sse2(%rip), %RAX_LP
++	jz	L(SSSE3)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memcpy_sse2_unaligned_erms(%rip), %RAX_LP
++	ret
++L(SSSE3):
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+ 	lea    __memcpy_ssse3_back(%rip), %RAX_LP
+@@ -54,37 +66,7 @@ ENTRY(__new_memcpy)
+ 2:	ret
+ END(__new_memcpy)
+ 
+-# undef ENTRY
+-# define ENTRY(name) \
+-	.type __memcpy_sse2, @function; \
+-	.globl __memcpy_sse2; \
+-	.hidden __memcpy_sse2; \
+-	.p2align 4; \
+-	__memcpy_sse2: cfi_startproc; \
+-	CALL_MCOUNT
+-# undef END
+-# define END(name) \
+-	cfi_endproc; .size __memcpy_sse2, .-__memcpy_sse2
+-
+-# undef ENTRY_CHK
+-# define ENTRY_CHK(name) \
+-	.type __memcpy_chk_sse2, @function; \
+-	.globl __memcpy_chk_sse2; \
+-	.p2align 4; \
+-	__memcpy_chk_sse2: cfi_startproc; \
+-	CALL_MCOUNT
+-# undef END_CHK
+-# define END_CHK(name) \
+-	cfi_endproc; .size __memcpy_chk_sse2, .-__memcpy_chk_sse2
+-
+-# undef libc_hidden_builtin_def
+-/* It doesn't make sense to send libc-internal memcpy calls through a PLT.
+-   The speedup we get from using SSSE3 instruction is likely eaten away
+-   by the indirect call in the PLT.  */
+-# define libc_hidden_builtin_def(name) \
+-	.globl __GI_memcpy; __GI_memcpy = __memcpy_sse2
+-
++# undef memcpy
++# include <shlib-compat.h>
+ versioned_symbol (libc, __new_memcpy, memcpy, GLIBC_2_14);
+ #endif
+-
+-#include "../memcpy.S"
+diff --git a/sysdeps/x86_64/multiarch/memcpy_chk.S b/sysdeps/x86_64/multiarch/memcpy_chk.S
+index 648217e..11f1310 100644
+--- a/sysdeps/x86_64/multiarch/memcpy_chk.S
++++ b/sysdeps/x86_64/multiarch/memcpy_chk.S
+@@ -30,24 +30,40 @@
+ ENTRY(__memcpy_chk)
+ 	.type	__memcpy_chk, @gnu_indirect_function
+ 	LOAD_RTLD_GLOBAL_RO_RDX
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++# ifdef HAVE_AVX512_ASM_SUPPORT
+ 	HAS_ARCH_FEATURE (AVX512F_Usable)
+-	jz      1f
++	jz	1f
++	lea	__memcpy_chk_avx512_no_vzeroupper(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	jz      1f
+-	leaq    __memcpy_chk_avx512_no_vzeroupper(%rip), %rax
++	jnz	2f
++	lea	__memcpy_chk_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__memcpy_chk_avx512_unaligned(%rip), %RAX_LP
+ 	ret
+-#endif
+-1:	leaq	__memcpy_chk_sse2(%rip), %rax
++# endif
++1:	lea	__memcpy_chk_avx_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
++	jz	L(Fast_Unaligned_Load)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memcpy_chk_avx_unaligned_erms(%rip), %RAX_LP
++	ret
++L(Fast_Unaligned_Load):
++	lea	__memcpy_chk_sse2_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Unaligned_Copy)
++	jz	L(SSSE3)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memcpy_chk_sse2_unaligned_erms(%rip), %RAX_LP
++	ret
++L(SSSE3):
+ 	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+-	leaq	__memcpy_chk_ssse3(%rip), %rax
++	lea    __memcpy_chk_ssse3_back(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Fast_Copy_Backward)
+-	jz	2f
+-	leaq	__memcpy_chk_ssse3_back(%rip), %rax
+-	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
+-	jz  2f
+-	leaq    __memcpy_chk_avx_unaligned(%rip), %rax
++	jnz	2f
++	lea	__memcpy_chk_ssse3(%rip), %RAX_LP
+ 2:	ret
+ END(__memcpy_chk)
+ # else
+diff --git a/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
+index 3a72c7e..44711c3 100644
+--- a/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
+@@ -1,9 +1,11 @@
+-#define VEC_SIZE	32
+-#define VEC(i)		ymm##i
+-#define VMOVU		vmovdqu
+-#define VMOVA		vmovdqa
++#if IS_IN (libc)
++# define VEC_SIZE	32
++# define VEC(i)		ymm##i
++# define VMOVU		vmovdqu
++# define VMOVA		vmovdqa
+ 
+-#define SECTION(p)		p##.avx
+-#define MEMMOVE_SYMBOL(p,s)	p##_avx_##s
++# define SECTION(p)		p##.avx
++# define MEMMOVE_SYMBOL(p,s)	p##_avx_##s
+ 
+-#include "memmove-vec-unaligned-erms.S"
++# include "memmove-vec-unaligned-erms.S"
++#endif
+diff --git a/sysdeps/x86_64/multiarch/memmove-avx-unaligned.S b/sysdeps/x86_64/multiarch/memmove-avx-unaligned.S
+deleted file mode 100644
+index 75e35f2..0000000
+--- a/sysdeps/x86_64/multiarch/memmove-avx-unaligned.S
++++ /dev/null
+@@ -1,22 +0,0 @@
+-/* memmove with AVX
+-   Copyright (C) 2014-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#define USE_AS_MEMMOVE
+-#define MEMCPY		__memmove_avx_unaligned
+-#define MEMCPY_CHK	__memmove_chk_avx_unaligned
+-#include "memcpy-avx-unaligned.S"
+diff --git a/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
+index 38358fa..c2c5293 100644
+--- a/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
+@@ -1,4 +1,4 @@
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++#if defined HAVE_AVX512_ASM_SUPPORT && IS_IN (libc)
+ # define VEC_SIZE	64
+ # define VEC(i)		zmm##i
+ # define VMOVU		vmovdqu64
+diff --git a/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
+deleted file mode 100644
+index 52b9ae0..0000000
+--- a/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
++++ /dev/null
+@@ -1,9 +0,0 @@
+-#define VEC_SIZE	16
+-#define VEC(i)		xmm##i
+-#define VMOVU		movdqu
+-#define VMOVA		movdqa
+-
+-#define SECTION(p)		p
+-#define MEMMOVE_SYMBOL(p,s)	p##_sse2_##s
+-
+-#include "memmove-vec-unaligned-erms.S"
+diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+index cf645dd..e2d4949 100644
+--- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+@@ -32,18 +32,27 @@
+       8 * VEC_SIZE at a time.
+    8. Otherwise, forward copy 8 * VEC_SIZE at a time.  */
+ 
+-#if IS_IN (libc)
++#include <sysdep.h>
+ 
+-# include <sysdep.h>
+-# include "asm-syntax.h"
++#ifndef MEMCPY_SYMBOL
++# define MEMCPY_SYMBOL(p,s)		MEMMOVE_SYMBOL(p, s)
++#endif
+ 
+-# ifndef VZEROUPPER
+-#  if VEC_SIZE > 16
+-#   define VZEROUPPER vzeroupper
+-#  else
+-#   define VZEROUPPER
+-#  endif
++#ifndef MEMPCPY_SYMBOL
++# define MEMPCPY_SYMBOL(p,s)		MEMMOVE_SYMBOL(p, s)
++#endif
++
++#ifndef MEMMOVE_CHK_SYMBOL
++# define MEMMOVE_CHK_SYMBOL(p,s)	MEMMOVE_SYMBOL(p, s)
++#endif
++
++#ifndef VZEROUPPER
++# if VEC_SIZE > 16
++#  define VZEROUPPER vzeroupper
++# else
++#  define VZEROUPPER
+ # endif
++#endif
+ 
+ /* Threshold to use Enhanced REP MOVSB.  Since there is overhead to set
+    up REP MOVSB operation, REP MOVSB isn't faster on short data.  The
+@@ -52,89 +61,80 @@
+    on processors with Enhanced REP MOVSB.  Since larger register size
+    can move more data with a single load and store, the threshold is
+    higher with larger register size.  */
+-# ifndef REP_MOVSB_THRESHOLD
+-#  define REP_MOVSB_THRESHOLD	(2048 * (VEC_SIZE / 16))
+-# endif
++#ifndef REP_MOVSB_THRESHOLD
++# define REP_MOVSB_THRESHOLD	(2048 * (VEC_SIZE / 16))
++#endif
+ 
+-# ifndef SECTION
+-#  error SECTION is not defined!
+-# endif
+-	.section SECTION(.text),"ax",@progbits
++#ifndef SECTION
++# error SECTION is not defined!
++#endif
+ 
+-# ifdef SHARED
+-ENTRY (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_2))
++	.section SECTION(.text),"ax",@progbits
++#if defined SHARED && IS_IN (libc)
++ENTRY (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned))
+ 	cmpq	%rdx, %rcx
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_2))
++END (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned))
++#endif
+ 
+-ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_2))
++ENTRY (MEMPCPY_SYMBOL (__mempcpy, unaligned))
+ 	movq	%rdi, %rax
+ 	addq	%rdx, %rax
+ 	jmp	L(start)
+-END (MEMMOVE_SYMBOL (__mempcpy, unaligned_2))
++END (MEMPCPY_SYMBOL (__mempcpy, unaligned))
+ 
+-ENTRY (MEMMOVE_SYMBOL (__memmove_chk, unaligned_2))
++#if defined SHARED && IS_IN (libc)
++ENTRY (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned))
+ 	cmpq	%rdx, %rcx
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMMOVE_SYMBOL (__memmove_chk, unaligned_2))
+-# endif
++END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned))
++#endif
+ 
+-ENTRY (MEMMOVE_SYMBOL (__memmove, unaligned_2))
++ENTRY (MEMMOVE_SYMBOL (__memmove, unaligned))
+ 	movq	%rdi, %rax
+ L(start):
+ 	cmpq	$VEC_SIZE, %rdx
+ 	jb	L(less_vec)
+ 	cmpq	$(VEC_SIZE * 2), %rdx
+ 	ja	L(more_2x_vec)
++#if !defined USE_MULTIARCH || !IS_IN (libc)
++L(last_2x_vec):
++#endif
+ 	/* From VEC and to 2 * VEC.  No branch when size == VEC_SIZE.  */
+ 	VMOVU	(%rsi), %VEC(0)
+ 	VMOVU	-VEC_SIZE(%rsi,%rdx), %VEC(1)
+ 	VMOVU	%VEC(0), (%rdi)
+ 	VMOVU	%VEC(1), -VEC_SIZE(%rdi,%rdx)
+ 	VZEROUPPER
++#if !defined USE_MULTIARCH || !IS_IN (libc)
++L(nop):
++#endif
+ 	ret
+-END (MEMMOVE_SYMBOL (__memmove, unaligned_2))
+-
+-# ifdef SHARED
+-ENTRY (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_erms))
+-	cmpq	%rdx, %rcx
+-	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_erms))
+-# endif
++#if defined USE_MULTIARCH && IS_IN (libc)
++END (MEMMOVE_SYMBOL (__memmove, unaligned))
+ 
+-ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
+-	movq	%rdi, %rax
+-	addq	%rdx, %rax
+-	jmp	L(start_erms)
+-END (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
+-
+-# ifdef SHARED
+-ENTRY (MEMMOVE_SYMBOL (__memmove_chk, unaligned_erms))
+-	cmpq	%rdx, %rcx
+-	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMMOVE_SYMBOL (__memmove_chk, unaligned_erms))
+-# endif
+-
+-# if VEC_SIZE == 16
++# if VEC_SIZE == 16 && defined SHARED
+ /* Only used to measure performance of REP MOVSB.  */
+-#  ifdef SHARED
+ ENTRY (__mempcpy_erms)
+ 	movq	%rdi, %rax
+ 	addq	%rdx, %rax
+-	jmp	L(movsb)
++	jmp	L(start_movsb)
+ END (__mempcpy_erms)
+-#  endif
+ 
+ ENTRY (__memmove_erms)
+ 	movq	%rdi, %rax
++L(start_movsb):
+ 	movq	%rdx, %rcx
+ 	cmpq	%rsi, %rdi
+-	jbe	1f
++	jb	1f
++	/* Source == destination is less common.  */
++	je	2f
+ 	leaq	(%rsi,%rcx), %rdx
+ 	cmpq	%rdx, %rdi
+ 	jb	L(movsb_backward)
+ 1:
+ 	rep movsb
++2:
+ 	ret
+ L(movsb_backward):
+ 	leaq	-1(%rdi,%rcx), %rdi
+@@ -147,6 +147,24 @@ END (__memmove_erms)
+ strong_alias (__memmove_erms, __memcpy_erms)
+ # endif
+ 
++# ifdef SHARED
++ENTRY (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned_erms))
++	cmpq	%rdx, %rcx
++	jb	HIDDEN_JUMPTARGET (__chk_fail)
++END (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned_erms))
++
++ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
++	movq	%rdi, %rax
++	addq	%rdx, %rax
++	jmp	L(start_erms)
++END (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
++
++ENTRY (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
++	cmpq	%rdx, %rcx
++	jb	HIDDEN_JUMPTARGET (__chk_fail)
++END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
++# endif
++
+ ENTRY (MEMMOVE_SYMBOL (__memmove, unaligned_erms))
+ 	movq	%rdi, %rax
+ L(start_erms):
+@@ -166,8 +184,9 @@ L(return):
+ 
+ L(movsb):
+ 	cmpq	%rsi, %rdi
+-	je	L(nop)
+ 	jb	1f
++	/* Source == destination is less common.  */
++	je	L(nop)
+ 	leaq	(%rsi,%rdx), %r9
+ 	cmpq	%r9, %rdi
+ 	/* Avoid slow backward REP MOVSB.  */
+@@ -187,12 +206,14 @@ L(movsb_more_2x_vec):
+ 	/* Force 32-bit displacement to avoid long nop between
+ 	   instructions.  */
+ 	ja.d32	L(movsb)
++#endif
+ 	.p2align 4
+ L(more_2x_vec):
+ 	/* More than 2 * VEC.  */
+ 	cmpq	%rsi, %rdi
+-	je	L(nop)
+ 	jb	L(copy_forward)
++	/* Source == destination is less common.  */
++	je	L(nop)
+ 	leaq	(%rsi,%rdx), %rcx
+ 	cmpq	%rcx, %rdi
+ 	jb	L(more_2x_vec_overlap)
+@@ -221,13 +242,19 @@ L(copy_forward):
+ 	VMOVU	%VEC(2), -(VEC_SIZE * 3)(%rdi,%rdx)
+ 	VMOVU	%VEC(3), -(VEC_SIZE * 4)(%rdi,%rdx)
+ 	cmpq	$(VEC_SIZE * 8), %rdx
+-# if  VEC_SIZE == 16
++#if  VEC_SIZE == 16
++# if defined USE_MULTIARCH && IS_IN (libc)
+ 	jbe	L(return)
+ # else
++	/* Use 32-bit displacement to avoid long nop between
++	   instructions.  */
++	jbe.d32	L(return)
++# endif
++#else
+ 	/* Use 8-bit displacement to avoid long nop between
+ 	   instructions.  */
+ 	jbe	L(return_disp8)
+-# endif
++#endif
+ 	leaq	(VEC_SIZE * 4)(%rdi), %rcx
+ 	addq	%rdi, %rdx
+ 	andq	$-(VEC_SIZE * 4), %rdx
+@@ -257,22 +284,25 @@ L(loop):
+ 	addq	$(VEC_SIZE * 4), %rcx
+ 	cmpq	%rcx, %rdx
+ 	jne	L(loop)
++#if !defined USE_MULTIARCH || !IS_IN (libc)
++L(return):
++#endif
+ L(return_disp8):
+ 	VZEROUPPER
+ 	ret
+ L(less_vec):
+ 	/* Less than 1 VEC.  */
+-# if VEC_SIZE != 16 && VEC_SIZE != 32 && VEC_SIZE != 64
+-#  error Unsupported VEC_SIZE!
+-# endif
+-# if VEC_SIZE > 32
++#if VEC_SIZE != 16 && VEC_SIZE != 32 && VEC_SIZE != 64
++# error Unsupported VEC_SIZE!
++#endif
++#if VEC_SIZE > 32
+ 	cmpb	$32, %dl
+ 	jae	L(between_32_63)
+-# endif
+-# if VEC_SIZE > 16
++#endif
++#if VEC_SIZE > 16
+ 	cmpb	$16, %dl
+ 	jae	L(between_16_31)
+-# endif
++#endif
+ 	cmpb	$8, %dl
+ 	jae	L(between_8_15)
+ 	cmpb	$4, %dl
+@@ -284,7 +314,7 @@ L(less_vec):
+ 	movb	%cl, (%rdi)
+ 1:
+ 	ret
+-# if VEC_SIZE > 32
++#if VEC_SIZE > 32
+ L(between_32_63):
+ 	/* From 32 to 63.  No branch when size == 32.  */
+ 	vmovdqu	(%rsi), %ymm0
+@@ -293,8 +323,8 @@ L(between_32_63):
+ 	vmovdqu	%ymm1, -32(%rdi,%rdx)
+ 	VZEROUPPER
+ 	ret
+-# endif
+-# if VEC_SIZE > 16
++#endif
++#if VEC_SIZE > 16
+ 	/* From 16 to 31.  No branch when size == 16.  */
+ L(between_16_31):
+ 	vmovdqu	(%rsi), %xmm0
+@@ -302,7 +332,7 @@ L(between_16_31):
+ 	vmovdqu	%xmm0, (%rdi)
+ 	vmovdqu	%xmm1, -16(%rdi,%rdx)
+ 	ret
+-# endif
++#endif
+ L(between_8_15):
+ 	/* From 8 to 15.  No branch when size == 8.  */
+ 	movq	-8(%rsi,%rdx), %rcx
+@@ -325,10 +355,10 @@ L(between_2_3):
+ 	movw	%si, (%rdi)
+ 	ret
+ 
+-# if VEC_SIZE > 16
++#if VEC_SIZE > 16
+ 	/* Align to 16 bytes to avoid long nop between instructions.  */
+ 	.p2align 4
+-# endif
++#endif
+ L(more_2x_vec_overlap):
+ 	/* More than 2 * VEC and there is overlap bewteen destination
+ 	   and source.  */
+@@ -448,15 +478,17 @@ L(loop_8x_vec_backward):
+ 	jmp	L(between_4x_vec_and_8x_vec)
+ END (MEMMOVE_SYMBOL (__memmove, unaligned_erms))
+ 
+-# ifdef SHARED
++#ifdef SHARED
++# if IS_IN (libc)
++#  ifdef USE_MULTIARCH
+ strong_alias (MEMMOVE_SYMBOL (__memmove, unaligned_erms),
+ 	      MEMMOVE_SYMBOL (__memcpy, unaligned_erms))
+ strong_alias (MEMMOVE_SYMBOL (__memmove_chk, unaligned_erms),
+ 	      MEMMOVE_SYMBOL (__memcpy_chk, unaligned_erms))
+-strong_alias (MEMMOVE_SYMBOL (__memmove, unaligned_2),
+-	      MEMMOVE_SYMBOL (__memcpy, unaligned_2))
+-strong_alias (MEMMOVE_SYMBOL (__memmove_chk, unaligned_2),
+-	      MEMMOVE_SYMBOL (__memcpy_chk, unaligned_2))
++#  endif
++strong_alias (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned),
++	      MEMMOVE_CHK_SYMBOL (__memcpy_chk, unaligned))
+ # endif
+-
+ #endif
++strong_alias (MEMMOVE_SYMBOL (__memmove, unaligned),
++	      MEMCPY_SYMBOL (__memcpy, unaligned))
+diff --git a/sysdeps/x86_64/multiarch/memmove.S b/sysdeps/x86_64/multiarch/memmove.S
+new file mode 100644
+index 0000000..25c3586
+--- /dev/null
++++ b/sysdeps/x86_64/multiarch/memmove.S
+@@ -0,0 +1,98 @@
++/* Multiple versions of memmove
++   All versions must be listed in ifunc-impl-list.c.
++   Copyright (C) 2016 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <init-arch.h>
++
++/* Define multiple versions only for the definition in lib and for
++   DSO.  */
++#if IS_IN (libc)
++	.text
++ENTRY(__libc_memmove)
++	.type	__libc_memmove, @gnu_indirect_function
++	LOAD_RTLD_GLOBAL_RO_RDX
++# ifdef HAVE_AVX512_ASM_SUPPORT
++	HAS_ARCH_FEATURE (AVX512F_Usable)
++	jz	1f
++	lea	__memmove_avx512_no_vzeroupper(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
++	jnz	2f
++	lea	__memmove_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__memmove_avx512_unaligned(%rip), %RAX_LP
++	ret
++# endif
++1:	lea	__memmove_avx_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
++	jz	L(Fast_Unaligned_Load)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memmove_avx_unaligned_erms(%rip), %RAX_LP
++	ret
++L(Fast_Unaligned_Load):
++	lea	__memmove_sse2_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Unaligned_Copy)
++	jz	L(SSSE3)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memmove_sse2_unaligned_erms(%rip), %RAX_LP
++	ret
++L(SSSE3):
++	HAS_CPU_FEATURE (SSSE3)
++	jz	2f
++	lea    __memmove_ssse3_back(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Copy_Backward)
++	jnz	2f
++	lea	__memmove_ssse3(%rip), %RAX_LP
++2:	ret
++END(__libc_memmove)
++#endif
++
++#if IS_IN (libc)
++# define MEMMOVE_SYMBOL(p,s)	p##_sse2_##s
++
++# ifdef SHARED
++libc_hidden_ver (__memmove_sse2_unaligned, memmove)
++libc_hidden_ver (__memcpy_sse2_unaligned, memcpy)
++libc_hidden_ver (__mempcpy_sse2_unaligned, mempcpy)
++libc_hidden_ver (__mempcpy_sse2_unaligned, __mempcpy)
++
++#  undef libc_hidden_builtin_def
++/* It doesn't make sense to send libc-internal memmove calls through a PLT.
++   The speedup we get from using SSE2 instructions is likely eaten away
++   by the indirect call in the PLT.  */
++#  define libc_hidden_builtin_def
++# endif
++strong_alias (__libc_memmove, memmove)
++#endif
++
++#if !defined SHARED || !IS_IN (libc)
++weak_alias (__mempcpy, mempcpy)
++#endif
++
++#include "../memmove.S"
++
++#if defined SHARED && IS_IN (libc)
++# include <shlib-compat.h>
++# if SHLIB_COMPAT (libc, GLIBC_2_2_5, GLIBC_2_14)
++/* Use __memmove_sse2_unaligned to support overlapping addresses.  */
++compat_symbol (libc, __memmove_sse2_unaligned, memcpy, GLIBC_2_2_5);
++# endif
++#endif
+diff --git a/sysdeps/x86_64/multiarch/memmove.c b/sysdeps/x86_64/multiarch/memmove.c
+deleted file mode 100644
+index 8da5640..0000000
+--- a/sysdeps/x86_64/multiarch/memmove.c
++++ /dev/null
+@@ -1,73 +0,0 @@
+-/* Multiple versions of memmove.
+-   All versions must be listed in ifunc-impl-list.c.
+-   Copyright (C) 2010-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#if IS_IN (libc)
+-# define MEMMOVE __memmove_sse2
+-# ifdef SHARED
+-#  undef libc_hidden_builtin_def
+-#  define libc_hidden_builtin_def(name) \
+-  __hidden_ver1 (__memmove_sse2, __GI_memmove, __memmove_sse2);
+-# endif
+-
+-/* Redefine memmove so that the compiler won't complain about the type
+-   mismatch with the IFUNC selector in strong_alias, below.  */
+-# undef memmove
+-# define memmove __redirect_memmove
+-# include <string.h>
+-# undef memmove
+-
+-extern __typeof (__redirect_memmove) __memmove_sse2 attribute_hidden;
+-extern __typeof (__redirect_memmove) __memmove_ssse3 attribute_hidden;
+-extern __typeof (__redirect_memmove) __memmove_ssse3_back attribute_hidden;
+-extern __typeof (__redirect_memmove) __memmove_avx_unaligned attribute_hidden;
+-# ifdef HAVE_AVX512_ASM_SUPPORT
+-  extern __typeof (__redirect_memmove) __memmove_avx512_no_vzeroupper attribute_hidden;
+-# endif
+-
+-#endif
+-
+-#include "string/memmove.c"
+-
+-#if IS_IN (libc)
+-# include <shlib-compat.h>
+-# include "init-arch.h"
+-
+-/* Avoid DWARF definition DIE on ifunc symbol so that GDB can handle
+-   ifunc symbol properly.  */
+-extern __typeof (__redirect_memmove) __libc_memmove;
+-libc_ifunc (__libc_memmove,
+-#ifdef HAVE_AVX512_ASM_SUPPORT
+-	    HAS_ARCH_FEATURE (AVX512F_Usable)
+-	      && HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	    ? __memmove_avx512_no_vzeroupper
+-	    :
+-#endif
+-	    (HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
+-	    ? __memmove_avx_unaligned
+-	    : (HAS_CPU_FEATURE (SSSE3)
+-	       ? (HAS_ARCH_FEATURE (Fast_Copy_Backward)
+-	          ? __memmove_ssse3_back : __memmove_ssse3)
+-	       : __memmove_sse2)));
+-
+-strong_alias (__libc_memmove, memmove)
+-
+-# if SHLIB_COMPAT (libc, GLIBC_2_2_5, GLIBC_2_14)
+-compat_symbol (libc, memmove, memcpy, GLIBC_2_2_5);
+-# endif
+-#endif
+diff --git a/sysdeps/x86_64/multiarch/memmove_chk.S b/sysdeps/x86_64/multiarch/memmove_chk.S
+new file mode 100644
+index 0000000..cd639b8
+--- /dev/null
++++ b/sysdeps/x86_64/multiarch/memmove_chk.S
+@@ -0,0 +1,71 @@
++/* Multiple versions of __memmove_chk
++   All versions must be listed in ifunc-impl-list.c.
++   Copyright (C) 2016 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <init-arch.h>
++
++/* Define multiple versions only for the definition in lib and for
++   DSO.  There are no multiarch memmove functions for static binaries.
++ */
++#if IS_IN (libc)
++# ifdef SHARED
++	.text
++ENTRY(__memmove_chk)
++	.type	__memmove_chk, @gnu_indirect_function
++	LOAD_RTLD_GLOBAL_RO_RDX
++# ifdef HAVE_AVX512_ASM_SUPPORT
++	HAS_ARCH_FEATURE (AVX512F_Usable)
++	jz	1f
++	lea	__memmove_chk_avx512_no_vzeroupper(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
++	jnz	2f
++	lea	__memmove_chk_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__memmove_chk_avx512_unaligned(%rip), %RAX_LP
++	ret
++# endif
++1:	lea	__memmove_chk_avx_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
++	jz	L(Fast_Unaligned_Load)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memmove_chk_avx_unaligned_erms(%rip), %RAX_LP
++	ret
++L(Fast_Unaligned_Load):
++	lea	__memmove_chk_sse2_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Unaligned_Copy)
++	jz	L(SSSE3)
++	HAS_CPU_FEATURE (ERMS)
++	jz	2f
++	lea	__memmove_chk_sse2_unaligned_erms(%rip), %RAX_LP
++	ret
++L(SSSE3):
++	HAS_CPU_FEATURE (SSSE3)
++	jz	2f
++	lea    __memmove_chk_ssse3_back(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Copy_Backward)
++	jnz	2f
++	lea	__memmove_chk_ssse3(%rip), %RAX_LP
++2:	ret
++END(__memmove_chk)
++# else
++#  include "../memmove_chk.S"
++# endif
++#endif
+diff --git a/sysdeps/x86_64/multiarch/memmove_chk.c b/sysdeps/x86_64/multiarch/memmove_chk.c
+deleted file mode 100644
+index f64da63..0000000
+--- a/sysdeps/x86_64/multiarch/memmove_chk.c
++++ /dev/null
+@@ -1,46 +0,0 @@
+-/* Multiple versions of __memmove_chk.
+-   All versions must be listed in ifunc-impl-list.c.
+-   Copyright (C) 2010-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#include <string.h>
+-#include "init-arch.h"
+-
+-#define MEMMOVE_CHK __memmove_chk_sse2
+-
+-extern __typeof (__memmove_chk) __memmove_chk_sse2 attribute_hidden;
+-extern __typeof (__memmove_chk) __memmove_chk_ssse3 attribute_hidden;
+-extern __typeof (__memmove_chk) __memmove_chk_ssse3_back attribute_hidden;
+-extern __typeof (__memmove_chk) __memmove_chk_avx_unaligned attribute_hidden;
+-# ifdef HAVE_AVX512_ASM_SUPPORT
+-  extern __typeof (__memmove_chk) __memmove_chk_avx512_no_vzeroupper attribute_hidden;
+-# endif
+-
+-#include "debug/memmove_chk.c"
+-
+-libc_ifunc (__memmove_chk,
+-#ifdef HAVE_AVX512_ASM_SUPPORT
+-	    HAS_ARCH_FEATURE (AVX512F_Usable)
+-	      && HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	    ? __memmove_chk_avx512_no_vzeroupper
+-	    :
+-#endif
+-	    HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load) ? __memmove_chk_avx_unaligned :
+-	    (HAS_CPU_FEATURE (SSSE3)
+-	    ? (HAS_ARCH_FEATURE (Fast_Copy_Backward)
+-	       ? __memmove_chk_ssse3_back : __memmove_chk_ssse3)
+-	    : __memmove_chk_sse2));
+diff --git a/sysdeps/x86_64/multiarch/mempcpy.S b/sysdeps/x86_64/multiarch/mempcpy.S
+index ed78623..f9c6df3 100644
+--- a/sysdeps/x86_64/multiarch/mempcpy.S
++++ b/sysdeps/x86_64/multiarch/mempcpy.S
+@@ -25,62 +25,46 @@
+    DSO.  In static binaries we need mempcpy before the initialization
+    happened.  */
+ #if defined SHARED && IS_IN (libc)
++	.text
+ ENTRY(__mempcpy)
+ 	.type	__mempcpy, @gnu_indirect_function
+ 	LOAD_RTLD_GLOBAL_RO_RDX
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++# ifdef HAVE_AVX512_ASM_SUPPORT
+ 	HAS_ARCH_FEATURE (AVX512F_Usable)
+ 	jz	1f
++	lea	__mempcpy_avx512_no_vzeroupper(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	jz	1f
+-	leaq    __mempcpy_avx512_no_vzeroupper(%rip), %rax
++	jnz	2f
++	lea	__mempcpy_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__mempcpy_avx512_unaligned(%rip), %RAX_LP
+ 	ret
+-#endif
+-1:	leaq	__mempcpy_sse2(%rip), %rax
+-	HAS_CPU_FEATURE (SSSE3)
++# endif
++1:	lea	__mempcpy_avx_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
++	jz	L(Fast_Unaligned_Load)
++	HAS_CPU_FEATURE (ERMS)
+ 	jz	2f
+-	leaq	__mempcpy_ssse3(%rip), %rax
+-	HAS_ARCH_FEATURE (Fast_Copy_Backward)
++	lea	__mempcpy_avx_unaligned_erms(%rip), %RAX_LP
++	ret
++L(Fast_Unaligned_Load):
++	lea	__mempcpy_sse2_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Unaligned_Copy)
++	jz	L(SSSE3)
++	HAS_CPU_FEATURE (ERMS)
+ 	jz	2f
+-	leaq	__mempcpy_ssse3_back(%rip), %rax
+-	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
++	lea	__mempcpy_sse2_unaligned_erms(%rip), %RAX_LP
++	ret
++L(SSSE3):
++	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+-	leaq	__mempcpy_avx_unaligned(%rip), %rax
++	lea    __mempcpy_ssse3_back(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Copy_Backward)
++	jnz	2f
++	lea	__mempcpy_ssse3(%rip), %RAX_LP
+ 2:	ret
+ END(__mempcpy)
+ 
+-# undef ENTRY
+-# define ENTRY(name) \
+-	.type __mempcpy_sse2, @function; \
+-	.p2align 4; \
+-	.globl __mempcpy_sse2; \
+-	.hidden __mempcpy_sse2; \
+-	__mempcpy_sse2: cfi_startproc; \
+-	CALL_MCOUNT
+-# undef END
+-# define END(name) \
+-	cfi_endproc; .size __mempcpy_sse2, .-__mempcpy_sse2
+-
+-# undef ENTRY_CHK
+-# define ENTRY_CHK(name) \
+-	.type __mempcpy_chk_sse2, @function; \
+-	.globl __mempcpy_chk_sse2; \
+-	.p2align 4; \
+-	__mempcpy_chk_sse2: cfi_startproc; \
+-	CALL_MCOUNT
+-# undef END_CHK
+-# define END_CHK(name) \
+-	cfi_endproc; .size __mempcpy_chk_sse2, .-__mempcpy_chk_sse2
+-
+-# undef libc_hidden_def
+-# undef libc_hidden_builtin_def
+-/* It doesn't make sense to send libc-internal mempcpy calls through a PLT.
+-   The speedup we get from using SSSE3 instruction is likely eaten away
+-   by the indirect call in the PLT.  */
+-# define libc_hidden_def(name) \
+-	.globl __GI_mempcpy; __GI_mempcpy = __mempcpy_sse2
+-# define libc_hidden_builtin_def(name) \
+-	.globl __GI___mempcpy; __GI___mempcpy = __mempcpy_sse2
++weak_alias (__mempcpy, mempcpy)
+ #endif
+-
+-#include "../mempcpy.S"
+diff --git a/sysdeps/x86_64/multiarch/mempcpy_chk.S b/sysdeps/x86_64/multiarch/mempcpy_chk.S
+index 6e8a89d..80f460f 100644
+--- a/sysdeps/x86_64/multiarch/mempcpy_chk.S
++++ b/sysdeps/x86_64/multiarch/mempcpy_chk.S
+@@ -30,24 +30,40 @@
+ ENTRY(__mempcpy_chk)
+ 	.type	__mempcpy_chk, @gnu_indirect_function
+ 	LOAD_RTLD_GLOBAL_RO_RDX
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++# ifdef HAVE_AVX512_ASM_SUPPORT
+ 	HAS_ARCH_FEATURE (AVX512F_Usable)
+ 	jz	1f
++	lea	__mempcpy_chk_avx512_no_vzeroupper(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	jz	1f
+-	leaq    __mempcpy_chk_avx512_no_vzeroupper(%rip), %rax
++	jnz	2f
++	lea	__mempcpy_chk_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__mempcpy_chk_avx512_unaligned(%rip), %RAX_LP
+ 	ret
+-#endif
+-1:	leaq	__mempcpy_chk_sse2(%rip), %rax
+-	HAS_CPU_FEATURE (SSSE3)
++# endif
++1:	lea	__mempcpy_chk_avx_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
++	jz	L(Fast_Unaligned_Load)
++	HAS_CPU_FEATURE (ERMS)
+ 	jz	2f
+-	leaq	__mempcpy_chk_ssse3(%rip), %rax
+-	HAS_ARCH_FEATURE (Fast_Copy_Backward)
++	lea	__mempcpy_chk_avx_unaligned_erms(%rip), %RAX_LP
++	ret
++L(Fast_Unaligned_Load):
++	lea	__mempcpy_chk_sse2_unaligned(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Unaligned_Copy)
++	jz	L(SSSE3)
++	HAS_CPU_FEATURE (ERMS)
+ 	jz	2f
+-	leaq	__mempcpy_chk_ssse3_back(%rip), %rax
+-	HAS_ARCH_FEATURE (AVX_Fast_Unaligned_Load)
++	lea	__mempcpy_chk_sse2_unaligned_erms(%rip), %RAX_LP
++	ret
++L(SSSE3):
++	HAS_CPU_FEATURE (SSSE3)
+ 	jz	2f
+-	leaq	__mempcpy_chk_avx_unaligned(%rip), %rax
++	lea    __mempcpy_chk_ssse3_back(%rip), %RAX_LP
++	HAS_ARCH_FEATURE (Fast_Copy_Backward)
++	jnz	2f
++	lea	__mempcpy_chk_ssse3(%rip), %RAX_LP
+ 2:	ret
+ END(__mempcpy_chk)
+ # else
+-- 
+2.8.0
+

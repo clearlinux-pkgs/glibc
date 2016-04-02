@@ -1,0 +1,45 @@
+From b8fe596e7f750d4ee2fca14d6a3999364c02662e Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 6 Mar 2016 16:48:11 -0800
+Subject: [PATCH 02/18] Group AVX512 functions in .text.avx512 section
+
+	* sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S:
+	Replace .text with .text.avx512.
+	* sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S:
+	Likewise.
+
+(cherry picked from commit fee9eb6200f0e44a4b684903bc47fde36d46f1a5)
+---
+ sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S | 2 +-
+ sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S b/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S
+index 1bb12e8..3d567fc 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S
++++ b/sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S
+@@ -29,7 +29,7 @@
+ # define MEMCPY_CHK	__memcpy_chk_avx512_no_vzeroupper
+ #endif
+ 
+-	.section .text,"ax",@progbits
++	.section .text.avx512,"ax",@progbits
+ #if !defined USE_AS_BCOPY
+ ENTRY (MEMCPY_CHK)
+ 	cmpq	%rdx, %rcx
+diff --git a/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S b/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S
+index 1e638d7..eab8c5a 100644
+--- a/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S
++++ b/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S
+@@ -26,7 +26,7 @@
+ # define MEMSET_CHK __memset_chk_avx512_no_vzeroupper
+ #endif
+ 
+-	.section .text,"ax",@progbits
++	.section .text.avx512,"ax",@progbits
+ #if defined PIC
+ ENTRY (MEMSET_CHK)
+ 	cmpq	%rdx, %rcx
+-- 
+2.8.0
+

@@ -1,0 +1,28 @@
+From 96c7375cb8b6f1875d9865f2ae92ecacf5f5e6fa Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 22 Mar 2016 08:36:16 -0700
+Subject: [PATCH 07/18] Don't set %rcx twice before "rep movsb"
+
+	* sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S (MEMCPY):
+	Don't set %rcx twice before "rep movsb".
+
+(cherry picked from commit 3c9a4cd16cbc7b79094fec68add2df66061ab5d7)
+---
+ sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S b/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
+index 74fed18..b615d06 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
++++ b/sysdeps/x86_64/multiarch/memcpy-avx-unaligned.S
+@@ -234,7 +234,6 @@ L(gobble_data_movsb):
+ 	cmp	%rcx, %rdx
+ 	jae	L(gobble_big_data_fwd)
+ 	mov	%rdx, %rcx
+-	mov	%rdx, %rcx
+ 	rep	movsb
+ 	ret
+ 
+-- 
+2.8.0
+

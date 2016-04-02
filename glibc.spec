@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        85
+Release:        86
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -49,6 +49,27 @@ Patch116: 0017-math-don-t-clobber-old-libm.so-on-install-BZ-19822.patch
 Patch117: 0018-resolv-Always-set-resplen2-out-parameter-in-send_dg-.patch
 Patch118: 0019-S390-Save-and-restore-fprs-vrs-while-resolving-symbo.patch
 Patch119: 0020-S390-Extend-structs-La_s390_regs-La_s390_retval-with.patch
+
+
+## upstream backports
+Patch200: 0001-x86-64-Fix-memcpy-IFUNC-selection.patch
+Patch201: 0002-Group-AVX512-functions-in-.text.avx512-section.patch
+Patch202: 0003-tst-audit4-tst-audit10-Compile-AVX-AVX-512-code-sepa.patch
+Patch203: 0004-Fix-tst-audit10-build-when-mavx512f-is-not-supported.patch
+Patch204: 0005-Add-_arch_-_cpu_-to-index_-bit_-in-x86-cpu-features..patch
+Patch205: 0006-Set-index_arch_AVX_Fast_Unaligned_Load-only-for-Inte.patch
+Patch206: 0007-Don-t-set-rcx-twice-before-rep-movsb.patch
+Patch207: 0008-tst-audit10-Fix-compilation-on-compilers-without-bit.patch
+Patch208: 0009-x86-Add-a-feature-bit-Fast_Unaligned_Copy.patch
+Patch209: 0010-Implement-x86-64-multiarch-mempcpy-in-memcpy.patch
+Patch210: 0011-Make-__memcpy_avx512_no_vzeroupper-an-alias.patch
+Patch211: 0012-Initial-Enhanced-REP-MOVSB-STOSB-ERMS-support.patch
+Patch212: 0013-Add-x86-64-memmove-with-unaligned-load-store-and-rep.patch
+Patch213: 0014-Add-x86-64-memset-with-unaligned-store-and-rep-stosb.patch
+Patch214: 0015-Remove-Fast_Copy_Backward-from-Intel-Core-processors.patch
+Patch215: 0016-X86-64-Remove-the-previous-SSE2-AVX2-memsets.patch
+Patch216: 0017-X86-64-Remove-previous-default-SSE2-AVX2-memcpy-memm.patch
+Patch217: 0018-X86-64-Add-dummy-memcopy.h-and-wordcopy.c.patch
 
 
 BuildRequires:  grep
@@ -192,6 +213,26 @@ GNU C library extra components.
 %patch117 -p1
 %patch118 -p1
 %patch119 -p1
+
+# upstream backports
+%patch200 -p1
+%patch201 -p1
+%patch202 -p1
+%patch203 -p1
+%patch204 -p1
+%patch205 -p1
+%patch206 -p1
+%patch207 -p1
+%patch208 -p1
+%patch209 -p1
+%patch210 -p1
+%patch211 -p1
+%patch212 -p1
+%patch213 -p1
+%patch214 -p1
+%patch215 -p1
+%patch216 -p1
+%patch217 -p1
 
 %build
 mkdir ../glibc-buildroot

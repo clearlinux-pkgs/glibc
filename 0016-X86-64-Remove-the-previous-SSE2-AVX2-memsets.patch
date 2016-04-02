@@ -1,0 +1,700 @@
+From 0ff8c6a7b53c5bb28ac3d3e0ae8da8099491b16c Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 31 Mar 2016 10:42:30 -0700
+Subject: [PATCH 16/18] X86-64: Remove the previous SSE2/AVX2 memsets
+
+Since the new SSE2/AVX2 memsets are faster than the previous ones, we
+can remove the previous SSE2/AVX2 memsets and replace them with the
+new ones.  This reduces the size of libc.so by about 900 bytes.
+
+No change in IFUNC selection if SSE2 and AVX2 memsets weren't used
+before.  If SSE2 or AVX2 memset was used, the new SSE2 or AVX2 memset
+optimized with Enhanced REP STOSB will be used for processors with
+ERMS.  The new AVX512 memset will be used for processors with AVX512
+which prefer vzeroupper.
+
+	[BZ #19881]
+	* sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S: Folded
+	into ...
+	* sysdeps/x86_64/memset.S: This.
+	(__bzero): Removed.
+	(__memset_tail): Likewise.
+	(__memset_chk): Likewise.
+	(memset): Likewise.
+	(MEMSET_CHK_SYMBOL): New. Define only if MEMSET_SYMBOL isn't
+	defined.
+	(MEMSET_SYMBOL): Define only if MEMSET_SYMBOL isn't defined.
+	* sysdeps/x86_64/multiarch/memset-avx2.S: Removed.
+	(__memset_zero_constant_len_parameter): Check SHARED instead of
+	PIC.
+	* sysdeps/x86_64/multiarch/Makefile (sysdep_routines): Remove
+	memset-avx2 and memset-sse2-unaligned-erms.
+	* sysdeps/x86_64/multiarch/ifunc-impl-list.c
+	(__libc_ifunc_impl_list): Remove __memset_chk_sse2,
+	__memset_chk_avx2, __memset_sse2 and __memset_avx2_unaligned.
+	* sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S: Skip
+	if not in libc.
+	* sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S:
+	Likewise.
+	* sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+	(MEMSET_CHK_SYMBOL): New.  Define if not defined.
+	(__bzero): Check VEC_SIZE == 16 instead of USE_MULTIARCH.
+	Replace MEMSET_SYMBOL with MEMSET_CHK_SYMBOL on __memset_chk
+	symbols.
+	Properly check USE_MULTIARCH on __memset symbols.
+	* sysdeps/x86_64/multiarch/memset.S (memset): Replace
+	__memset_sse2 and __memset_avx2 with __memset_sse2_unaligned
+	and __memset_avx2_unaligned.  Use __memset_sse2_unaligned_erms
+	or __memset_avx2_unaligned_erms if processor has ERMS.  Support
+	__memset_avx512_unaligned_erms and __memset_avx512_unaligned.
+	(memset): Removed.
+	(__memset_chk): Likewise.
+	(MEMSET_SYMBOL): New.
+	(libc_hidden_builtin_def): Replace __memset_sse2 with
+	__memset_sse2_unaligned.
+	* sysdeps/x86_64/multiarch/memset_chk.S (__memset_chk): Replace
+	__memset_chk_sse2 and __memset_chk_avx2 with
+	__memset_chk_sse2_unaligned and __memset_chk_avx2_unaligned_erms.
+	Use __memset_chk_sse2_unaligned_erms or
+	__memset_chk_avx2_unaligned_erms if processor has ERMS.  Support
+	__memset_chk_avx512_unaligned_erms and
+	__memset_chk_avx512_unaligned.
+---
+ sysdeps/x86_64/memset.S                            | 123 +++------------
+ sysdeps/x86_64/multiarch/Makefile                  |   3 +-
+ sysdeps/x86_64/multiarch/ifunc-impl-list.c         |   9 --
+ .../x86_64/multiarch/memset-avx2-unaligned-erms.S  |  18 ++-
+ sysdeps/x86_64/multiarch/memset-avx2.S             | 168 ---------------------
+ .../multiarch/memset-avx512-unaligned-erms.S       |   2 +-
+ .../x86_64/multiarch/memset-sse2-unaligned-erms.S  |  16 --
+ .../x86_64/multiarch/memset-vec-unaligned-erms.S   |  32 ++--
+ sysdeps/x86_64/multiarch/memset.S                  |  34 +++--
+ sysdeps/x86_64/multiarch/memset_chk.S              |  20 ++-
+ 10 files changed, 89 insertions(+), 336 deletions(-)
+ delete mode 100644 sysdeps/x86_64/multiarch/memset-avx2.S
+ delete mode 100644 sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
+
+diff --git a/sysdeps/x86_64/memset.S b/sysdeps/x86_64/memset.S
+index 4cf0da0..62b85c3 100644
+--- a/sysdeps/x86_64/memset.S
++++ b/sysdeps/x86_64/memset.S
+@@ -19,113 +19,32 @@
+ 
+ #include <sysdep.h>
+ 
+-	.text
+-#if IS_IN (libc)
+-ENTRY(__bzero)
+-	movq	%rdi, %rax /* Set return value.  */
+-	movq	%rsi, %rdx /* Set n.  */
+-	pxor	%xmm0, %xmm0
+-	jmp	L(entry_from_bzero)
+-END(__bzero)
+-weak_alias (__bzero, bzero)
+-
+-/* Like memset but takes additional parameter with return value.  */
+-ENTRY(__memset_tail)
+-	movq	%rcx, %rax /* Set return value.  */
+-
+-	movd	%esi, %xmm0
+-	punpcklbw	%xmm0, %xmm0
+-	punpcklwd	%xmm0, %xmm0
+-	pshufd	$0, %xmm0, %xmm0
+-
+-	jmp	L(entry_from_bzero)
+-END(__memset_tail)
+-#endif
+-
+-#if defined PIC && IS_IN (libc)
+-ENTRY_CHK (__memset_chk)
+-	cmpq	%rdx, %rcx
+-	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END_CHK (__memset_chk)
++#define VEC_SIZE	16
++#define VEC(i)		xmm##i
++/* Don't use movups and movaps since it will get larger nop paddings for
++   alignment.  */
++#define VMOVU		movdqu
++#define VMOVA		movdqa
++
++#define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
++  movd d, %xmm0; \
++  movq r, %rax; \
++  punpcklbw %xmm0, %xmm0; \
++  punpcklwd %xmm0, %xmm0; \
++  pshufd $0, %xmm0, %xmm0
++
++#define SECTION(p)		p
++
++#ifndef MEMSET_SYMBOL
++# define MEMSET_CHK_SYMBOL(p,s)	p
++# define MEMSET_SYMBOL(p,s)	memset
+ #endif
+ 
+-ENTRY (memset)
+-	movd	%esi, %xmm0
+-	movq	%rdi, %rax
+-	punpcklbw	%xmm0, %xmm0
+-	punpcklwd	%xmm0, %xmm0
+-	pshufd	$0, %xmm0, %xmm0
+-L(entry_from_bzero):
+-	cmpq	$64, %rdx
+-	ja	L(loop_start)
+-	cmpq	$16, %rdx
+-	jbe	L(less_16_bytes)
+-	cmpq	$32, %rdx
+-	movdqu	%xmm0, (%rdi)
+-	movdqu	%xmm0, -16(%rdi,%rdx)
+-	ja	L(between_32_64_bytes)
+-L(return):
+-	rep
+-	ret
+-	.p2align 4
+-L(between_32_64_bytes):
+-	movdqu	%xmm0, 16(%rdi)
+-	movdqu	%xmm0, -32(%rdi,%rdx)
+-	ret
+-	.p2align 4
+-L(loop_start):
+-	leaq	64(%rdi), %rcx
+-	movdqu	%xmm0, (%rdi)
+-	andq	$-64, %rcx
+-	movdqu	%xmm0, -16(%rdi,%rdx)
+-	movdqu	%xmm0, 16(%rdi)
+-	movdqu	%xmm0, -32(%rdi,%rdx)
+-	movdqu	%xmm0, 32(%rdi)
+-	movdqu	%xmm0, -48(%rdi,%rdx)
+-	movdqu	%xmm0, 48(%rdi)
+-	movdqu	%xmm0, -64(%rdi,%rdx)
+-	addq	%rdi, %rdx
+-	andq	$-64, %rdx
+-	cmpq	%rdx, %rcx
+-	je	L(return)
+-	.p2align 4
+-L(loop):
+-	movdqa	%xmm0, (%rcx)
+-	movdqa	%xmm0, 16(%rcx)
+-	movdqa	%xmm0, 32(%rcx)
+-	movdqa	%xmm0, 48(%rcx)
+-	addq	$64, %rcx
+-	cmpq	%rcx, %rdx
+-	jne	L(loop)
+-	rep
+-	ret
+-L(less_16_bytes):
+-	movq %xmm0, %rcx
+-	testb	$24, %dl
+-	jne	L(between8_16bytes)
+-	testb	$4, %dl
+-	jne	L(between4_7bytes)
+-	testb	$1, %dl
+-	je	L(odd_byte)
+-	movb	%cl, (%rdi)
+-L(odd_byte):
+-	testb	$2, %dl
+-	je	L(return)
+-	movw	%cx, -2(%rax,%rdx)
+-	ret
+-L(between4_7bytes):
+-	movl	%ecx, (%rdi)
+-	movl	%ecx, -4(%rdi,%rdx)
+-	ret
+-L(between8_16bytes):
+-	movq	%rcx, (%rdi)
+-	movq	%rcx, -8(%rdi,%rdx)
+-	ret
++#include "multiarch/memset-vec-unaligned-erms.S"
+ 
+-END (memset)
+ libc_hidden_builtin_def (memset)
+ 
+-#if defined PIC && IS_IN (libc) && !defined USE_MULTIARCH
++#if defined SHARED && IS_IN (libc) && !defined USE_MULTIARCH
+ strong_alias (__memset_chk, __memset_zero_constant_len_parameter)
+ 	.section .gnu.warning.__memset_zero_constant_len_parameter
+ 	.string "memset used with constant zero length parameter; this could be due to transposed parameters"
+diff --git a/sysdeps/x86_64/multiarch/Makefile b/sysdeps/x86_64/multiarch/Makefile
+index 8878efb..35752a8 100644
+--- a/sysdeps/x86_64/multiarch/Makefile
++++ b/sysdeps/x86_64/multiarch/Makefile
+@@ -19,12 +19,11 @@ sysdep_routines += strncat-c stpncpy-c strncpy-c strcmp-ssse3 \
+ 		   stpcpy-sse2-unaligned stpncpy-sse2-unaligned \
+ 		   strcat-sse2-unaligned strncat-sse2-unaligned \
+ 		   strchr-sse2-no-bsf memcmp-ssse3 strstr-sse2-unaligned \
+-		   strcspn-c strpbrk-c strspn-c varshift memset-avx2 \
++		   strcspn-c strpbrk-c strspn-c varshift \
+ 		   memset-avx512-no-vzeroupper \
+ 		   memmove-sse2-unaligned-erms \
+ 		   memmove-avx-unaligned-erms \
+ 		   memmove-avx512-unaligned-erms \
+-		   memset-sse2-unaligned-erms \
+ 		   memset-avx2-unaligned-erms \
+ 		   memset-avx512-unaligned-erms
+ CFLAGS-varshift.c += -msse4
+diff --git a/sysdeps/x86_64/multiarch/ifunc-impl-list.c b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
+index 1e880f6..ca05ff6 100644
+--- a/sysdeps/x86_64/multiarch/ifunc-impl-list.c
++++ b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
+@@ -117,16 +117,11 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+   /* Support sysdeps/x86_64/multiarch/memset_chk.S.  */
+   IFUNC_IMPL (i, name, __memset_chk,
+ 	      IFUNC_IMPL_ADD (array, i, __memset_chk, 1,
+-			      __memset_chk_sse2)
+-	      IFUNC_IMPL_ADD (array, i, __memset_chk, 1,
+ 			      __memset_chk_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memset_chk, 1,
+ 			      __memset_chk_sse2_unaligned_erms)
+ 	      IFUNC_IMPL_ADD (array, i, __memset_chk,
+ 			      HAS_ARCH_FEATURE (AVX2_Usable),
+-			      __memset_chk_avx2)
+-	      IFUNC_IMPL_ADD (array, i, __memset_chk,
+-			      HAS_ARCH_FEATURE (AVX2_Usable),
+ 			      __memset_chk_avx2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, __memset_chk,
+ 			      HAS_ARCH_FEATURE (AVX2_Usable),
+@@ -146,7 +141,6 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 
+   /* Support sysdeps/x86_64/multiarch/memset.S.  */
+   IFUNC_IMPL (i, name, memset,
+-	      IFUNC_IMPL_ADD (array, i, memset, 1, __memset_sse2)
+ 	      IFUNC_IMPL_ADD (array, i, memset, 1,
+ 			      __memset_sse2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memset, 1,
+@@ -154,9 +148,6 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 	      IFUNC_IMPL_ADD (array, i, memset, 1, __memset_erms)
+ 	      IFUNC_IMPL_ADD (array, i, memset,
+ 			      HAS_ARCH_FEATURE (AVX2_Usable),
+-			      __memset_avx2)
+-	      IFUNC_IMPL_ADD (array, i, memset,
+-			      HAS_ARCH_FEATURE (AVX2_Usable),
+ 			      __memset_avx2_unaligned)
+ 	      IFUNC_IMPL_ADD (array, i, memset,
+ 			      HAS_ARCH_FEATURE (AVX2_Usable),
+diff --git a/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
+index e0dc565..79975e0 100644
+--- a/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
+@@ -1,14 +1,16 @@
+-#define VEC_SIZE	32
+-#define VEC(i)		ymm##i
+-#define VMOVU		vmovdqu
+-#define VMOVA		vmovdqa
++#if IS_IN (libc)
++# define VEC_SIZE	32
++# define VEC(i)		ymm##i
++# define VMOVU		vmovdqu
++# define VMOVA		vmovdqa
+ 
+-#define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
++# define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
+   vmovd d, %xmm0; \
+   movq r, %rax; \
+   vpbroadcastb %xmm0, %ymm0
+ 
+-#define SECTION(p)		p##.avx
+-#define MEMSET_SYMBOL(p,s)	p##_avx2_##s
++# define SECTION(p)		p##.avx
++# define MEMSET_SYMBOL(p,s)	p##_avx2_##s
+ 
+-#include "memset-vec-unaligned-erms.S"
++# include "memset-vec-unaligned-erms.S"
++#endif
+diff --git a/sysdeps/x86_64/multiarch/memset-avx2.S b/sysdeps/x86_64/multiarch/memset-avx2.S
+deleted file mode 100644
+index df63472..0000000
+--- a/sysdeps/x86_64/multiarch/memset-avx2.S
++++ /dev/null
+@@ -1,168 +0,0 @@
+-/* memset with AVX2
+-   Copyright (C) 2014-2016 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#include <sysdep.h>
+-
+-#if IS_IN (libc)
+-
+-#include "asm-syntax.h"
+-#ifndef MEMSET
+-# define MEMSET	__memset_avx2
+-# define MEMSET_CHK	__memset_chk_avx2
+-#endif
+-
+-	.section .text.avx2,"ax",@progbits
+-#if defined PIC
+-ENTRY (MEMSET_CHK)
+-	cmpq	%rdx, %rcx
+-	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMSET_CHK)
+-#endif
+-
+-ENTRY (MEMSET)
+-	vpxor	%xmm0, %xmm0, %xmm0
+-	vmovd	%esi, %xmm1
+-	lea	(%rdi, %rdx), %rsi
+-	mov	%rdi, %rax
+-	vpshufb	%xmm0, %xmm1, %xmm0
+-	cmp	$16, %rdx
+-	jb	L(less_16bytes)
+-	cmp	$256, %rdx
+-	jae	L(256bytesormore)
+-	cmp	$128, %dl
+-	jb	L(less_128bytes)
+-	vmovdqu	%xmm0, (%rdi)
+-	vmovdqu %xmm0, 0x10(%rdi)
+-	vmovdqu %xmm0, 0x20(%rdi)
+-	vmovdqu %xmm0, 0x30(%rdi)
+-	vmovdqu %xmm0, 0x40(%rdi)
+-	vmovdqu %xmm0, 0x50(%rdi)
+-	vmovdqu %xmm0, 0x60(%rdi)
+-	vmovdqu %xmm0, 0x70(%rdi)
+-	vmovdqu %xmm0, -0x80(%rsi)
+-	vmovdqu %xmm0, -0x70(%rsi)
+-	vmovdqu %xmm0, -0x60(%rsi)
+-	vmovdqu %xmm0, -0x50(%rsi)
+-	vmovdqu %xmm0, -0x40(%rsi)
+-	vmovdqu %xmm0, -0x30(%rsi)
+-	vmovdqu %xmm0, -0x20(%rsi)
+-	vmovdqu %xmm0, -0x10(%rsi)
+-	ret
+-
+-	.p2align 4
+-L(less_128bytes):
+-	cmp	$64, %dl
+-	jb	L(less_64bytes)
+-	vmovdqu %xmm0, (%rdi)
+-	vmovdqu %xmm0, 0x10(%rdi)
+-	vmovdqu %xmm0, 0x20(%rdi)
+-	vmovdqu %xmm0, 0x30(%rdi)
+-	vmovdqu %xmm0, -0x40(%rsi)
+-	vmovdqu %xmm0, -0x30(%rsi)
+-	vmovdqu %xmm0, -0x20(%rsi)
+-	vmovdqu %xmm0, -0x10(%rsi)
+-	ret
+-
+-	.p2align 4
+-L(less_64bytes):
+-	cmp	$32, %dl
+-	jb	L(less_32bytes)
+-	vmovdqu %xmm0, (%rdi)
+-	vmovdqu %xmm0, 0x10(%rdi)
+-	vmovdqu %xmm0, -0x20(%rsi)
+-	vmovdqu %xmm0, -0x10(%rsi)
+-	ret
+-
+-	.p2align 4
+-L(less_32bytes):
+-	vmovdqu %xmm0, (%rdi)
+-	vmovdqu %xmm0, -0x10(%rsi)
+-	ret
+-
+-	.p2align 4
+-L(less_16bytes):
+-	cmp	$8, %dl
+-	jb	L(less_8bytes)
+-	vmovq %xmm0, (%rdi)
+-	vmovq %xmm0, -0x08(%rsi)
+-	ret
+-
+-	.p2align 4
+-L(less_8bytes):
+-	vmovd	%xmm0, %ecx
+-	cmp	$4, %dl
+-	jb	L(less_4bytes)
+-	mov	%ecx, (%rdi)
+-	mov	%ecx, -0x04(%rsi)
+-	ret
+-
+-	.p2align 4
+-L(less_4bytes):
+-	cmp	$2, %dl
+-	jb	L(less_2bytes)
+-	mov	%cx, (%rdi)
+-	mov	%cx, -0x02(%rsi)
+-	ret
+-
+-	.p2align 4
+-L(less_2bytes):
+-	cmp	$1, %dl
+-	jb	L(less_1bytes)
+-	mov	%cl, (%rdi)
+-L(less_1bytes):
+-	ret
+-
+-	.p2align 4
+-L(256bytesormore):
+-	vinserti128 $1, %xmm0, %ymm0, %ymm0
+-	and	$-0x20, %rdi
+-	add	$0x20, %rdi
+-	vmovdqu	%ymm0, (%rax)
+-	sub	%rdi, %rax
+-	lea	-0x80(%rax, %rdx), %rcx
+-	cmp	$4096, %rcx
+-	ja	L(gobble_data)
+-L(gobble_128_loop):
+-	vmovdqa	%ymm0, (%rdi)
+-	vmovdqa	%ymm0, 0x20(%rdi)
+-	vmovdqa	%ymm0, 0x40(%rdi)
+-	vmovdqa	%ymm0, 0x60(%rdi)
+-	sub	$-0x80, %rdi
+-	add	$-0x80, %ecx
+-	jb	L(gobble_128_loop)
+-	mov	%rsi, %rax
+-	vmovdqu	%ymm0, -0x80(%rsi)
+-	vmovdqu	%ymm0, -0x60(%rsi)
+-	vmovdqu	%ymm0, -0x40(%rsi)
+-	vmovdqu	%ymm0, -0x20(%rsi)
+-	sub	%rdx, %rax
+-	vzeroupper
+-	ret
+-
+-	.p2align 4
+-L(gobble_data):
+-	sub	$-0x80, %rcx
+-	vmovd	%xmm0, %eax
+-	rep	stosb
+-	mov	%rsi, %rax
+-	sub	%rdx, %rax
+-	vzeroupper
+-	ret
+-
+-END (MEMSET)
+-#endif
+diff --git a/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
+index 72f4095..f1b3cb2 100644
+--- a/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
+@@ -1,4 +1,4 @@
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++#if defined HAVE_AVX512_ASM_SUPPORT && IS_IN (libc)
+ # define VEC_SIZE	64
+ # define VEC(i)		zmm##i
+ # define VMOVU		vmovdqu64
+diff --git a/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
+deleted file mode 100644
+index 437a858..0000000
+--- a/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
++++ /dev/null
+@@ -1,16 +0,0 @@
+-#define VEC_SIZE	16
+-#define VEC(i)		xmm##i
+-#define VMOVU		movdqu
+-#define VMOVA		movdqa
+-
+-#define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
+-  movd d, %xmm0; \
+-  movq r, %rax; \
+-  punpcklbw %xmm0, %xmm0; \
+-  punpcklwd %xmm0, %xmm0; \
+-  pshufd $0, %xmm0, %xmm0
+-
+-#define SECTION(p)		p
+-#define MEMSET_SYMBOL(p,s)	p##_sse2_##s
+-
+-#include "memset-vec-unaligned-erms.S"
+diff --git a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+index 9383517..4bdfb95 100644
+--- a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+@@ -28,6 +28,10 @@
+ 
+ #include <sysdep.h>
+ 
++#ifndef MEMSET_CHK_SYMBOL
++# define MEMSET_CHK_SYMBOL(p,s)		MEMSET_SYMBOL(p, s)
++#endif
++
+ #ifndef VZEROUPPER
+ # if VEC_SIZE > 16
+ #  define VZEROUPPER			vzeroupper
+@@ -66,8 +70,8 @@
+ # error SECTION is not defined!
+ #endif
+ 
+-#if !defined USE_MULTIARCH && IS_IN (libc)
+ 	.section SECTION(.text),"ax",@progbits
++#if VEC_SIZE == 16 && IS_IN (libc)
+ ENTRY (__bzero)
+ 	movq	%rdi, %rax /* Set return value.  */
+ 	movq	%rsi, %rdx /* Set n.  */
+@@ -78,10 +82,10 @@ weak_alias (__bzero, bzero)
+ #endif
+ 
+ #if defined SHARED && IS_IN (libc)
+-ENTRY_CHK (MEMSET_SYMBOL (__memset_chk, unaligned))
++ENTRY_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned))
+ 	cmpq	%rdx, %rcx
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END_CHK (MEMSET_SYMBOL (__memset_chk, unaligned))
++END_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned))
+ #endif
+ 
+ ENTRY (MEMSET_SYMBOL (__memset, unaligned))
+@@ -97,15 +101,16 @@ L(entry_from_bzero):
+ 	VMOVU	%VEC(0), (%rdi)
+ 	VZEROUPPER
+ 	ret
++#if defined USE_MULTIARCH && IS_IN (libc)
+ END (MEMSET_SYMBOL (__memset, unaligned))
+ 
+-#if VEC_SIZE == 16
++# if VEC_SIZE == 16
+ /* Only used to measure performance of REP STOSB.  */
+ ENTRY (__memset_erms)
+-#else
++# else
+ /* Provide a symbol to debugger.  */
+ ENTRY (MEMSET_SYMBOL (__memset, erms))
+-#endif
++# endif
+ L(stosb):
+ 	movq	%rdx, %rcx
+ 	movzbl	%sil, %eax
+@@ -113,18 +118,18 @@ L(stosb):
+ 	rep stosb
+ 	movq	%rdx, %rax
+ 	ret
+-#if VEC_SIZE == 16
++# if VEC_SIZE == 16
+ END (__memset_erms)
+-#else
++# else
+ END (MEMSET_SYMBOL (__memset, erms))
+-#endif
++# endif
+ 
+-#if defined SHARED && IS_IN (libc)
+-ENTRY_CHK (MEMSET_SYMBOL (__memset_chk, unaligned_erms))
++# if defined SHARED && IS_IN (libc)
++ENTRY_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned_erms))
+ 	cmpq	%rdx, %rcx
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END_CHK (MEMSET_SYMBOL (__memset_chk, unaligned_erms))
+-#endif
++END_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned_erms))
++# endif
+ 
+ ENTRY (MEMSET_SYMBOL (__memset, unaligned_erms))
+ 	VDUP_TO_VEC0_AND_SET_RETURN (%esi, %rdi)
+@@ -144,6 +149,7 @@ L(stosb_more_2x_vec):
+ 	/* Force 32-bit displacement to avoid long nop between
+ 	   instructions.  */
+ 	ja.d32	L(stosb)
++#endif
+ 	.p2align 4
+ L(more_2x_vec):
+ 	cmpq  $(VEC_SIZE * 4), %rdx
+diff --git a/sysdeps/x86_64/multiarch/memset.S b/sysdeps/x86_64/multiarch/memset.S
+index 8e3b9b9..4e52d8f 100644
+--- a/sysdeps/x86_64/multiarch/memset.S
++++ b/sysdeps/x86_64/multiarch/memset.S
+@@ -26,35 +26,43 @@
+ ENTRY(memset)
+ 	.type	memset, @gnu_indirect_function
+ 	LOAD_RTLD_GLOBAL_RO_RDX
+-	leaq	__memset_sse2(%rip), %rax
++	lea	__memset_sse2_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	1f
++	lea	__memset_sse2_unaligned(%rip), %RAX_LP
++1:
+ 	HAS_ARCH_FEATURE (AVX2_Usable)
+ 	jz	2f
+-	leaq	__memset_avx2(%rip), %rax
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++	lea	__memset_avx2_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	L(AVX512F)
++	lea	__memset_avx2_unaligned(%rip), %RAX_LP
++L(AVX512F):
++# ifdef HAVE_AVX512_ASM_SUPPORT
+ 	HAS_ARCH_FEATURE (AVX512F_Usable)
+ 	jz	2f
++	lea	__memset_avx512_no_vzeroupper(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	jz	2f
+-	leaq	__memset_avx512_no_vzeroupper(%rip), %rax
+-#endif
++	jnz	2f
++	lea	__memset_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__memset_avx512_unaligned(%rip), %RAX_LP
++# endif
+ 2:	ret
+ END(memset)
+ #endif
+ 
+ #if IS_IN (libc)
+-# undef memset
+-# define memset __memset_sse2
+-
+-# undef __memset_chk
+-# define __memset_chk __memset_chk_sse2
++# define MEMSET_SYMBOL(p,s)	p##_sse2_##s
+ 
+ # ifdef SHARED
+ # undef libc_hidden_builtin_def
+ /* It doesn't make sense to send libc-internal memset calls through a PLT.
+-   The speedup we get from using GPR instruction is likely eaten away
++   The speedup we get from using SSE2 instructions is likely eaten away
+    by the indirect call in the PLT.  */
+ # define libc_hidden_builtin_def(name) \
+-	.globl __GI_memset; __GI_memset = __memset_sse2
++	.globl __GI_memset; __GI_memset = __memset_sse2_unaligned
+ # endif
+ 
+ # undef strong_alias
+diff --git a/sysdeps/x86_64/multiarch/memset_chk.S b/sysdeps/x86_64/multiarch/memset_chk.S
+index 9a7b270..8517cfc 100644
+--- a/sysdeps/x86_64/multiarch/memset_chk.S
++++ b/sysdeps/x86_64/multiarch/memset_chk.S
+@@ -26,16 +26,28 @@
+ ENTRY(__memset_chk)
+ 	.type	__memset_chk, @gnu_indirect_function
+ 	LOAD_RTLD_GLOBAL_RO_RDX
+-	leaq	__memset_chk_sse2(%rip), %rax
++	lea	__memset_chk_sse2_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	1f
++	lea	__memset_chk_sse2_unaligned(%rip), %RAX_LP
++1:
+ 	HAS_ARCH_FEATURE (AVX2_Usable)
+ 	jz	2f
+-	leaq	__memset_chk_avx2(%rip), %rax
++	lea	__memset_chk_avx2_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	L(AVX512F)
++	lea	__memset_chk_avx2_unaligned(%rip), %RAX_LP
++L(AVX512F):
+ #ifdef HAVE_AVX512_ASM_SUPPORT
+ 	HAS_ARCH_FEATURE (AVX512F_Usable)
+ 	jz	2f
++	lea	__memset_chk_avx512_no_vzeroupper(%rip), %RAX_LP
+ 	HAS_ARCH_FEATURE (Prefer_No_VZEROUPPER)
+-	jz	2f
+-	leaq	__memset_chk_avx512_no_vzeroupper(%rip), %rax
++	jnz	2f
++	lea	__memset_chk_avx512_unaligned_erms(%rip), %RAX_LP
++	HAS_CPU_FEATURE (ERMS)
++	jnz	2f
++	lea	__memset_chk_avx512_unaligned(%rip), %RAX_LP
+ #endif
+ 2:	ret
+ END(__memset_chk)
+-- 
+2.8.0
+

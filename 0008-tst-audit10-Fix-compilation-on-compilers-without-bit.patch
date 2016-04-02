@@ -1,0 +1,47 @@
+From 75f2d47e459a6bf5656a938e5c63f8b581eb3ee6 Mon Sep 17 00:00:00 2001
+From: Florian Weimer <fweimer@redhat.com>
+Date: Fri, 25 Mar 2016 11:11:42 +0100
+Subject: [PATCH 08/18] tst-audit10: Fix compilation on compilers without
+ bit_AVX512F [BZ #19860]
+
+	[BZ# 19860]
+	* sysdeps/x86_64/tst-audit10.c (avx512_enabled): Always return
+	zero if the compiler does not provide the AVX512F bit.
+
+(cherry picked from commit f327f5b47be57bc05a4077344b381016c1bb2c11)
+---
+ sysdeps/x86_64/tst-audit10.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/sysdeps/x86_64/tst-audit10.c b/sysdeps/x86_64/tst-audit10.c
+index a487b40..0df2275 100644
+--- a/sysdeps/x86_64/tst-audit10.c
++++ b/sysdeps/x86_64/tst-audit10.c
+@@ -17,13 +17,13 @@
+    <http://www.gnu.org/licenses/>.  */
+ 
+ #include <cpuid.h>
+-#include <cpu-features.h>
+ 
+ int tst_audit10_aux (void);
+ 
+ static int
+ avx512_enabled (void)
+ {
++#ifdef bit_AVX512F
+   unsigned int eax, ebx, ecx, edx;
+ 
+   if (__get_cpuid (1, &eax, &ebx, &ecx, &edx) == 0
+@@ -38,6 +38,9 @@ avx512_enabled (void)
+ 
+   /* Verify that ZMM, YMM and XMM states are enabled.  */
+   return (eax & 0xe6) == 0xe6;
++#else
++  return 0;
++#endif
+ }
+ 
+ static int
+-- 
+2.8.0
+
