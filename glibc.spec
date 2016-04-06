@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        86
+Release:        87
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -49,6 +49,7 @@ Patch116: 0017-math-don-t-clobber-old-libm.so-on-install-BZ-19822.patch
 Patch117: 0018-resolv-Always-set-resplen2-out-parameter-in-send_dg-.patch
 Patch118: 0019-S390-Save-and-restore-fprs-vrs-while-resolving-symbo.patch
 Patch119: 0020-S390-Extend-structs-La_s390_regs-La_s390_retval-with.patch
+Patch120: CVE-2016.patch
 
 
 ## upstream backports
@@ -67,9 +68,14 @@ Patch211: 0012-Initial-Enhanced-REP-MOVSB-STOSB-ERMS-support.patch
 Patch212: 0013-Add-x86-64-memmove-with-unaligned-load-store-and-rep.patch
 Patch213: 0014-Add-x86-64-memset-with-unaligned-store-and-rep-stosb.patch
 Patch214: 0015-Remove-Fast_Copy_Backward-from-Intel-Core-processors.patch
-Patch215: 0016-X86-64-Remove-the-previous-SSE2-AVX2-memsets.patch
-Patch216: 0017-X86-64-Remove-previous-default-SSE2-AVX2-memcpy-memm.patch
-Patch217: 0018-X86-64-Add-dummy-memcopy.h-and-wordcopy.c.patch
+Patch215: 0016-Fix-memmove-vec-unaligned-erms.S.patch
+Patch216: 0017-Don-t-put-SSE2-AVX-AVX512-memmove-memset-in-ld.so.patch
+Patch217: 0018-Add-a-comment-in-memset-sse2-unaligned-erms.S.patch
+Patch218: 0019-Force-32-bit-displacement-in-memset-vec-unaligned-er.patch
+Patch219: 0020-X86-64-Use-non-temporal-store-in-memmove-on-large-da.patch
+Patch220: 0021-X86-64-Remove-the-previous-SSE2-AVX2-memsets.patch
+Patch221: 0022-X86-64-Remove-previous-default-SSE2-AVX2-memcpy-memm.patch
+Patch222: 0023-X86-64-Add-dummy-memcopy.h-and-wordcopy.c.patch
 
 
 BuildRequires:  grep
@@ -213,6 +219,7 @@ GNU C library extra components.
 %patch117 -p1
 %patch118 -p1
 %patch119 -p1
+%patch120 -p1
 
 # upstream backports
 %patch200 -p1
@@ -233,6 +240,11 @@ GNU C library extra components.
 %patch215 -p1
 %patch216 -p1
 %patch217 -p1
+%patch218 -p1
+%patch219 -p1
+%patch220 -p1
+%patch221 -p1
+%patch222 -p1
 
 %build
 mkdir ../glibc-buildroot

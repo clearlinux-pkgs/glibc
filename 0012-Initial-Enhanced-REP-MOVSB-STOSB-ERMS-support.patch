@@ -1,7 +1,7 @@
 From bf2bc5e5c9d7aa8af28b299ec26b8a37352730cc Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Mon, 28 Mar 2016 19:22:59 -0700
-Subject: [PATCH 12/18] Initial Enhanced REP MOVSB/STOSB (ERMS) support
+Subject: [PATCH 12/23] Initial Enhanced REP MOVSB/STOSB (ERMS) support
 
 The newer Intel processors support Enhanced REP MOVSB/STOSB (ERMS) which
 has a feature bit in CPUID.  This patch adds the Enhanced REP MOVSB/STOSB

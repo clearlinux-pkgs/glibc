@@ -1,7 +1,7 @@
 From 75f2d47e459a6bf5656a938e5c63f8b581eb3ee6 Mon Sep 17 00:00:00 2001
 From: Florian Weimer <fweimer@redhat.com>
 Date: Fri, 25 Mar 2016 11:11:42 +0100
-Subject: [PATCH 08/18] tst-audit10: Fix compilation on compilers without
+Subject: [PATCH 08/23] tst-audit10: Fix compilation on compilers without
  bit_AVX512F [BZ #19860]
 
 	[BZ# 19860]

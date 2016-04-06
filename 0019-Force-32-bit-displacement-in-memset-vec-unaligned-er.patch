@@ -1,0 +1,45 @@
+From 9a93bdbaff81edf67c5486c84f8098055e355abb Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 5 Apr 2016 05:21:07 -0700
+Subject: [PATCH 19/23] Force 32-bit displacement in
+ memset-vec-unaligned-erms.S
+
+	* sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S: Force
+	32-bit displacement to avoid long nop between instructions.
+
+(cherry picked from commit ec0cac9a1f4094bd0db6f77c1b329e7a40eecc10)
+---
+ sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+index 9383517..fe0f745 100644
+--- a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+@@ -159,10 +159,23 @@ L(return):
+ 	.p2align 4
+ L(loop_start):
+ 	leaq	(VEC_SIZE * 4)(%rdi), %rcx
++# if VEC_SIZE == 32 || VEC_SIZE == 64
++	/* Force 32-bit displacement to avoid long nop between
++	   instructions.  */
++	VMOVU.d32 %VEC(0), (%rdi)
++# else
+ 	VMOVU	%VEC(0), (%rdi)
++# endif
+ 	andq	$-(VEC_SIZE * 4), %rcx
++# if VEC_SIZE == 32
++	/* Force 32-bit displacement to avoid long nop between
++	   instructions.  */
++	VMOVU.d32 %VEC(0), -VEC_SIZE(%rdi,%rdx)
++	VMOVU.d32 %VEC(0), VEC_SIZE(%rdi)
++# else
+ 	VMOVU	%VEC(0), -VEC_SIZE(%rdi,%rdx)
+ 	VMOVU	%VEC(0), VEC_SIZE(%rdi)
++# endif
+ 	VMOVU	%VEC(0), -(VEC_SIZE * 2)(%rdi,%rdx)
+ 	VMOVU	%VEC(0), (VEC_SIZE * 2)(%rdi)
+ 	VMOVU	%VEC(0), -(VEC_SIZE * 3)(%rdi,%rdx)
+-- 
+2.8.0
+

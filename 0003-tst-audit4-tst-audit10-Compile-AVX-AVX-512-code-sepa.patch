@@ -1,7 +1,7 @@
 From ba80f6ceea3a6b6f711038646f419125fe3ad39c Mon Sep 17 00:00:00 2001
 From: Florian Weimer <fweimer@redhat.com>
 Date: Mon, 7 Mar 2016 16:00:25 +0100
-Subject: [PATCH 03/18] tst-audit4, tst-audit10: Compile AVX/AVX-512 code
+Subject: [PATCH 03/23] tst-audit4, tst-audit10: Compile AVX/AVX-512 code
  separately [BZ #19269]
 
 This ensures that GCC will not use unsupported instructions before

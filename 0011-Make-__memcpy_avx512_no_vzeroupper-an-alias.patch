@@ -1,7 +1,7 @@
 From 7c244283ff12329b3bca9878b8edac3b3fe5c7bc Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Mon, 28 Mar 2016 13:15:59 -0700
-Subject: [PATCH 11/18] Make __memcpy_avx512_no_vzeroupper an alias
+Subject: [PATCH 11/23] Make __memcpy_avx512_no_vzeroupper an alias
 
 Since x86-64 memcpy-avx512-no-vzeroupper.S implements memmove, make
 __memcpy_avx512_no_vzeroupper an alias of __memmove_avx512_no_vzeroupper

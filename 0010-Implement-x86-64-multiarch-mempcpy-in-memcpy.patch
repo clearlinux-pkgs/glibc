@@ -1,7 +1,7 @@
 From a9a14991fb2d3e69f80d25e9bbf2f6b0bcf11c3d Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Mon, 28 Mar 2016 13:13:36 -0700
-Subject: [PATCH 10/18] Implement x86-64 multiarch mempcpy in memcpy
+Subject: [PATCH 10/23] Implement x86-64 multiarch mempcpy in memcpy
 
 Implement x86-64 multiarch mempcpy in memcpy to share most of code.  It
 reduces code size of libc.so.

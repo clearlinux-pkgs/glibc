@@ -1,7 +1,7 @@
-From 4e339b9dc65217fb9b9be6cdc0e991f4ae64ccfe Mon Sep 17 00:00:00 2001
+From 9910c54c2e97b6c36f8593097e53d5e09f837a69 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Fri, 1 Apr 2016 14:01:24 -0700
-Subject: [PATCH 18/18] X86-64: Add dummy memcopy.h and wordcopy.c
+Subject: [PATCH 23/23] X86-64: Add dummy memcopy.h and wordcopy.c
 
 Since x86-64 doesn't use memory copy functions, add dummy memcopy.h and
 wordcopy.c to reduce code size.  It reduces the size of libc.so by about

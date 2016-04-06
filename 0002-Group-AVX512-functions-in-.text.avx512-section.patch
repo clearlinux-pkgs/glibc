@@ -1,7 +1,7 @@
 From b8fe596e7f750d4ee2fca14d6a3999364c02662e Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Sun, 6 Mar 2016 16:48:11 -0800
-Subject: [PATCH 02/18] Group AVX512 functions in .text.avx512 section
+Subject: [PATCH 02/23] Group AVX512 functions in .text.avx512 section
 
 	* sysdeps/x86_64/multiarch/memcpy-avx512-no-vzeroupper.S:
 	Replace .text with .text.avx512.

@@ -1,7 +1,7 @@
 From e455d17680cfaebb12692547422f95ba1ed30e29 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Fri, 4 Mar 2016 08:37:40 -0800
-Subject: [PATCH 01/18] x86-64: Fix memcpy IFUNC selection
+Subject: [PATCH 01/23] x86-64: Fix memcpy IFUNC selection
 
 Chek Fast_Unaligned_Load, instead of Slow_BSF, and also check for
 Fast_Copy_Backward to enable __memcpy_ssse3_back.  Existing selection

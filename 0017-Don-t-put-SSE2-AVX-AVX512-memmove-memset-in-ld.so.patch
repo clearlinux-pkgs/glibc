@@ -1,0 +1,156 @@
+From 06c6d4ae6ee7e5b83fd5868bef494def01f59292 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 3 Apr 2016 14:32:20 -0700
+Subject: [PATCH 17/23] Don't put SSE2/AVX/AVX512 memmove/memset in ld.so
+
+Since memmove and memset in ld.so don't use IFUNC, don't put SSE2, AVX
+and AVX512 memmove and memset in ld.so.
+
+	* sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S: Skip
+	if not in libc.
+	* sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S:
+	Likewise.
+	* sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S:
+	Likewise.
+	* sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S:
+	Likewise.
+
+(cherry picked from commit 5cd7af016d8587ff53b20ba259746f97edbddbf7)
+---
+ sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S  | 16 +++++++++-------
+ .../x86_64/multiarch/memmove-avx512-unaligned-erms.S   |  2 +-
+ sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S | 16 +++++++++-------
+ sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S  | 18 ++++++++++--------
+ .../x86_64/multiarch/memset-avx512-unaligned-erms.S    |  2 +-
+ sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S  | 18 ++++++++++--------
+ 6 files changed, 40 insertions(+), 32 deletions(-)
+
+diff --git a/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
+index 3a72c7e..44711c3 100644
+--- a/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
+@@ -1,9 +1,11 @@
+-#define VEC_SIZE	32
+-#define VEC(i)		ymm##i
+-#define VMOVU		vmovdqu
+-#define VMOVA		vmovdqa
++#if IS_IN (libc)
++# define VEC_SIZE	32
++# define VEC(i)		ymm##i
++# define VMOVU		vmovdqu
++# define VMOVA		vmovdqa
+ 
+-#define SECTION(p)		p##.avx
+-#define MEMMOVE_SYMBOL(p,s)	p##_avx_##s
++# define SECTION(p)		p##.avx
++# define MEMMOVE_SYMBOL(p,s)	p##_avx_##s
+ 
+-#include "memmove-vec-unaligned-erms.S"
++# include "memmove-vec-unaligned-erms.S"
++#endif
+diff --git a/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
+index 38358fa..c2c5293 100644
+--- a/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
+@@ -1,4 +1,4 @@
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++#if defined HAVE_AVX512_ASM_SUPPORT && IS_IN (libc)
+ # define VEC_SIZE	64
+ # define VEC(i)		zmm##i
+ # define VMOVU		vmovdqu64
+diff --git a/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
+index 52b9ae0..85214fe 100644
+--- a/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
+@@ -1,9 +1,11 @@
+-#define VEC_SIZE	16
+-#define VEC(i)		xmm##i
+-#define VMOVU		movdqu
+-#define VMOVA		movdqa
++#if IS_IN (libc)
++# define VEC_SIZE	16
++# define VEC(i)		xmm##i
++# define VMOVU		movdqu
++# define VMOVA		movdqa
+ 
+-#define SECTION(p)		p
+-#define MEMMOVE_SYMBOL(p,s)	p##_sse2_##s
++# define SECTION(p)		p
++# define MEMMOVE_SYMBOL(p,s)	p##_sse2_##s
+ 
+-#include "memmove-vec-unaligned-erms.S"
++# include "memmove-vec-unaligned-erms.S"
++#endif
+diff --git a/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
+index e0dc565..79975e0 100644
+--- a/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
+@@ -1,14 +1,16 @@
+-#define VEC_SIZE	32
+-#define VEC(i)		ymm##i
+-#define VMOVU		vmovdqu
+-#define VMOVA		vmovdqa
++#if IS_IN (libc)
++# define VEC_SIZE	32
++# define VEC(i)		ymm##i
++# define VMOVU		vmovdqu
++# define VMOVA		vmovdqa
+ 
+-#define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
++# define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
+   vmovd d, %xmm0; \
+   movq r, %rax; \
+   vpbroadcastb %xmm0, %ymm0
+ 
+-#define SECTION(p)		p##.avx
+-#define MEMSET_SYMBOL(p,s)	p##_avx2_##s
++# define SECTION(p)		p##.avx
++# define MEMSET_SYMBOL(p,s)	p##_avx2_##s
+ 
+-#include "memset-vec-unaligned-erms.S"
++# include "memset-vec-unaligned-erms.S"
++#endif
+diff --git a/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
+index 72f4095..f1b3cb2 100644
+--- a/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
+@@ -1,4 +1,4 @@
+-#ifdef HAVE_AVX512_ASM_SUPPORT
++#if defined HAVE_AVX512_ASM_SUPPORT && IS_IN (libc)
+ # define VEC_SIZE	64
+ # define VEC(i)		zmm##i
+ # define VMOVU		vmovdqu64
+diff --git a/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
+index 437a858..2deba42 100644
+--- a/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
+@@ -1,16 +1,18 @@
+-#define VEC_SIZE	16
+-#define VEC(i)		xmm##i
+-#define VMOVU		movdqu
+-#define VMOVA		movdqa
++#if IS_IN (libc)
++# define VEC_SIZE	16
++# define VEC(i)		xmm##i
++# define VMOVU		movdqu
++# define VMOVA		movdqa
+ 
+-#define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
++# define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
+   movd d, %xmm0; \
+   movq r, %rax; \
+   punpcklbw %xmm0, %xmm0; \
+   punpcklwd %xmm0, %xmm0; \
+   pshufd $0, %xmm0, %xmm0
+ 
+-#define SECTION(p)		p
+-#define MEMSET_SYMBOL(p,s)	p##_sse2_##s
++# define SECTION(p)		p
++# define MEMSET_SYMBOL(p,s)	p##_sse2_##s
+ 
+-#include "memset-vec-unaligned-erms.S"
++# include "memset-vec-unaligned-erms.S"
++#endif
+-- 
+2.8.0
+

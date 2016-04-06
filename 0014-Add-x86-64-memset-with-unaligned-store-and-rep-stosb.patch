@@ -1,7 +1,7 @@
 From 30c389be1af67c4d0716d207b6780c6169d1355f Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Thu, 31 Mar 2016 10:05:51 -0700
-Subject: [PATCH 14/18] Add x86-64 memset with unaligned store and rep stosb
+Subject: [PATCH 14/23] Add x86-64 memset with unaligned store and rep stosb
 
 Implement x86-64 memset with unaligned store and rep movsb.  Support
 16-byte, 32-byte and 64-byte vector register sizes.  A single file

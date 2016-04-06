@@ -1,7 +1,7 @@
-From 0ff8c6a7b53c5bb28ac3d3e0ae8da8099491b16c Mon Sep 17 00:00:00 2001
+From 7c36cac64f6855f1f4ff007beaca3cb766e694ec Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Thu, 31 Mar 2016 10:42:30 -0700
-Subject: [PATCH 16/18] X86-64: Remove the previous SSE2/AVX2 memsets
+Subject: [PATCH 21/23] X86-64: Remove the previous SSE2/AVX2 memsets
 
 Since the new SSE2/AVX2 memsets are faster than the previous ones, we
 can remove the previous SSE2/AVX2 memsets and replace them with the
@@ -63,14 +63,12 @@ which prefer vzeroupper.
  sysdeps/x86_64/memset.S                            | 123 +++------------
  sysdeps/x86_64/multiarch/Makefile                  |   3 +-
  sysdeps/x86_64/multiarch/ifunc-impl-list.c         |   9 --
- .../x86_64/multiarch/memset-avx2-unaligned-erms.S  |  18 ++-
  sysdeps/x86_64/multiarch/memset-avx2.S             | 168 ---------------------
- .../multiarch/memset-avx512-unaligned-erms.S       |   2 +-
- .../x86_64/multiarch/memset-sse2-unaligned-erms.S  |  16 --
+ .../x86_64/multiarch/memset-sse2-unaligned-erms.S  |  20 ---
  .../x86_64/multiarch/memset-vec-unaligned-erms.S   |  32 ++--
  sysdeps/x86_64/multiarch/memset.S                  |  34 +++--
  sysdeps/x86_64/multiarch/memset_chk.S              |  20 ++-
- 10 files changed, 89 insertions(+), 336 deletions(-)
+ 8 files changed, 78 insertions(+), 331 deletions(-)
  delete mode 100644 sysdeps/x86_64/multiarch/memset-avx2.S
  delete mode 100644 sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
 
@@ -270,35 +268,6 @@ index 1e880f6..ca05ff6 100644
  			      __memset_avx2_unaligned)
  	      IFUNC_IMPL_ADD (array, i, memset,
  			      HAS_ARCH_FEATURE (AVX2_Usable),
-diff --git a/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
-index e0dc565..79975e0 100644
---- a/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
-+++ b/sysdeps/x86_64/multiarch/memset-avx2-unaligned-erms.S
-@@ -1,14 +1,16 @@
--#define VEC_SIZE	32
--#define VEC(i)		ymm##i
--#define VMOVU		vmovdqu
--#define VMOVA		vmovdqa
-+#if IS_IN (libc)
-+# define VEC_SIZE	32
-+# define VEC(i)		ymm##i
-+# define VMOVU		vmovdqu
-+# define VMOVA		vmovdqa
- 
--#define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
-+# define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
-   vmovd d, %xmm0; \
-   movq r, %rax; \
-   vpbroadcastb %xmm0, %ymm0
- 
--#define SECTION(p)		p##.avx
--#define MEMSET_SYMBOL(p,s)	p##_avx2_##s
-+# define SECTION(p)		p##.avx
-+# define MEMSET_SYMBOL(p,s)	p##_avx2_##s
- 
--#include "memset-vec-unaligned-erms.S"
-+# include "memset-vec-unaligned-erms.S"
-+#endif
 diff --git a/sysdeps/x86_64/multiarch/memset-avx2.S b/sysdeps/x86_64/multiarch/memset-avx2.S
 deleted file mode 100644
 index df63472..0000000
@@ -473,40 +442,34 @@ index df63472..0000000
 -
 -END (MEMSET)
 -#endif
-diff --git a/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
-index 72f4095..f1b3cb2 100644
---- a/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
-+++ b/sysdeps/x86_64/multiarch/memset-avx512-unaligned-erms.S
-@@ -1,4 +1,4 @@
--#ifdef HAVE_AVX512_ASM_SUPPORT
-+#if defined HAVE_AVX512_ASM_SUPPORT && IS_IN (libc)
- # define VEC_SIZE	64
- # define VEC(i)		zmm##i
- # define VMOVU		vmovdqu64
 diff --git a/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
 deleted file mode 100644
-index 437a858..0000000
+index 4bf3d36..0000000
 --- a/sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S
 +++ /dev/null
-@@ -1,16 +0,0 @@
--#define VEC_SIZE	16
--#define VEC(i)		xmm##i
--#define VMOVU		movdqu
--#define VMOVA		movdqa
+@@ -1,20 +0,0 @@
+-#if IS_IN (libc)
+-# define VEC_SIZE	16
+-# define VEC(i)		xmm##i
+-/* Don't use movups and movaps since it will get larger nop paddings
+-   for alignment.  */
+-# define VMOVU		movdqu
+-# define VMOVA		movdqa
 -
--#define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
+-# define VDUP_TO_VEC0_AND_SET_RETURN(d, r) \
 -  movd d, %xmm0; \
 -  movq r, %rax; \
 -  punpcklbw %xmm0, %xmm0; \
 -  punpcklwd %xmm0, %xmm0; \
 -  pshufd $0, %xmm0, %xmm0
 -
--#define SECTION(p)		p
--#define MEMSET_SYMBOL(p,s)	p##_sse2_##s
+-# define SECTION(p)		p
+-# define MEMSET_SYMBOL(p,s)	p##_sse2_##s
 -
--#include "memset-vec-unaligned-erms.S"
+-# include "memset-vec-unaligned-erms.S"
+-#endif
 diff --git a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
-index 9383517..4bdfb95 100644
+index fe0f745..89f6886 100644
 --- a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
 +++ b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
 @@ -28,6 +28,10 @@

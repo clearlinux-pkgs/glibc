@@ -1,7 +1,7 @@
-From 997e6c0db2c351f4a7b688c3134c1f77a0aa49de Mon Sep 17 00:00:00 2001
+From 3429d9dd330a5c140cb37e77e7c388a71fdb44f1 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Thu, 31 Mar 2016 12:46:57 -0700
-Subject: [PATCH 17/18] X86-64: Remove previous default/SSE2/AVX2
+Subject: [PATCH 22/23] X86-64: Remove previous default/SSE2/AVX2
  memcpy/memmove
 
 Since the new SSE2/AVX2 memcpy/memmove are faster than the previous ones,
@@ -20,8 +20,6 @@ default memcpy/memmove and make them the default memcpy/memmove.
 
 Together, it reduces the size of libc.so by about 6 KB and the size of
 ld.so by about 2 KB.
-
-It also fixes the placement of __mempcpy_erms and __memmove_erms.
 
 	[BZ #19776]
 	* sysdeps/x86_64/memcpy.S: Make it dummy.
@@ -90,8 +88,6 @@ It also fixes the placement of __mempcpy_erms and __memmove_erms.
 	(MEMCPY_SYMBOL): New.
 	(MEMPCPY_SYMBOL): Likewise.
 	(MEMMOVE_CHK_SYMBOL): Likewise.
-	(__mempcpy_erms, __memmove_erms): Moved before __mempcpy_chk
-	with unaligned_erms.
 	Replace MEMMOVE_SYMBOL with MEMMOVE_CHK_SYMBOL on __mempcpy_chk
 	symbols.  Replace MEMMOVE_SYMBOL with MEMPCPY_SYMBOL on
 	__mempcpy symbols.  Change function suffix from unaligned_2 to
@@ -115,7 +111,7 @@ It also fixes the placement of __mempcpy_erms and __memmove_erms.
 	Default to __mempcpy_chk_sse2_unaligned.
 ---
  sysdeps/x86_64/memcpy.S                            | 585 +--------------------
- sysdeps/x86_64/memmove.S                           |  69 +++
+ sysdeps/x86_64/memmove.S                           |  71 +++
  sysdeps/x86_64/memmove.c                           |  26 -
  sysdeps/x86_64/memmove_chk.S                       |  33 ++
  sysdeps/x86_64/mempcpy.S                           |   9 +-
@@ -125,18 +121,16 @@ It also fixes the placement of __mempcpy_erms and __memmove_erms.
  sysdeps/x86_64/multiarch/memcpy-sse2-unaligned.S   | 175 ------
  sysdeps/x86_64/multiarch/memcpy.S                  |  62 +--
  sysdeps/x86_64/multiarch/memcpy_chk.S              |  40 +-
- .../x86_64/multiarch/memmove-avx-unaligned-erms.S  |  16 +-
  sysdeps/x86_64/multiarch/memmove-avx-unaligned.S   |  22 -
- .../multiarch/memmove-avx512-unaligned-erms.S      |   2 +-
- .../x86_64/multiarch/memmove-sse2-unaligned-erms.S |   9 -
- .../x86_64/multiarch/memmove-vec-unaligned-erms.S  | 180 ++++---
+ .../x86_64/multiarch/memmove-sse2-unaligned-erms.S |  14 -
+ .../x86_64/multiarch/memmove-vec-unaligned-erms.S  | 129 +++--
  sysdeps/x86_64/multiarch/memmove.S                 |  98 ++++
  sysdeps/x86_64/multiarch/memmove.c                 |  73 ---
  sysdeps/x86_64/multiarch/memmove_chk.S             |  71 +++
  sysdeps/x86_64/multiarch/memmove_chk.c             |  46 --
  sysdeps/x86_64/multiarch/mempcpy.S                 |  74 +--
  sysdeps/x86_64/multiarch/mempcpy_chk.S             |  38 +-
- 22 files changed, 514 insertions(+), 1574 deletions(-)
+ 20 files changed, 475 insertions(+), 1551 deletions(-)
  create mode 100644 sysdeps/x86_64/memmove.S
  delete mode 100644 sysdeps/x86_64/memmove.c
  create mode 100644 sysdeps/x86_64/memmove_chk.S
@@ -741,10 +735,10 @@ index f6e3d93..d98500a 100644
 +/* Implemented in memcpy.S.  */
 diff --git a/sysdeps/x86_64/memmove.S b/sysdeps/x86_64/memmove.S
 new file mode 100644
-index 0000000..a90cec1
+index 0000000..a7ae453
 --- /dev/null
 +++ b/sysdeps/x86_64/memmove.S
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,71 @@
 +/* Optimized memmove for x86-64.
 +   Copyright (C) 2016 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -767,6 +761,8 @@ index 0000000..a90cec1
 +
 +#define VEC_SIZE	16
 +#define VEC(i)		xmm##i
++#define PREFETCHNT	prefetchnta
++#define VMOVNT		movntdq
 +/* Use movups and movaps for smaller code sizes.  */
 +#define VMOVU		movups
 +#define VMOVA		movaps
@@ -1851,29 +1847,6 @@ index 648217e..11f1310 100644
  2:	ret
  END(__memcpy_chk)
  # else
-diff --git a/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
-index 3a72c7e..44711c3 100644
---- a/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
-+++ b/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S
-@@ -1,9 +1,11 @@
--#define VEC_SIZE	32
--#define VEC(i)		ymm##i
--#define VMOVU		vmovdqu
--#define VMOVA		vmovdqa
-+#if IS_IN (libc)
-+# define VEC_SIZE	32
-+# define VEC(i)		ymm##i
-+# define VMOVU		vmovdqu
-+# define VMOVA		vmovdqa
- 
--#define SECTION(p)		p##.avx
--#define MEMMOVE_SYMBOL(p,s)	p##_avx_##s
-+# define SECTION(p)		p##.avx
-+# define MEMMOVE_SYMBOL(p,s)	p##_avx_##s
- 
--#include "memmove-vec-unaligned-erms.S"
-+# include "memmove-vec-unaligned-erms.S"
-+#endif
 diff --git a/sysdeps/x86_64/multiarch/memmove-avx-unaligned.S b/sysdeps/x86_64/multiarch/memmove-avx-unaligned.S
 deleted file mode 100644
 index 75e35f2..0000000
@@ -1902,38 +1875,33 @@ index 75e35f2..0000000
 -#define MEMCPY		__memmove_avx_unaligned
 -#define MEMCPY_CHK	__memmove_chk_avx_unaligned
 -#include "memcpy-avx-unaligned.S"
-diff --git a/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
-index 38358fa..c2c5293 100644
---- a/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
-+++ b/sysdeps/x86_64/multiarch/memmove-avx512-unaligned-erms.S
-@@ -1,4 +1,4 @@
--#ifdef HAVE_AVX512_ASM_SUPPORT
-+#if defined HAVE_AVX512_ASM_SUPPORT && IS_IN (libc)
- # define VEC_SIZE	64
- # define VEC(i)		zmm##i
- # define VMOVU		vmovdqu64
 diff --git a/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
 deleted file mode 100644
-index 52b9ae0..0000000
+index 84b1263..0000000
 --- a/sysdeps/x86_64/multiarch/memmove-sse2-unaligned-erms.S
 +++ /dev/null
-@@ -1,9 +0,0 @@
--#define VEC_SIZE	16
--#define VEC(i)		xmm##i
--#define VMOVU		movdqu
--#define VMOVA		movdqa
+@@ -1,14 +0,0 @@
+-#if IS_IN (libc)
+-# define VEC_SIZE	16
+-# define VEC(i)		xmm##i
+-# define PREFETCHNT	prefetchnta
+-# define VMOVNT		movntdq
+-/* Use movups and movaps for smaller code sizes.  */
+-# define VMOVU		movups
+-# define VMOVA		movaps
 -
--#define SECTION(p)		p
--#define MEMMOVE_SYMBOL(p,s)	p##_sse2_##s
+-# define SECTION(p)		p
+-# define MEMMOVE_SYMBOL(p,s)	p##_sse2_##s
 -
--#include "memmove-vec-unaligned-erms.S"
+-# include "memmove-vec-unaligned-erms.S"
+-#endif
 diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
-index cf645dd..e2d4949 100644
+index bc3cc92..a44945d 100644
 --- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
 +++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
-@@ -32,18 +32,27 @@
-       8 * VEC_SIZE at a time.
-    8. Otherwise, forward copy 8 * VEC_SIZE at a time.  */
+@@ -35,18 +35,27 @@
+    7. If size >= __x86_shared_non_temporal_threshold, use non-temporal
+       store instead of aligned store.  */
  
 -#if IS_IN (libc)
 +#include <sysdep.h>
@@ -1968,7 +1936,7 @@ index cf645dd..e2d4949 100644
  
  /* Threshold to use Enhanced REP MOVSB.  Since there is overhead to set
     up REP MOVSB operation, REP MOVSB isn't faster on short data.  The
-@@ -52,89 +61,80 @@
+@@ -55,58 +64,65 @@
     on processors with Enhanced REP MOVSB.  Since larger register size
     can move more data with a single load and store, the threshold is
     higher with larger register size.  */
@@ -2038,29 +2006,9 @@ index cf645dd..e2d4949 100644
 +#endif
  	ret
 -END (MEMMOVE_SYMBOL (__memmove, unaligned_2))
--
--# ifdef SHARED
--ENTRY (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_erms))
--	cmpq	%rdx, %rcx
--	jb	HIDDEN_JUMPTARGET (__chk_fail)
--END (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_erms))
--# endif
 +#if defined USE_MULTIARCH && IS_IN (libc)
 +END (MEMMOVE_SYMBOL (__memmove, unaligned))
  
--ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
--	movq	%rdi, %rax
--	addq	%rdx, %rax
--	jmp	L(start_erms)
--END (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
--
--# ifdef SHARED
--ENTRY (MEMMOVE_SYMBOL (__memmove_chk, unaligned_erms))
--	cmpq	%rdx, %rcx
--	jb	HIDDEN_JUMPTARGET (__chk_fail)
--END (MEMMOVE_SYMBOL (__memmove_chk, unaligned_erms))
--# endif
--
 -# if VEC_SIZE == 16
 +# if VEC_SIZE == 16 && defined SHARED
  /* Only used to measure performance of REP MOVSB.  */
@@ -2068,113 +2016,46 @@ index cf645dd..e2d4949 100644
  ENTRY (__mempcpy_erms)
  	movq	%rdi, %rax
  	addq	%rdx, %rax
--	jmp	L(movsb)
-+	jmp	L(start_movsb)
+ 	jmp	L(start_movsb)
  END (__mempcpy_erms)
 -#  endif
  
  ENTRY (__memmove_erms)
  	movq	%rdi, %rax
-+L(start_movsb):
- 	movq	%rdx, %rcx
- 	cmpq	%rsi, %rdi
--	jbe	1f
-+	jb	1f
-+	/* Source == destination is less common.  */
-+	je	2f
- 	leaq	(%rsi,%rcx), %rdx
- 	cmpq	%rdx, %rdi
- 	jb	L(movsb_backward)
- 1:
- 	rep movsb
-+2:
- 	ret
- L(movsb_backward):
- 	leaq	-1(%rdi,%rcx), %rdi
-@@ -147,6 +147,24 @@ END (__memmove_erms)
- strong_alias (__memmove_erms, __memcpy_erms)
+@@ -135,11 +151,10 @@ strong_alias (__memmove_erms, __memcpy_erms)
  # endif
  
-+# ifdef SHARED
+ # ifdef SHARED
+-ENTRY (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_erms))
 +ENTRY (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned_erms))
-+	cmpq	%rdx, %rcx
-+	jb	HIDDEN_JUMPTARGET (__chk_fail)
-+END (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned_erms))
-+
-+ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
-+	movq	%rdi, %rax
-+	addq	%rdx, %rax
-+	jmp	L(start_erms)
-+END (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
-+
-+ENTRY (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
-+	cmpq	%rdx, %rcx
-+	jb	HIDDEN_JUMPTARGET (__chk_fail)
-+END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
-+# endif
-+
- ENTRY (MEMMOVE_SYMBOL (__memmove, unaligned_erms))
- 	movq	%rdi, %rax
- L(start_erms):
-@@ -166,8 +184,9 @@ L(return):
- 
- L(movsb):
- 	cmpq	%rsi, %rdi
--	je	L(nop)
- 	jb	1f
-+	/* Source == destination is less common.  */
-+	je	L(nop)
- 	leaq	(%rsi,%rdx), %r9
- 	cmpq	%r9, %rdi
- 	/* Avoid slow backward REP MOVSB.  */
-@@ -187,12 +206,14 @@ L(movsb_more_2x_vec):
- 	/* Force 32-bit displacement to avoid long nop between
- 	   instructions.  */
- 	ja.d32	L(movsb)
-+#endif
- 	.p2align 4
- L(more_2x_vec):
- 	/* More than 2 * VEC.  */
- 	cmpq	%rsi, %rdi
--	je	L(nop)
- 	jb	L(copy_forward)
-+	/* Source == destination is less common.  */
-+	je	L(nop)
- 	leaq	(%rsi,%rdx), %rcx
- 	cmpq	%rcx, %rdi
- 	jb	L(more_2x_vec_overlap)
-@@ -221,13 +242,19 @@ L(copy_forward):
- 	VMOVU	%VEC(2), -(VEC_SIZE * 3)(%rdi,%rdx)
- 	VMOVU	%VEC(3), -(VEC_SIZE * 4)(%rdi,%rdx)
- 	cmpq	$(VEC_SIZE * 8), %rdx
--# if  VEC_SIZE == 16
-+#if  VEC_SIZE == 16
-+# if defined USE_MULTIARCH && IS_IN (libc)
- 	jbe	L(return)
- # else
-+	/* Use 32-bit displacement to avoid long nop between
-+	   instructions.  */
-+	jbe.d32	L(return)
-+# endif
-+#else
- 	/* Use 8-bit displacement to avoid long nop between
- 	   instructions.  */
- 	jbe	L(return_disp8)
+ 	cmpq	%rdx, %rcx
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMMOVE_SYMBOL (__mempcpy_chk, unaligned_erms))
 -# endif
-+#endif
- 	leaq	(VEC_SIZE * 4)(%rdi), %rcx
- 	addq	%rdi, %rdx
- 	andq	$-(VEC_SIZE * 4), %rdx
-@@ -257,22 +284,25 @@ L(loop):
- 	addq	$(VEC_SIZE * 4), %rcx
- 	cmpq	%rcx, %rdx
- 	jne	L(loop)
-+#if !defined USE_MULTIARCH || !IS_IN (libc)
-+L(return):
-+#endif
- L(return_disp8):
- 	VZEROUPPER
++END (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned_erms))
+ 
+ ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
+ 	movq	%rdi, %rax
+@@ -147,11 +162,10 @@ ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
+ 	jmp	L(start_erms)
+ END (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
+ 
+-# ifdef SHARED
+-ENTRY (MEMMOVE_SYMBOL (__memmove_chk, unaligned_erms))
++ENTRY (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
+ 	cmpq	%rdx, %rcx
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+-END (MEMMOVE_SYMBOL (__memmove_chk, unaligned_erms))
++END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
+ # endif
+ 
+ ENTRY (MEMMOVE_SYMBOL (__memmove, unaligned_erms))
+@@ -188,20 +202,21 @@ L(movsb):
+ 	rep movsb
+ L(nop):
  	ret
++#endif
+ 
  L(less_vec):
  	/* Less than 1 VEC.  */
 -# if VEC_SIZE != 16 && VEC_SIZE != 32 && VEC_SIZE != 64
@@ -2198,7 +2079,7 @@ index cf645dd..e2d4949 100644
  	cmpb	$8, %dl
  	jae	L(between_8_15)
  	cmpb	$4, %dl
-@@ -284,7 +314,7 @@ L(less_vec):
+@@ -213,7 +228,7 @@ L(less_vec):
  	movb	%cl, (%rdi)
  1:
  	ret
@@ -2207,7 +2088,7 @@ index cf645dd..e2d4949 100644
  L(between_32_63):
  	/* From 32 to 63.  No branch when size == 32.  */
  	vmovdqu	(%rsi), %ymm0
-@@ -293,8 +323,8 @@ L(between_32_63):
+@@ -222,8 +237,8 @@ L(between_32_63):
  	vmovdqu	%ymm1, -32(%rdi,%rdx)
  	VZEROUPPER
  	ret
@@ -2218,7 +2099,7 @@ index cf645dd..e2d4949 100644
  	/* From 16 to 31.  No branch when size == 16.  */
  L(between_16_31):
  	vmovdqu	(%rsi), %xmm0
-@@ -302,7 +332,7 @@ L(between_16_31):
+@@ -231,7 +246,7 @@ L(between_16_31):
  	vmovdqu	%xmm0, (%rdi)
  	vmovdqu	%xmm1, -16(%rdi,%rdx)
  	ret
@@ -2227,21 +2108,43 @@ index cf645dd..e2d4949 100644
  L(between_8_15):
  	/* From 8 to 15.  No branch when size == 8.  */
  	movq	-8(%rsi,%rdx), %rcx
-@@ -325,10 +355,10 @@ L(between_2_3):
- 	movw	%si, (%rdi)
- 	ret
+@@ -256,8 +271,10 @@ L(between_2_3):
  
--# if VEC_SIZE > 16
-+#if VEC_SIZE > 16
- 	/* Align to 16 bytes to avoid long nop between instructions.  */
  	.p2align 4
--# endif
+ L(more_2x_vec):
++#if IS_IN (libc)
+ 	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+ 	jae	L(large_data)
++# ifdef USE_MULTIARCH
+ 	jmp	L(start_more_2x_vec)
+ 
+ 	.p2align 4
+@@ -267,6 +284,8 @@ L(movsb_more_2x_vec):
+ 	cmpq	$REP_MOVSB_THRESHOLD, %rdx
+ 	ja	L(movsb)
+ L(start_more_2x_vec):
++# endif
 +#endif
- L(more_2x_vec_overlap):
  	/* More than 2 * VEC and there is overlap bewteen destination
  	   and source.  */
-@@ -448,15 +478,17 @@ L(loop_8x_vec_backward):
- 	jmp	L(between_4x_vec_and_8x_vec)
+ 	cmpq	$(VEC_SIZE * 8), %rdx
+@@ -314,12 +333,12 @@ L(more_8x_vec):
+ 	   addresses.  */
+ 	/* Force 32-bit displacement to avoid long nop between
+ 	   instructions.  */
+-# if VEC_SIZE == 16 || VEC_SIZE == 64
++# if IS_IN (libc) && (VEC_SIZE == 16 || VEC_SIZE == 64)
+ 	VMOVU.d32 (%rsi), %VEC(4)
+ # else
+ 	VMOVU	(%rsi), %VEC(4)
+ # endif
+-# if VEC_SIZE == 16
++# if defined USE_MULTIARCH && IS_IN (libc) && VEC_SIZE == 16
+ 	VMOVU.d32 -VEC_SIZE(%rsi, %rdx), %VEC(5)
+ # else
+ 	VMOVU	-VEC_SIZE(%rsi, %rdx), %VEC(5)
+@@ -547,15 +566,17 @@ L(loop_large_backward):
+ 	ret
  END (MEMMOVE_SYMBOL (__memmove, unaligned_erms))
  
 -# ifdef SHARED
