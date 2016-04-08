@@ -1,7 +1,7 @@
 From cfb059c79729b26284863334c9aa04f0a3b967b9 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Fri, 1 Apr 2016 15:08:48 -0700
-Subject: [PATCH 15/23] Remove Fast_Copy_Backward from Intel Core processors
+Subject: [PATCH 15/25] Remove Fast_Copy_Backward from Intel Core processors
 
 Intel Core i3, i5 and i7 processors have fast unaligned copy and
 copy backward is ignored.  Remove Fast_Copy_Backward from Intel Core
@@ -41,5 +41,5 @@ index de75c79..963b845 100644
  		    | bit_arch_Fast_Unaligned_Copy
  		    | bit_arch_Prefer_PMINUB_for_stringop);
 -- 
-2.8.0
+2.8.1
 

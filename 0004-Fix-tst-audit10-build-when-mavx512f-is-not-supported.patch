@@ -1,7 +1,7 @@
 From 7a90b56b0c3f8e55df44957cf6de7d3c9c04cbb9 Mon Sep 17 00:00:00 2001
 From: Roland McGrath <roland@hack.frob.com>
 Date: Tue, 8 Mar 2016 12:31:13 -0800
-Subject: [PATCH 04/23] Fix tst-audit10 build when -mavx512f is not supported.
+Subject: [PATCH 04/25] Fix tst-audit10 build when -mavx512f is not supported.
 
 (cherry picked from commit 3bd80c0de2f8e7ca8020d37739339636d169957e)
 ---
@@ -43,5 +43,5 @@ index 92e0cb4..a487b40 100644
  int tst_audit10_aux (void);
  
 -- 
-2.8.0
+2.8.1
 

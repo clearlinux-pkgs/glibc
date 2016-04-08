@@ -1,7 +1,7 @@
 From 4fc09dabecee1b7cafdbca26ee7c63f68e53c229 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Mon, 28 Mar 2016 04:39:48 -0700
-Subject: [PATCH 09/23] [x86] Add a feature bit: Fast_Unaligned_Copy
+Subject: [PATCH 09/25] [x86] Add a feature bit: Fast_Unaligned_Copy
 
 On AMD processors, memcpy optimized with unaligned SSE load is
 slower than emcpy optimized with aligned SSSE3 while other string
@@ -117,5 +117,5 @@ index 8882590..5b045d7 100644
  	lea	__memcpy_sse2(%rip), %RAX_LP
  	HAS_CPU_FEATURE (SSSE3)
 -- 
-2.8.0
+2.8.1
 

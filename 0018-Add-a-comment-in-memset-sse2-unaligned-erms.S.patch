@@ -1,7 +1,7 @@
 From 5118e532600549ad0f56cb9b1a179b8eab70c483 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Tue, 5 Apr 2016 05:19:05 -0700
-Subject: [PATCH 18/23] Add a comment in memset-sse2-unaligned-erms.S
+Subject: [PATCH 18/25] Add a comment in memset-sse2-unaligned-erms.S
 
 	* sysdeps/x86_64/multiarch/memset-sse2-unaligned-erms.S: Add
 	a comment on VMOVU and VMOVA.
@@ -25,5 +25,5 @@ index 2deba42..4bf3d36 100644
  # define VMOVA		movdqa
  
 -- 
-2.8.0
+2.8.1
 

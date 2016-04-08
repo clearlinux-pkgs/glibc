@@ -1,7 +1,7 @@
 From c858d10a4e7fd682f2e7083836e4feacc2d580f4 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Thu, 10 Mar 2016 05:26:46 -0800
-Subject: [PATCH 05/23] Add _arch_/_cpu_ to index_*/bit_* in x86 cpu-features.h
+Subject: [PATCH 05/25] Add _arch_/_cpu_ to index_*/bit_* in x86 cpu-features.h
 
 index_* and bit_* macros are used to access cpuid and feature arrays o
 struct cpu_features.  It is very easy to use bits and indices of cpuid
@@ -527,5 +527,5 @@ index e354920..0624a92 100644
  #endif	/* !__ASSEMBLER__ */
  
 -- 
-2.8.0
+2.8.1
 

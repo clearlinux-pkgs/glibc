@@ -1,7 +1,7 @@
 From c273f613b0cc779ee33cc33d20941d271316e483 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Tue, 22 Mar 2016 07:46:56 -0700
-Subject: [PATCH 06/23] Set index_arch_AVX_Fast_Unaligned_Load only for Intel
+Subject: [PATCH 06/25] Set index_arch_AVX_Fast_Unaligned_Load only for Intel
  processors
 
 Since only Intel processors with AVX2 have fast unaligned load, we
@@ -248,5 +248,5 @@ index 0624a92..e06eb7e 100644
  # define index_cpu_CX8		COMMON_CPUID_INDEX_1
  # define index_cpu_CMOV		COMMON_CPUID_INDEX_1
 -- 
-2.8.0
+2.8.1
 

@@ -1,7 +1,7 @@
 From 06c6d4ae6ee7e5b83fd5868bef494def01f59292 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Sun, 3 Apr 2016 14:32:20 -0700
-Subject: [PATCH 17/23] Don't put SSE2/AVX/AVX512 memmove/memset in ld.so
+Subject: [PATCH 17/25] Don't put SSE2/AVX/AVX512 memmove/memset in ld.so
 
 Since memmove and memset in ld.so don't use IFUNC, don't put SSE2, AVX
 and AVX512 memmove and memset in ld.so.
@@ -152,5 +152,5 @@ index 437a858..2deba42 100644
 +# include "memset-vec-unaligned-erms.S"
 +#endif
 -- 
-2.8.0
+2.8.1
 

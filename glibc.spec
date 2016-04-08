@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        87
+Release:        88
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -72,10 +72,12 @@ Patch215: 0016-Fix-memmove-vec-unaligned-erms.S.patch
 Patch216: 0017-Don-t-put-SSE2-AVX-AVX512-memmove-memset-in-ld.so.patch
 Patch217: 0018-Add-a-comment-in-memset-sse2-unaligned-erms.S.patch
 Patch218: 0019-Force-32-bit-displacement-in-memset-vec-unaligned-er.patch
-Patch219: 0020-X86-64-Use-non-temporal-store-in-memmove-on-large-da.patch
-Patch220: 0021-X86-64-Remove-the-previous-SSE2-AVX2-memsets.patch
-Patch221: 0022-X86-64-Remove-previous-default-SSE2-AVX2-memcpy-memm.patch
-Patch222: 0023-X86-64-Add-dummy-memcopy.h-and-wordcopy.c.patch
+Patch220: 0020-X86-64-Prepare-memset-vec-unaligned-erms.S.patch
+Patch221: 0021-X86-64-Prepare-memmove-vec-unaligned-erms.S.patch
+Patch222: 0022-X86-64-Use-non-temporal-store-in-memcpy-on-large-dat.patch
+Patch223: 0023-X86-64-Remove-the-previous-SSE2-AVX2-memsets.patch
+Patch224: 0024-X86-64-Remove-previous-default-SSE2-AVX2-memcpy-memm.patch
+Patch225: 0025-X86-64-Add-dummy-memcopy.h-and-wordcopy.c.patch
 
 
 BuildRequires:  grep
@@ -241,10 +243,12 @@ GNU C library extra components.
 %patch216 -p1
 %patch217 -p1
 %patch218 -p1
-%patch219 -p1
 %patch220 -p1
 %patch221 -p1
 %patch222 -p1
+%patch223 -p1
+%patch224 -p1
+%patch225 -p1
 
 %build
 mkdir ../glibc-buildroot

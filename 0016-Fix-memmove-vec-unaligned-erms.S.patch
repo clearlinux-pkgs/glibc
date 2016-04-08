@@ -1,7 +1,7 @@
 From a96379797a7eecc1b709cad7b68981eb698783dc Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Sun, 3 Apr 2016 12:38:25 -0700
-Subject: [PATCH 16/23] Fix memmove-vec-unaligned-erms.S
+Subject: [PATCH 16/25] Fix memmove-vec-unaligned-erms.S
 
 __mempcpy_erms and __memmove_erms can't be placed between __memmove_chk
 and __memmove it breaks __memmove_chk.
@@ -127,5 +127,5 @@ index cf645dd..66779a3 100644
  	cmpq	%rcx, %rdi
  	jb	L(more_2x_vec_overlap)
 -- 
-2.8.0
+2.8.1
 

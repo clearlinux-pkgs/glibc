@@ -1,7 +1,7 @@
 From 9a93bdbaff81edf67c5486c84f8098055e355abb Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Tue, 5 Apr 2016 05:21:07 -0700
-Subject: [PATCH 19/23] Force 32-bit displacement in
+Subject: [PATCH 19/25] Force 32-bit displacement in
  memset-vec-unaligned-erms.S
 
 	* sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S: Force
@@ -41,5 +41,5 @@ index 9383517..fe0f745 100644
  	VMOVU	%VEC(0), (VEC_SIZE * 2)(%rdi)
  	VMOVU	%VEC(0), -(VEC_SIZE * 3)(%rdi,%rdx)
 -- 
-2.8.0
+2.8.1
 
