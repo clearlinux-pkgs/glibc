@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        88
+Release:        89
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -78,6 +78,7 @@ Patch222: 0022-X86-64-Use-non-temporal-store-in-memcpy-on-large-dat.patch
 Patch223: 0023-X86-64-Remove-the-previous-SSE2-AVX2-memsets.patch
 Patch224: 0024-X86-64-Remove-previous-default-SSE2-AVX2-memcpy-memm.patch
 Patch225: 0025-X86-64-Add-dummy-memcopy.h-and-wordcopy.c.patch
+Patch226: 0099-update.patch
 
 
 BuildRequires:  grep
@@ -249,6 +250,7 @@ GNU C library extra components.
 %patch223 -p1
 %patch224 -p1
 %patch225 -p1
+%patch226 -p1
 
 %build
 mkdir ../glibc-buildroot

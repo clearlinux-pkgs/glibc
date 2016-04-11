@@ -1,0 +1,73 @@
+diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+index 689f5fd..3975e55 100644
+--- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+@@ -30,8 +30,9 @@
+       load and aligned store.  Load the last 4 * VEC and first VEC
+       before the loop and store them after the loop to support
+       overlapping addresses.
+-   6. If size >= __x86_shared_non_temporal_threshold, use non-temporal
+-      store instead of aligned store.  */
++   6. If size >= __x86_shared_non_temporal_threshold and there is no
++      overlap between destination and source, use non-temporal store
++      instead of aligned store.  */
+ 
+ #include <sysdep.h>
+ 
+@@ -310,7 +311,7 @@ L(movsb_more_2x_vec):
+ 	ja	L(movsb)
+ #endif
+ L(more_2x_vec):
+-	/* More than 2 * VEC and there may be overlap bewteen destination
++	/* More than 2 * VEC and there may be overlap between destination
+ 	   and source.  */
+ 	cmpq	$(VEC_SIZE * 8), %rdx
+ 	ja	L(more_8x_vec)
+@@ -378,7 +379,7 @@ L(more_8x_vec):
+ #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
+ 	/* Check non-temporal store threshold.  */
+ 	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+-	ja	L(loop_large_forward)
++	ja	L(large_forward)
+ #endif
+ L(loop_4x_vec_forward):
+ 	/* Copy 4 * VEC a time forward.  */
+@@ -430,7 +431,7 @@ L(more_8x_vec_backward):
+ #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
+ 	/* Check non-temporal store threshold.  */
+ 	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+-	ja	L(loop_large_backward)
++	ja	L(large_backward)
+ #endif
+ L(loop_4x_vec_backward):
+ 	/* Copy 4 * VEC a time backward.  */
+@@ -458,7 +459,13 @@ L(loop_4x_vec_backward):
+ 	ret
+ 
+ #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
+-	.p2align 4
++L(large_forward):
++	/* Don't use non-temporal store if there is overlap between
++	   destination and source since destination may be in cache
++	   when source is loaded.  */
++	leaq    (%rdi, %rdx), %r10
++	cmpq    %r10, %rsi
++	jb	L(loop_4x_vec_forward)
+ L(loop_large_forward):
+ 	/* Copy 4 * VEC a time forward with non-temporal stores.  */
+ 	PREFETCH_ONE_SET (1, (%rsi), PREFETCHED_LOAD_SIZE * 2)
+@@ -487,7 +494,13 @@ L(loop_large_forward):
+ 	VZEROUPPER
+ 	ret
+ 
+-	.p2align 4
++L(large_backward):
++	/* Don't use non-temporal store if there is overlap between
++	   destination and source since destination may be in cache
++	   when source is loaded.  */
++	leaq    (%rcx, %rdx), %r10
++	cmpq    %r10, %r9
++	jb	L(loop_4x_vec_backward)
+ L(loop_large_backward):
+ 	/* Copy 4 * VEC a time backward with non-temporal stores.  */
+ 	PREFETCH_ONE_SET (-1, (%rcx), -PREFETCHED_LOAD_SIZE * 2)
