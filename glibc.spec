@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        89
+Release:        90
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -26,7 +26,7 @@ Patch16:	    alternate_trim.patch
 Patch17:	    madvise-bss.patch
 Patch18:	    0001-math-Disable-broken-test.patch
 Patch19:	    spinaphore.patch
-
+Patch20:	    tzselect-proper-zone-file.patch
 
 # glibc stable branch backports
 Patch100: 0001-Updated-translations-for-2.23.patch
@@ -199,6 +199,7 @@ GNU C library extra components.
 %patch17 -p1
 %patch18 -p1
 %patch19 -p1
+%patch20 -p1
 
 # stable branch backports
 
