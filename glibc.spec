@@ -27,6 +27,8 @@ Patch17:	    madvise-bss.patch
 Patch18:	    0001-math-Disable-broken-test.patch
 Patch19:	    spinaphore.patch
 Patch20:	    tzselect-proper-zone-file.patch
+Patch21:	    gcc6_1.patch
+Patch22:	    gcc6_2.patch
 
 # glibc stable branch backports
 Patch100: 0001-Updated-translations-for-2.23.patch
@@ -200,6 +202,8 @@ GNU C library extra components.
 %patch18 -p1
 %patch19 -p1
 %patch20 -p1
+%patch21 -p1
+%patch22 -p1
 
 # stable branch backports
 
