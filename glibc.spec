@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        94
+Release:        95
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -424,13 +424,13 @@ popd
 %{_datadir}/defaults/etc/rpc
 
 /sbin/ldconfig
-%dir /var/cache/ldconfig
+%exclude /var/cache/ldconfig
 
 # TODO: SPLIT!
 %files -n libc6-locale
 %{_datadir}/locale
 /usr/lib/locale/locale-archive
-/var/cache/locale/locale-archive
+%exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
 %{_bindir}/localedef
 
