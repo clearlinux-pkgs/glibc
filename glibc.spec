@@ -2,7 +2,7 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.24
+Version:        2.23
 Release:        97
 License:        GPL-2.0
 Summary:        GNU C library
