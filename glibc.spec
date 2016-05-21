@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        95bootstrap
+Release:        95bootstrap.2
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -349,6 +349,8 @@ done
     libc_cv_complocaledir=/usr/lib/locale
 
 make install-bootstrap-headers=yes install-headers  DESTDIR=%{buildroot} install_root=%{buildroot}
+touch  %{buildroot}/usr/include/gnu/stubs-32.h
+
 
 mkdir -p %{buildroot}/var/cache/locale
 
