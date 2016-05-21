@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        95
+Release:        95bootstrap
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -314,6 +314,42 @@ for r in bootparam_prot.x nlm_prot.x rstat.x 	  yppasswd.x klm_prot.x rex.x sm_i
     install -m 0644 ./sunrpc/rpcsvc/$h %{buildroot}%{_includedir}/rpcsvc/
 done
 
+../glibc-2.23/configure \
+    --prefix=/usr \
+    --exec_prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/bin \
+    --libexecdir=%{_libdir}/glibc \
+    --datadir=/usr/share \
+    --sysconfdir=%{_sysconfdir} \
+    --sharedstatedir=%{_localstatedir}/lib \
+    --localstatedir=%{_localstatedir} \
+    --libdir=/usr/lib \
+    --localedir=/usr/lib/locale \
+    --infodir=/usr/share/info \
+    --mandir=/usr/share/man \
+    --disable-silent-rules \
+    --disable-dependency-tracking \
+    --enable-kernel=3.10 \
+    --without-cvs \
+    --disable-profile \
+    --disable-debug \
+    --without-gd  \
+    --enable-clocale=gnu \
+    --enable-add-ons \
+    --without-selinux \
+    --enable-obsolete-rpc \
+    --build=%{glibc_target} \
+    --host=%{glibc_target} \
+    --with-pkgversion='Clear Linux Software for Intel Architecture' \
+    --enable-lock-elision=yes \
+    --enable-bind-now  \
+    --target=i686-generic-linux
+    libc_cv_slibdir=%{_libdir} \
+    libc_cv_complocaledir=/usr/lib/locale
+
+make install-bootstrap-headers=yes install-headers  DESTDIR=%{buildroot} install_root=%{buildroot}
+
 mkdir -p %{buildroot}/var/cache/locale
 
 iconvconfig --prefix=%{buildroot}
@@ -337,10 +373,10 @@ popd
 
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-archive
 
-%check
-pushd ../glibc-buildroot
-make check %{?_smp_mflags} || :
-popd
+#%check
+#pushd ../glibc-buildroot
+#make check %{?_smp_mflags} || :
+#popd
 
 
 %files -n libc-bin
