@@ -2,8 +2,8 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.23
-Release:        95
+Version:        2.24
+Release:        96
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -89,6 +89,7 @@ BuildRequires:  linux-libc-headers
 BuildRequires:	gettext-dev
 BuildRequires:	bison
 BuildRequires:  libgd-dev
+BuildRequires:  gcc-dev32 gcc-libgcc32 gcc-libstdc++32
 
 
 %description
@@ -164,6 +165,23 @@ Summary:        GNU C library
 Group:          devel
 
 %description -n libc6-dev
+GNU C library.
+
+%package dev32
+License:        GPL-2.0
+Summary:        GNU C library
+Group:          devel
+
+%description dev32
+GNU C library.
+
+
+%package libc32
+License:        GPL-2.0
+Summary:        GNU C library
+Group:          devel
+
+%description libc32
 GNU C library.
 
 %package -n glibc-staticdev
@@ -258,8 +276,9 @@ GNU C library extra components.
 %patch226 -p1
 
 %build
+
 mkdir ../glibc-buildroot
-cd ../glibc-buildroot
+pushd ../glibc-buildroot
 
 export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000"
 unset LDFLAGS
@@ -299,11 +318,66 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     libc_cv_complocaledir=/usr/lib/locale
 
 make %{?_smp_mflags}
+popd
+
+mkdir ../glibc-buildroot32
+pushd ../glibc-buildroot32
+
+export CFLAGS="-O3 -m32 -march=westmere -mtune=haswell -g2  -Wl,-z,max-page-size=0x1000 -m32"
+unset LDFLAGS
+export LDFLAGS="-Wl,-z,max-page-size=0x1000"
+
+../glibc-2.23/configure \
+    --prefix=/usr \
+    --exec_prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/bin \
+    --libexecdir=/usr/lib/glibc \
+    --datadir=/usr/share \
+    --sysconfdir=%{_sysconfdir} \
+    --sharedstatedir=%{_localstatedir}/lib \
+    --localstatedir=%{_localstatedir} \
+    --libdir=/usr/lib \
+    --localedir=/usr/lib/locale \
+    --infodir=/usr/share/info \
+    --mandir=/usr/share/man \
+    --disable-silent-rules \
+    --disable-dependency-tracking \
+    --enable-kernel=3.10 \
+    --without-cvs \
+    --disable-profile \
+    --disable-debug \
+    --without-gd  \
+    --enable-clocale=gnu \
+    --enable-add-ons \
+    --without-selinux \
+    --enable-obsolete-rpc \
+    --build=i686-generic-linux \
+    --host=i686-linux-gnu \
+    --target=i686-generic-linux \
+    --with-pkgversion='Clear Linux Software for Intel Architecture' \
+    --enable-lock-elision=yes \
+    --enable-bind-now  \
+    libc_cv_slibdir=/usr/lib \
+    libc_cv_complocaledir=/usr/lib/locale \
+    CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
+
+
+
+make %{?_smp_mflags}
+popd
 
 %install
 
 unset LDFLAGS
 unset CFLAGS
+
+# first we install the 32 bit build, so that any overlap gets resolved in
+# favor of the 64 bit build
+pushd ../glibc-buildroot32
+
+make install DESTDIR=%{buildroot} install_root=%{buildroot}
+popd
 
 pushd ../glibc-buildroot
 
@@ -311,7 +385,7 @@ make install DESTDIR=%{buildroot} install_root=%{buildroot}
 
 for r in bootparam_prot.x nlm_prot.x rstat.x 	  yppasswd.x klm_prot.x rex.x sm_inter.x mount.x 	  rusers.x spray.x nfs_prot.x rquota.x key_prot.x; do
     h=`echo $r|sed -e's,\.x$,.h,'`
-    install -m 0644 ./sunrpc/rpcsvc/$h %{buildroot}%{_includedir}/rpcsvc/
+    install -m 0644 ./sunrpc/rpcsvc/$h %{buildroot}/usr/include/rpcsvc/
 done
 
 mkdir -p %{buildroot}/var/cache/locale
@@ -338,33 +412,33 @@ popd
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-archive
 
 %check
-pushd ../glibc-buildroot
-make check %{?_smp_mflags} || :
-popd
+#pushd ../glibc-buildroot
+#make check %{?_smp_mflags} || :
+#popd
 
 
 %files -n libc-bin
-%{_bindir}/catchsegv
-%{_bindir}/ldd
+/usr/bin/catchsegv
+/usr/bin/ldd
 /sbin/sln
 
 %files -n nscd
 /usr/sbin/nscd
 
 %files -n glibc-utils
-%{_bindir}/locale
-%{_bindir}/getconf
-%{_bindir}/iconv
-%{_bindir}/gencat
-%{_bindir}/rpcgen
-%{_bindir}/tzselect
-%{_bindir}/getent
-%{_bindir}/pcprofiledump
-%{_bindir}/sprof
-%{_bindir}/pldd
-%exclude %{_bindir}/mtrace
-%{_bindir}/sotruss
-%{_bindir}/xtrace
+/usr/bin/locale
+/usr/bin/getconf
+/usr/bin/iconv
+/usr/bin/gencat
+/usr/bin/rpcgen
+/usr/bin/tzselect
+/usr/bin/getent
+/usr/bin/pcprofiledump
+/usr/bin/sprof
+/usr/bin/pldd
+%exclude /usr/bin/mtrace
+/usr/bin/sotruss
+/usr/bin/xtrace
 /usr/sbin/zic
 /usr/sbin/iconvconfig
 /usr/sbin/zdump
@@ -432,30 +506,30 @@ popd
 /usr/lib/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
-%{_bindir}/localedef
+/usr/bin/localedef
 
 %files -n libc6-dev
-%{_includedir}/*.h
-%{_includedir}/arpa/
-%{_includedir}/bits/
-%{_includedir}/gnu/
-%{_includedir}/net/
-%{_includedir}/netash/
-%{_includedir}/netatalk/
-%{_includedir}/netax25/
-%{_includedir}/neteconet/
-%{_includedir}/netinet/
-%{_includedir}/netipx/
-%{_includedir}/netiucv/
-%{_includedir}/netpacket/
-%{_includedir}/netrom/
-%{_includedir}/netrose/
-%{_includedir}/nfs/
-%{_includedir}/protocols/
-%{_includedir}/rpc/
-%{_includedir}/rpcsvc/
-%{_includedir}/scsi/
-%{_includedir}/sys/
+/usr/include/*.h
+/usr/include/arpa/
+/usr/include/bits/
+/usr/include/gnu/
+/usr/include/net/
+/usr/include/netash/
+/usr/include/netatalk/
+/usr/include/netax25/
+/usr/include/neteconet/
+/usr/include/netinet/
+/usr/include/netipx/
+/usr/include/netiucv/
+/usr/include/netpacket/
+/usr/include/netrom/
+/usr/include/netrose/
+/usr/include/nfs/
+/usr/include/protocols/
+/usr/include/rpc/
+/usr/include/rpcsvc/
+/usr/include/scsi/
+/usr/include/sys/
 %{_libdir}/Mcrt1.o
 %{_libdir}/Scrt1.o
 %{_libdir}/crt1.o
@@ -485,6 +559,39 @@ popd
 %{_libdir}/libthread_db.so
 %{_libdir}/libutil.so
 
+%files dev32
+/usr/lib/*.a
+/usr/lib/*.so
+/usr/lib/*.o
+
+%files libc32
+/usr/lib/gconv/
+/usr/lib/glibc/getconf/
+/usr/bin/lddlibc4
+/usr/lib/audit/sotruss-lib.so
+/usr/lib/ld-linux.so.2
+/usr/lib/libBrokenLocale.so.1
+/usr/lib/libanl.so.1
+/usr/lib/libc.so.6
+/usr/lib/libcidn.so.1
+/usr/lib/libcrypt.so.1
+/usr/lib/libdl.so.2
+/usr/lib/libm.so.6
+/usr/lib/libnsl.so.1
+/usr/lib/libnss_compat.so.2
+/usr/lib/libnss_db.so.2
+/usr/lib/libnss_dns.so.2
+/usr/lib/libnss_files.so.2
+/usr/lib/libnss_hesiod.so.2
+/usr/lib/libnss_nis.so.2
+/usr/lib/libnss_nisplus.so.2
+/usr/lib/libpthread.so.0
+/usr/lib/libresolv.so.2
+/usr/lib/librt.so.1
+/usr/lib/libthread_db.so.1
+/usr/lib/libutil.so.1
+
+
 %files -n glibc-staticdev
 %{_libdir}/libBrokenLocale.a
 %{_libdir}/libanl.a
@@ -508,7 +615,7 @@ popd
 %{_infodir}/libc*.info*
 
 %files extras
-%{_bindir}/makedb
+/usr/bin/makedb
 %{_libdir}/libnss_db-2.23.so
 %{_libdir}/libnss_db.so.2
 %{_libdir}/libnss_db.so
