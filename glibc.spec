@@ -88,7 +88,6 @@ BuildRequires:  texinfo
 BuildRequires:  linux-libc-headers
 BuildRequires:	gettext-dev
 BuildRequires:	bison
-BuildRequires:  libgd-dev
 BuildRequires:  gcc-dev32 gcc-libgcc32 gcc-libstdc++32
 
 
