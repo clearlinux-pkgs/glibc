@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.23
-Release:        98
+Release:        99
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -51,7 +51,7 @@ Patch116: 0017-math-don-t-clobber-old-libm.so-on-install-BZ-19822.patch
 Patch117: 0018-resolv-Always-set-resplen2-out-parameter-in-send_dg-.patch
 Patch118: 0019-S390-Save-and-restore-fprs-vrs-while-resolving-symbo.patch
 Patch119: 0020-S390-Extend-structs-La_s390_regs-La_s390_retval-with.patch
-Patch120: CVE-2016.patch
+Patch120: CVE-2016-3075.patch
 
 
 ## upstream backports
