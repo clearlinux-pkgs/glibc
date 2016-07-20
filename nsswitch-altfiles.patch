@@ -1,39 +1,126 @@
-Subject: glibc: properly specify alternative nsswitch.conf
-Index: glibc-2.21/nss/nsswitch.c
-===================================================================
---- glibc-2.21.orig/nss/nsswitch.c	2015-03-16 12:34:44.666979933 +0000
-+++ glibc-2.21/nss/nsswitch.c	2015-03-16 12:34:51.530980108 +0000
-@@ -120,10 +120,32 @@
+From 41e1f331fe9bb0b8012838dc32aebeb0fe480003 Mon Sep 17 00:00:00 2001
+From: Ikey Doherty <michael.i.doherty@intel.com>
+Date: Wed, 20 Jul 2016 16:56:39 +0100
+Subject: [PATCH] nss: Support the concept of alternative NSS files from the
+ vendor
+
+Traditionally NSS is configured with the system config file provided at
+/etc/nsswitch.conf. However, if the local system administrator wishes to make
+changes against this file, they can quickly become out of sync with the vendor
+configuration shipped in the operating system packaging, resulting in odd
+three-way-merges or worse.
+
+With this change, we support an alternative location for a secondary NSS
+configuration, which is deemed read-only and vendor provided, enabling a
+stateless configuration. The local system administrator can completely
+override this with their own /etc/nsswitch.conf, or indeed revert to the
+upstream vendor default configuration by simply *removing* the file, which
+facilitates a factory reset mechanism.
+
+Along with this change, we now always break on the first encounter of the
+requested database name, meaning that the first entry for this configuration
+always "wins". This enables the /etc/ file to override the configuration of the
+vendor /usr file. As a side-effect, however, it means that the first key entry
+per *file* wins too, so it is considered erronous to include multiple identical
+keys into the same configuration files, expecting an override, as the first one
+will only be parsed, not the latter.
+
+Signed-off-by: Ikey Doherty <michael.i.doherty@intel.com>
+---
+ nss/nsswitch.c | 79 +++++++++++++++++++++++++++++++++++++++++-----------------
+ 1 file changed, 56 insertions(+), 23 deletions(-)
+
+diff --git a/nss/nsswitch.c b/nss/nsswitch.c
+index bb644cb..f573fb1 100644
+--- a/nss/nsswitch.c
++++ b/nss/nsswitch.c
+@@ -119,30 +119,63 @@ __nss_database_lookup (const char *database, const char *alternate_name,
+       return 0;
      }
  
-   /* Are we initialized yet?  */
+-  /* Are we initialized yet?  */
 -  if (service_table == NULL)
-+  if (service_table == NULL) {
-     /* Read config file.  */
-     service_table = nss_parse_file (_PATH_NSSWITCH_CONF);
- 
-+    /* Read altternative, distro, config file */
-+    name_database *service_table_altfiles = NULL;
-+    service_table_altfiles = nss_parse_file ("/usr/share/defaults/etc/nsswitch.conf");
+-    /* Read config file.  */
+-    service_table = nss_parse_file (_PATH_NSSWITCH_CONF);
++	/* Are we initialized yet?  */
++	if (service_table == NULL) {
++		/* Read config file.  */
++		service_table = nss_parse_file (_PATH_NSSWITCH_CONF);
 +
-+    if (service_table_altfiles != NULL) {
-+      /* If typical config is missing, use distro default */
-+      /* or extend original, with distro defaults */
-+      /* first lookup wins */
-+      if (service_table == NULL) {
-+	service_table = service_table_altfiles;
-+      } else {
-+	name_database_entry *curr;
-+	curr = service_table->entry;
-+	while (curr->next != NULL) {
-+	  curr = curr->next;
++		/* Read alternative, distro, config file */
++		name_database *service_table_altfiles = NULL;
++		service_table_altfiles = nss_parse_file ("/usr/share/defaults/etc/nsswitch.conf");
++
++		if (service_table_altfiles != NULL) {
++			/* If typical config is missing, use vendor default */
++			/* or extend original, with vendor defaults */
++			/* first lookup wins */
++			if (service_table == NULL) {
++				/* Use altfiles as the default system service table */
++				service_table = service_table_altfiles;
++			} else {
++				name_database_entry *curr;
++				curr = service_table->entry;
++				/* Wind to the end of the list */
++				while (curr->next != NULL) {
++					curr = curr->next;
++				}
++				/* End of system service_table is alt files (vendor) */
++				curr->next = service_table_altfiles->entry;
++				free (service_table_altfiles);
++			}
++		}
 +	}
-+	curr->next = service_table_altfiles->entry;
-+	free (service_table_altfiles);
-+      }
-+    }
-+  }
+ 
+-  /* Test whether configuration data is available.  */
+-  if (service_table != NULL)
+-    {
+-      /* Return first `service_user' entry for DATABASE.  */
+-      name_database_entry *entry;
+-
+-      /* XXX Could use some faster mechanism here.  But each database is
+-	 only requested once and so this might not be critical.  */
+-      for (entry = service_table->entry; entry != NULL; entry = entry->next)
+-	if (strcmp (database, entry->name) == 0)
+-	  *ni = entry->service;
+-
+-      if (*ni == NULL && alternate_name != NULL)
+-	/* We haven't found an entry so far.  Try to find it with the
+-	   alternative name.  */
+-	for (entry = service_table->entry; entry != NULL; entry = entry->next)
+-	  if (strcmp (alternate_name, entry->name) == 0)
+-	    *ni = entry->service;
+-    }
++	/* Test whether configuration data is available.  */
++	if (service_table != NULL) {
++		/* Return first `service_user' entry for DATABASE.  */
++		name_database_entry *entry;
 +
-   /* Test whether configuration data is available.  */
-   if (service_table != NULL)
-     {
++		/* XXX Could use some faster mechanism here.  But each database is
++		only requested once and so this might not be critical.  */
++		for (entry = service_table->entry; entry != NULL; entry = entry->next) {
++			if (strcmp (database, entry->name) == 0) {
++				/* Break here due to potentially multiple service providers */
++				*ni = entry->service;
++				break;
++			}
++		}
++
++		if (*ni == NULL && alternate_name != NULL) {
++			/* We haven't found an entry so far.  Try to find it with the
++			alternative name.  */
++			for (entry = service_table->entry; entry != NULL; entry = entry->next) {
++				/* Break here due to potentially multiple service providers */
++				if (strcmp (alternate_name, entry->name) == 0) {
++					*ni = entry->service;
++					break;
++				}
++			}
++		}
++	}
+ 
+   /* No configuration data is available, either because nsswitch.conf
+      doesn't exist or because it doesn't have a line for this database.
+-- 
+2.9.0
+
