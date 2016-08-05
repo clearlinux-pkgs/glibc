@@ -2,15 +2,14 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.23
+Version:        2.24
 Release:        101
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.23.tar.gz
+Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.24.tar.gz
 Patch1:         0001-Add-avx2-fake-capability-like-tls.patch
-Patch2:		    ldso-malloc-size.patch
 Patch3:         0001-Set-host.conf-multi-to-on-by-default.patch
 Patch6:         skip-error-msg-ld.so.conf.patch
 Patch7:         ldconfig-format-new.patch
@@ -24,63 +23,8 @@ Patch14:	    nonscd.patch
 Patch15:	    fix_cpp_building.patch
 Patch16:	    alternate_trim.patch
 Patch17:	    madvise-bss.patch
-Patch18:	    0001-math-Disable-broken-test.patch
 Patch19:	    spinaphore.patch
 Patch20:	    tzselect-proper-zone-file.patch
-Patch21:	    gcc6_1.patch
-Patch22:	    gcc6_2.patch
-
-# glibc stable branch backports
-Patch100: 0001-Updated-translations-for-2.23.patch
-Patch101: 0002-Regenerate-libc.pot-for-2.23.patch
-Patch102: 0003-Regenerated-configure-scripts.patch
-Patch103: 0004-x86_64-Set-DL_RUNTIME_UNALIGNED_VEC_SIZE-to-8.patch
-Patch104: 0005-Add-fts64_-to-sysdeps-arm-nacl-libc.abilist.patch
-Patch105: 0006-Don-t-use-long-double-math-functions-if-NO_LONG_DOUB.patch
-Patch106: 0007-NEWS-2.23-Fix-typo-in-bug-19048-text.patch
-Patch107: 0008-Update-NEWS.patch
-Patch108: 0009-sln-use-stat64.patch
-Patch109: 0010-Add-sys-auxv.h-wrapper-to-include-sys.patch
-Patch110: 0011-mips-terminate-the-FDE-before-the-return-trampoline-.patch
-Patch111: 0012-Use-HAS_ARCH_FEATURE-with-Fast_Rep_String.patch
-Patch112: 0013-Mention-BZ-19762-in-NEWS.patch
-Patch113: 0014-Define-_HAVE_STRING_ARCH_mempcpy-to-1-for-x86.patch
-Patch114: 0015-Or-bit_Prefer_MAP_32BIT_EXEC-in-EXTRA_LD_ENVVARS.patch
-Patch115: 0016-Fix-resource-leak-in-resolver-bug-19257.patch
-Patch116: 0017-math-don-t-clobber-old-libm.so-on-install-BZ-19822.patch
-Patch117: 0018-resolv-Always-set-resplen2-out-parameter-in-send_dg-.patch
-Patch118: 0019-S390-Save-and-restore-fprs-vrs-while-resolving-symbo.patch
-Patch119: 0020-S390-Extend-structs-La_s390_regs-La_s390_retval-with.patch
-Patch120: CVE-2016-3075.patch
-
-
-## upstream backports
-Patch200: 0001-x86-64-Fix-memcpy-IFUNC-selection.patch
-Patch201: 0002-Group-AVX512-functions-in-.text.avx512-section.patch
-Patch202: 0003-tst-audit4-tst-audit10-Compile-AVX-AVX-512-code-sepa.patch
-Patch203: 0004-Fix-tst-audit10-build-when-mavx512f-is-not-supported.patch
-Patch204: 0005-Add-_arch_-_cpu_-to-index_-bit_-in-x86-cpu-features..patch
-Patch205: 0006-Set-index_arch_AVX_Fast_Unaligned_Load-only-for-Inte.patch
-Patch206: 0007-Don-t-set-rcx-twice-before-rep-movsb.patch
-Patch207: 0008-tst-audit10-Fix-compilation-on-compilers-without-bit.patch
-Patch208: 0009-x86-Add-a-feature-bit-Fast_Unaligned_Copy.patch
-Patch209: 0010-Implement-x86-64-multiarch-mempcpy-in-memcpy.patch
-Patch210: 0011-Make-__memcpy_avx512_no_vzeroupper-an-alias.patch
-Patch211: 0012-Initial-Enhanced-REP-MOVSB-STOSB-ERMS-support.patch
-Patch212: 0013-Add-x86-64-memmove-with-unaligned-load-store-and-rep.patch
-Patch213: 0014-Add-x86-64-memset-with-unaligned-store-and-rep-stosb.patch
-Patch214: 0015-Remove-Fast_Copy_Backward-from-Intel-Core-processors.patch
-Patch215: 0016-Fix-memmove-vec-unaligned-erms.S.patch
-Patch216: 0017-Don-t-put-SSE2-AVX-AVX512-memmove-memset-in-ld.so.patch
-Patch217: 0018-Add-a-comment-in-memset-sse2-unaligned-erms.S.patch
-Patch218: 0019-Force-32-bit-displacement-in-memset-vec-unaligned-er.patch
-Patch220: 0020-X86-64-Prepare-memset-vec-unaligned-erms.S.patch
-Patch221: 0021-X86-64-Prepare-memmove-vec-unaligned-erms.S.patch
-Patch222: 0022-X86-64-Use-non-temporal-store-in-memcpy-on-large-dat.patch
-Patch223: 0023-X86-64-Remove-the-previous-SSE2-AVX2-memsets.patch
-Patch224: 0024-X86-64-Remove-previous-default-SSE2-AVX2-memcpy-memm.patch
-Patch225: 0025-X86-64-Add-dummy-memcopy.h-and-wordcopy.c.patch
-Patch226: 0099-update.patch
 
 
 BuildRequires:  grep
@@ -202,77 +146,22 @@ GNU C library extra components.
 %prep
 %setup -q
 %patch1 -p1
-%patch2 -p1
 %patch3 -p1
 %patch6 -p1
 %patch7 -p1
 %patch8 -p1
 %patch9 -p1
 %patch10 -p1
-%patch11 -p1
+#%patch11 -p1
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
-%patch15 -p1
+#%patch15 -p1
 %patch16 -p1
 %patch17 -p1
-%patch18 -p1
 %patch19 -p1
 %patch20 -p1
-%patch21 -p1
-%patch22 -p1
 
-# stable branch backports
-
-%patch100 -p1
-%patch101 -p1
-%patch102 -p1
-%patch103 -p1
-%patch104 -p1
-%patch105 -p1
-%patch106 -p1
-%patch107 -p1
-%patch108 -p1
-%patch109 -p1
-%patch110 -p1
-%patch111 -p1
-%patch112 -p1
-%patch113 -p1
-%patch114 -p1
-%patch115 -p1
-%patch116 -p1
-%patch117 -p1
-%patch118 -p1
-%patch119 -p1
-%patch120 -p1
-
-# upstream backports
-%patch200 -p1
-%patch201 -p1
-%patch202 -p1
-%patch203 -p1
-%patch204 -p1
-%patch205 -p1
-%patch206 -p1
-%patch207 -p1
-%patch208 -p1
-%patch209 -p1
-%patch210 -p1
-%patch211 -p1
-%patch212 -p1
-%patch213 -p1
-%patch214 -p1
-%patch215 -p1
-%patch216 -p1
-%patch217 -p1
-%patch218 -p1
-%patch220 -p1
-%patch221 -p1
-%patch222 -p1
-%patch223 -p1
-%patch224 -p1
-%patch225 -p1
-%patch226 -p1
 
 %build
 
@@ -283,7 +172,7 @@ export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.23/configure \
+../glibc-2.24/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -326,7 +215,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=haswell -g2  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.23/configure \
+../glibc-2.24/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -448,50 +337,50 @@ ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-arch
 %{_libdir}/audit/sotruss-lib.so
 %{_libdir}/gconv
 %{_libdir}/glibc/getconf
-%{_libdir}/ld-2.23.so
+%{_libdir}/ld-2.24.so
 %{_libdir}/ld-linux-x86-64.so.2
-%{_libdir}/libBrokenLocale-2.23.so
+%{_libdir}/libBrokenLocale-2.24.so
 %{_libdir}/libBrokenLocale.so.1
 %{_libdir}/libSegFault.so
-%{_libdir}/libanl-2.23.so
+%{_libdir}/libanl-2.24.so
 %{_libdir}/libanl.so.1
-%{_libdir}/libc-2.23.so
+%{_libdir}/libc-2.24.so
 %{_libdir}/libc.so.6
-%{_libdir}/libcidn-2.23.so
+%{_libdir}/libcidn-2.24.so
 %{_libdir}/libcidn.so.1
-%{_libdir}/libcrypt-2.23.so
+%{_libdir}/libcrypt-2.24.so
 %{_libdir}/libcrypt.so.1
-%{_libdir}/libdl-2.23.so
+%{_libdir}/libdl-2.24.so
 %{_libdir}/libdl.so.2
-%{_libdir}/libm-2.23.so
+%{_libdir}/libm-2.24.so
 %{_libdir}/libm.so.6
 %{_libdir}/libmemusage.so
-%{_libdir}/libnsl-2.23.so
+%{_libdir}/libnsl-2.24.so
 %{_libdir}/libnsl.so.1
-%{_libdir}/libnss_compat-2.23.so
+%{_libdir}/libnss_compat-2.24.so
 %{_libdir}/libnss_compat.so.2
-%{_libdir}/libnss_dns-2.23.so
+%{_libdir}/libnss_dns-2.24.so
 %{_libdir}/libnss_dns.so.2
-%{_libdir}/libnss_files-2.23.so
+%{_libdir}/libnss_files-2.24.so
 %{_libdir}/libnss_files.so.2
-%{_libdir}/libnss_hesiod-2.23.so
+%{_libdir}/libnss_hesiod-2.24.so
 %{_libdir}/libnss_hesiod.so.2
-%{_libdir}/libnss_nis-2.23.so
+%{_libdir}/libnss_nis-2.24.so
 %{_libdir}/libnss_nis.so.2
-%{_libdir}/libnss_nisplus-2.23.so
+%{_libdir}/libnss_nisplus-2.24.so
 %{_libdir}/libnss_nisplus.so.2
 %{_libdir}/libpcprofile.so
-%{_libdir}/libpthread-2.23.so
+%{_libdir}/libpthread-2.24.so
 %{_libdir}/libpthread.so.0
-%{_libdir}/libresolv-2.23.so
+%{_libdir}/libresolv-2.24.so
 %{_libdir}/libresolv.so.2
-%{_libdir}/librt-2.23.so
+%{_libdir}/librt-2.24.so
 %{_libdir}/librt.so.1
 %{_libdir}/libthread_db-1.0.so
 %{_libdir}/libthread_db.so.1
-%{_libdir}/libutil-2.23.so
+%{_libdir}/libutil-2.24.so
 %{_libdir}/libutil.so.1
-/usr/lib64/libmvec-2.23.so
+/usr/lib64/libmvec-2.24.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
@@ -501,7 +390,7 @@ ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-arch
 
 # TODO: SPLIT!
 %files -n libc6-locale
-%{_datadir}/locale
+/usr/lib/locale
 /usr/lib/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
@@ -615,7 +504,7 @@ ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-arch
 
 %files extras
 /usr/bin/makedb
-%{_libdir}/libnss_db-2.23.so
+%{_libdir}/libnss_db-2.24.so
 %{_libdir}/libnss_db.so.2
 %{_libdir}/libnss_db.so
 %exclude %{_localstatedir}/db/Makefile
