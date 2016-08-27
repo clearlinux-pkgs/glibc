@@ -1,0 +1,11 @@
+--- glibc-2.24/malloc/malloc.c~	2016-08-02 02:01:36.000000000 +0000
++++ glibc-2.24/malloc/malloc.c	2016-08-27 04:16:33.210410956 +0000
+@@ -2333,6 +2333,8 @@
+ 
+           if (mm != MAP_FAILED)
+             {
++              if (size > 8 * 1024 * 1024)
++	              __madvise (mm, size , MADV_HUGEPAGE);
+               /*
+                  The offset to the start of the mmapped region is stored
+                  in the prev_size field of the chunk. This allows us to adjust

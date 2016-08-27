@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.24
-Release:        101
+Release:        102
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -25,6 +25,7 @@ Patch16:	    alternate_trim.patch
 Patch17:	    madvise-bss.patch
 Patch19:	    spinaphore.patch
 Patch20:	    tzselect-proper-zone-file.patch
+Patch21:		large-page-huge-page.patch
 
 
 BuildRequires:  grep
@@ -161,6 +162,7 @@ GNU C library extra components.
 %patch17 -p1
 %patch19 -p1
 %patch20 -p1
+%patch21 -p1
 
 
 %build
