@@ -25,7 +25,8 @@ Patch16:	    alternate_trim.patch
 Patch17:	    madvise-bss.patch
 Patch19:	    spinaphore.patch
 Patch20:	    tzselect-proper-zone-file.patch
-Patch21:		large-page-huge-page.patch
+Patch21:	    large-page-huge-page.patch
+Patch22:	    cve-2016-6323.nopatch
 
 
 BuildRequires:  grep
