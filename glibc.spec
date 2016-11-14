@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.24
-Release:        103
+Release:        104
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -27,7 +27,8 @@ Patch19:	    spinaphore.patch
 Patch20:	    tzselect-proper-zone-file.patch
 Patch21:	    large-page-huge-page.patch
 Patch22:	    cve-2016-6323.nopatch
-
+Patch23:	use_madv_free.patch
+Patch24:	malloc_tune.patch
 
 BuildRequires:  grep
 BuildRequires:  texinfo
@@ -164,6 +165,8 @@ GNU C library extra components.
 %patch19 -p1
 %patch20 -p1
 %patch21 -p1
+%patch23 -p1
+%patch24 -p1
 
 
 %build

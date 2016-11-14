@@ -1,0 +1,22 @@
+--- glibc-2.24/malloc/malloc.c~	2016-08-27 04:16:33.000000000 +0000
++++ glibc-2.24/malloc/malloc.c	2016-11-13 22:53:14.772986778 +0000
+@@ -4568,7 +4568,7 @@
+                        content.  */
+                     memset (paligned_mem, 0x89, size & ~psm1);
+ #endif
+-                    __madvise (paligned_mem, size & ~psm1, MADV_DONTNEED);
++                    __madvise (paligned_mem, size & ~psm1, MADV_FREE);
+ 
+                     result = 1;
+                   }
+--- glibc-2.24/malloc/arena.c~	2016-08-02 02:01:36.000000000 +0000
++++ glibc-2.24/malloc/arena.c	2016-11-13 22:52:52.889299846 +0000
+@@ -524,7 +524,7 @@
+       h->mprotect_size = new_size;
+     }
+   else
+-    __madvise ((char *) h + new_size, diff, MADV_DONTNEED);
++    __madvise ((char *) h + new_size, diff, MADV_FREE);
+   /*fprintf(stderr, "shrink %p %08lx\n", h, new_size);*/
+ 
+   h->size = new_size;
