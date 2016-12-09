@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.24
-Release:        104
+Release:        105
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -231,7 +231,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --sysconfdir=%{_sysconfdir} \
     --sharedstatedir=%{_localstatedir}/lib \
     --localstatedir=%{_localstatedir} \
-    --libdir=/usr/lib \
+    --libdir=/usr/lib32 \
     --localedir=/usr/lib/locale \
     --infodir=/usr/share/info \
     --mandir=/usr/share/man \
@@ -252,7 +252,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --with-pkgversion='Clear Linux Software for Intel Architecture' \
     --enable-lock-elision=yes \
     --enable-bind-now  \
-    libc_cv_slibdir=/usr/lib \
+    libc_cv_slibdir=/usr/lib32 \
     libc_cv_complocaledir=/usr/lib/locale \
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
 
@@ -304,6 +304,9 @@ mv %{buildroot}/usr/lib/locale/en_US.utf8 %{buildroot}/usr/lib/locale/en_US.UTF-
 popd
 
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-archive
+
+mkdir -p %{buildroot}/usr/lib
+cp -a %{buildroot}/usr/lib32/*  %{buildroot}/usr/lib
 
 %check
 #pushd ../glibc-buildroot
@@ -457,6 +460,9 @@ ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-arch
 /usr/lib/*.a
 /usr/lib/*.so
 /usr/lib/*.o
+/usr/lib32/*.a
+/usr/lib32/*.so
+/usr/lib32/*.o
 
 %files libc32
 /usr/lib/gconv/
@@ -484,6 +490,31 @@ ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-arch
 /usr/lib/librt.so.1
 /usr/lib/libthread_db.so.1
 /usr/lib/libutil.so.1
+
+
+/usr/lib32/gconv/
+/usr/lib32/audit/sotruss-lib.so
+/usr/lib32/ld-linux.so.2
+/usr/lib32/libBrokenLocale.so.1
+/usr/lib32/libanl.so.1
+/usr/lib32/libc.so.6
+/usr/lib32/libcidn.so.1
+/usr/lib32/libcrypt.so.1
+/usr/lib32/libdl.so.2
+/usr/lib32/libm.so.6
+/usr/lib32/libnsl.so.1
+/usr/lib32/libnss_compat.so.2
+/usr/lib32/libnss_db.so.2
+/usr/lib32/libnss_dns.so.2
+/usr/lib32/libnss_files.so.2
+/usr/lib32/libnss_hesiod.so.2
+/usr/lib32/libnss_nis.so.2
+/usr/lib32/libnss_nisplus.so.2
+/usr/lib32/libpthread.so.0
+/usr/lib32/libresolv.so.2
+/usr/lib32/librt.so.1
+/usr/lib32/libthread_db.so.1
+/usr/lib32/libutil.so.1
 
 
 %files -n glibc-staticdev
