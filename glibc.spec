@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.24
-Release:        105
+Release:        106
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -226,7 +226,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --exec_prefix=/usr \
     --bindir=/usr/bin \
     --sbindir=/usr/bin \
-    --libexecdir=/usr/lib/glibc \
+    --libexecdir=/usr/lib32/glibc \
     --datadir=/usr/share \
     --sysconfdir=%{_sysconfdir} \
     --sharedstatedir=%{_localstatedir}/lib \
@@ -306,12 +306,12 @@ popd
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-archive
 
 mkdir -p %{buildroot}/usr/lib
-cp -a %{buildroot}/usr/lib32/*  %{buildroot}/usr/lib
+ln -s ../lib32/ld-linux.so.2  %{buildroot}/usr/lib/ld-linux.so.2
 
 %check
-#pushd ../glibc-buildroot
-#make check %{?_smp_mflags} || :
-#popd
+pushd ../glibc-buildroot
+make check %{?_smp_mflags} || :
+popd
 
 
 %files -n libc-bin
@@ -457,41 +457,15 @@ cp -a %{buildroot}/usr/lib32/*  %{buildroot}/usr/lib
 %{_libdir}/libutil.so
 
 %files dev32
-/usr/lib/*.a
-/usr/lib/*.so
-/usr/lib/*.o
 /usr/lib32/*.a
 /usr/lib32/*.so
 /usr/lib32/*.o
 
 %files libc32
-/usr/lib/gconv/
-/usr/lib/glibc/getconf/
-/usr/bin/lddlibc4
-/usr/lib/audit/sotruss-lib.so
 /usr/lib/ld-linux.so.2
-/usr/lib/libBrokenLocale.so.1
-/usr/lib/libanl.so.1
-/usr/lib/libc.so.6
-/usr/lib/libcidn.so.1
-/usr/lib/libcrypt.so.1
-/usr/lib/libdl.so.2
-/usr/lib/libm.so.6
-/usr/lib/libnsl.so.1
-/usr/lib/libnss_compat.so.2
-/usr/lib/libnss_db.so.2
-/usr/lib/libnss_dns.so.2
-/usr/lib/libnss_files.so.2
-/usr/lib/libnss_hesiod.so.2
-/usr/lib/libnss_nis.so.2
-/usr/lib/libnss_nisplus.so.2
-/usr/lib/libpthread.so.0
-/usr/lib/libresolv.so.2
-/usr/lib/librt.so.1
-/usr/lib/libthread_db.so.1
-/usr/lib/libutil.so.1
+/usr/bin/lddlibc4
 
-
+/usr/lib32/glibc/getconf
 /usr/lib32/gconv/
 /usr/lib32/audit/sotruss-lib.so
 /usr/lib32/ld-linux.so.2
