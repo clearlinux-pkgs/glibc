@@ -1,0 +1,48 @@
+From 908979333ce816011dbdc2b8e2eeb3e0506184ca Mon Sep 17 00:00:00 2001
+From: Ikey Doherty <michael.i.doherty@intel.com>
+Date: Mon, 12 Dec 2016 13:47:48 +0000
+Subject: [PATCH] sysdeps/unix: Add support for /usr/lib32 as a system library
+ directory
+
+This change enables a clean split multilib implementation in Clear Linux
+by using /usr/lib32 as a native path recognised by ldconfig. We already
+configure glibc with a slibdir of /usr/lib32, this change simply ensures
+that ldconfig also knows so that it will cache those libraries.
+
+We also omit libx32 as Clear Linux doesn't support the X32 ABI.
+
+Signed-off-by: Ikey Doherty <michael.i.doherty@intel.com>
+---
+ sysdeps/unix/sysv/linux/x86_64/dl-cache.h | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/sysdeps/unix/sysv/linux/x86_64/dl-cache.h b/sysdeps/unix/sysv/linux/x86_64/dl-cache.h
+index 01a20cb..5921979 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/dl-cache.h
++++ b/sysdeps/unix/sysv/linux/x86_64/dl-cache.h
+@@ -32,10 +32,10 @@
+ 	  len -= 2;						\
+ 	  path[len] = '\0';					\
+ 	}							\
+-      else if (len >= 7						\
+-	       && ! memcmp (path + len - 7, "/libx32", 7))	\
++      else if (len >= 6						\
++	       && ! memcmp (path + len - 6, "/lib32", 6))	\
+ 	{							\
+-	  len -= 3;						\
++	  len -= 2;						\
+ 	  path[len] = '\0';					\
+ 	}							\
+       add_dir (path);						\
+@@ -43,7 +43,7 @@
+ 	{							\
+ 	  memcpy (path + len, "64", 3);				\
+ 	  add_dir (path);					\
+-	  memcpy (path + len, "x32", 4);				\
++	  memcpy (path + len, "32", 3);				\
+ 	  add_dir (path);					\
+ 	}							\
+     } while (0)
+-- 
+2.11.0
+

@@ -13,7 +13,7 @@ Patch1:         0001-Add-avx2-fake-capability-like-tls.patch
 Patch3:         0001-Set-host.conf-multi-to-on-by-default.patch
 Patch6:         skip-error-msg-ld.so.conf.patch
 Patch7:         ldconfig-format-new.patch
-Patch8:         ldconfig-do-not-search-non-lib64.patch
+Patch8:         0001-sysdeps-unix-Add-support-for-usr-lib32-as-a-system-l.patch
 Patch9:         nsswitch-altfiles.patch
 Patch10:        ld-so-cache-in-var.patch
 Patch11:	    fewerlocales.patch
