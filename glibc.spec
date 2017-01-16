@@ -170,6 +170,7 @@ GNU C library extra components.
 
 
 %build
+export SOURCE_DATE_EPOCH=1484361909
 
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
@@ -262,6 +263,7 @@ make %{?_smp_mflags}
 popd
 
 %install
+export SOURCE_DATE_EPOCH=1484361909
 
 unset LDFLAGS
 unset CFLAGS
@@ -308,11 +310,11 @@ ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-arch
 mkdir -p %{buildroot}/usr/lib
 ln -s ../lib32/ld-linux.so.2  %{buildroot}/usr/lib/ld-linux.so.2
 
+
 %check
 pushd ../glibc-buildroot
 make check %{?_smp_mflags} || :
 popd
-
 
 %files -n libc-bin
 /usr/bin/catchsegv
