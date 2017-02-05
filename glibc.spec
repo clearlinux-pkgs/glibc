@@ -2,13 +2,13 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.24
+Version:        2.25
 Release:        110
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.24.tar.gz
+Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.25.tar.gz
 Patch1:         0001-Add-avx2-fake-capability-like-tls.patch
 Patch3:         0001-Set-host.conf-multi-to-on-by-default.patch
 Patch6:         skip-error-msg-ld.so.conf.patch
@@ -181,7 +181,7 @@ export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.24/configure \
+../glibc-2.25/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -211,6 +211,8 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --with-pkgversion='Clear Linux Software for Intel Architecture' \
     --enable-lock-elision=yes \
     --enable-bind-now  \
+    --enable-tunables \
+    --enable-stack-protector=strong \
     libc_cv_slibdir=%{_libdir} \
     libc_cv_complocaledir=/usr/lib/locale
 
@@ -224,7 +226,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=haswell -g2  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.24/configure \
+../glibc-2.25/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -255,6 +257,8 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --with-pkgversion='Clear Linux Software for Intel Architecture' \
     --enable-lock-elision=yes \
     --enable-bind-now  \
+    --enable-tunables \
+    --enable-stack-protector=strong \
     libc_cv_slibdir=/usr/lib32 \
     libc_cv_complocaledir=/usr/lib/locale \
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
@@ -350,50 +354,50 @@ popd
 %{_libdir}/audit/sotruss-lib.so
 %{_libdir}/gconv
 %{_libdir}/glibc/getconf
-%{_libdir}/ld-2.24.so
+%{_libdir}/ld-2.25.so
 %{_libdir}/ld-linux-x86-64.so.2
-%{_libdir}/libBrokenLocale-2.24.so
+%{_libdir}/libBrokenLocale-2.25.so
 %{_libdir}/libBrokenLocale.so.1
 %{_libdir}/libSegFault.so
-%{_libdir}/libanl-2.24.so
+%{_libdir}/libanl-2.25.so
 %{_libdir}/libanl.so.1
-%{_libdir}/libc-2.24.so
+%{_libdir}/libc-2.25.so
 %{_libdir}/libc.so.6
-%{_libdir}/libcidn-2.24.so
+%{_libdir}/libcidn-2.25.so
 %{_libdir}/libcidn.so.1
-%{_libdir}/libcrypt-2.24.so
+%{_libdir}/libcrypt-2.25.so
 %{_libdir}/libcrypt.so.1
-%{_libdir}/libdl-2.24.so
+%{_libdir}/libdl-2.25.so
 %{_libdir}/libdl.so.2
-%{_libdir}/libm-2.24.so
+%{_libdir}/libm-2.25.so
 %{_libdir}/libm.so.6
 %{_libdir}/libmemusage.so
-%{_libdir}/libnsl-2.24.so
+%{_libdir}/libnsl-2.25.so
 %{_libdir}/libnsl.so.1
-%{_libdir}/libnss_compat-2.24.so
+%{_libdir}/libnss_compat-2.25.so
 %{_libdir}/libnss_compat.so.2
-%{_libdir}/libnss_dns-2.24.so
+%{_libdir}/libnss_dns-2.25.so
 %{_libdir}/libnss_dns.so.2
-%{_libdir}/libnss_files-2.24.so
+%{_libdir}/libnss_files-2.25.so
 %{_libdir}/libnss_files.so.2
-%{_libdir}/libnss_hesiod-2.24.so
+%{_libdir}/libnss_hesiod-2.25.so
 %{_libdir}/libnss_hesiod.so.2
-%{_libdir}/libnss_nis-2.24.so
+%{_libdir}/libnss_nis-2.25.so
 %{_libdir}/libnss_nis.so.2
-%{_libdir}/libnss_nisplus-2.24.so
+%{_libdir}/libnss_nisplus-2.25.so
 %{_libdir}/libnss_nisplus.so.2
 %{_libdir}/libpcprofile.so
-%{_libdir}/libpthread-2.24.so
+%{_libdir}/libpthread-2.25.so
 %{_libdir}/libpthread.so.0
-%{_libdir}/libresolv-2.24.so
+%{_libdir}/libresolv-2.25.so
 %{_libdir}/libresolv.so.2
-%{_libdir}/librt-2.24.so
+%{_libdir}/librt-2.25.so
 %{_libdir}/librt.so.1
 %{_libdir}/libthread_db-1.0.so
 %{_libdir}/libthread_db.so.1
-%{_libdir}/libutil-2.24.so
+%{_libdir}/libutil-2.25.so
 %{_libdir}/libutil.so.1
-/usr/lib64/libmvec-2.24.so
+/usr/lib64/libmvec-2.25.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
@@ -519,7 +523,7 @@ popd
 
 %files extras
 /usr/bin/makedb
-%{_libdir}/libnss_db-2.24.so
+%{_libdir}/libnss_db-2.25.so
 %{_libdir}/libnss_db.so.2
 %{_libdir}/libnss_db.so
 %exclude %{_localstatedir}/db/Makefile
