@@ -515,6 +515,7 @@ popd
 %{_libdir}/librpcsvc.a
 %{_libdir}/librt.a
 %{_libdir}/libutil.a
+/usr/lib64/libm-2.25.a
 /usr/lib64/libmvec.a
 
 
