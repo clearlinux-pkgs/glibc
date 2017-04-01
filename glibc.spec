@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        113
+Release:        114
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -29,6 +29,7 @@ Patch21:	    large-page-huge-page.patch
 Patch22:	    cve-2016-6323.nopatch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
+Patch25:	prefer_erms.patch
 
 BuildRequires:  grep
 BuildRequires:  texinfo
@@ -169,6 +170,7 @@ GNU C library extra components.
 %patch21 -p1
 %patch23 -p1
 %patch24 -p1
+%patch25 -p1
 
 
 %build
