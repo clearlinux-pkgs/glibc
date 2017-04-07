@@ -9,7 +9,8 @@ Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
 Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.25.tar.gz
-Patch1:         0001-Add-avx2-fake-capability-like-tls.patch
+Patch1:         0001-Check-if-SSE-is-available-with-HAS_CPU_FEATURE.patch
+Patch2:         0002-x86-Set-dl_hwcap-from-CPU-features.patch
 Patch3:         0001-Set-host.conf-multi-to-on-by-default.patch
 Patch6:         skip-error-msg-ld.so.conf.patch
 Patch7:         ldconfig-format-new.patch
@@ -152,6 +153,7 @@ GNU C library extra components.
 %prep
 %setup -q
 %patch1 -p1
+%patch2 -p1
 %patch3 -p1
 %patch6 -p1
 %patch7 -p1

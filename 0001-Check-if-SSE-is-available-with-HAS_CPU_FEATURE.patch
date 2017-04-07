@@ -1,0 +1,265 @@
+From f4062d551e8286c03fd1cb7d506589881725fe58 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 6 Apr 2017 08:09:34 -0700
+Subject: [PATCH 1/2] Check if SSE is available with HAS_CPU_FEATURE
+
+Similar to other CPU feature checks, check if SSE is available with
+HAS_CPU_FEATURE.
+
+	* sysdeps/i386/fpu/fclrexcpt.c (__feclearexcept): Use
+	HAS_CPU_FEATURE to check for SSE.
+	* sysdeps/i386/fpu/fedisblxcpt.c (fedisableexcept): Likewise.
+	* sysdeps/i386/fpu/feenablxcpt.c (feenableexcept): Likewise.
+	* sysdeps/i386/fpu/fegetenv.c (__fegetenv): Likewise.
+	* sysdeps/i386/fpu/fegetmode.c (fegetmode): Likewise.
+	* sysdeps/i386/fpu/feholdexcpt.c (__feholdexcept): Likewise.
+	* sysdeps/i386/fpu/fesetenv.c (__fesetenv): Likewise.
+	* sysdeps/i386/fpu/fesetmode.c (fesetmode): Likewise.
+	* sysdeps/i386/fpu/fesetround.c (__fesetround): Likewise.
+	* sysdeps/i386/fpu/feupdateenv.c (__feupdateenv): Likewise.
+	* sysdeps/i386/fpu/fgetexcptflg.c (__fegetexceptflag): Likewise.
+	* sysdeps/i386/fpu/fsetexcptflg.c (__fesetexceptflag): Likewise.
+	* sysdeps/i386/fpu/ftestexcept.c (fetestexcept): Likewise.
+	* sysdeps/i386/setfpucw.c (__setfpucw): Likewise.
+	* sysdeps/x86/cpu-features.h (bit_cpu_SSE): New.
+	(index_cpu_SSE): Likewise.
+	(reg_SSE): Likewise.
+---
+ sysdeps/i386/fpu/fclrexcpt.c    | 2 +-
+ sysdeps/i386/fpu/fedisblxcpt.c  | 2 +-
+ sysdeps/i386/fpu/feenablxcpt.c  | 2 +-
+ sysdeps/i386/fpu/fegetenv.c     | 2 +-
+ sysdeps/i386/fpu/fegetmode.c    | 2 +-
+ sysdeps/i386/fpu/feholdexcpt.c  | 2 +-
+ sysdeps/i386/fpu/fesetenv.c     | 2 +-
+ sysdeps/i386/fpu/fesetmode.c    | 2 +-
+ sysdeps/i386/fpu/fesetround.c   | 2 +-
+ sysdeps/i386/fpu/feupdateenv.c  | 2 +-
+ sysdeps/i386/fpu/fgetexcptflg.c | 2 +-
+ sysdeps/i386/fpu/fsetexcptflg.c | 2 +-
+ sysdeps/i386/fpu/ftestexcept.c  | 2 +-
+ sysdeps/i386/setfpucw.c         | 2 +-
+ sysdeps/x86/cpu-features.h      | 4 ++++
+ 15 files changed, 18 insertions(+), 14 deletions(-)
+
+diff --git a/sysdeps/i386/fpu/fclrexcpt.c b/sysdeps/i386/fpu/fclrexcpt.c
+index c89fe5b..5d85969 100644
+--- a/sysdeps/i386/fpu/fclrexcpt.c
++++ b/sysdeps/i386/fpu/fclrexcpt.c
+@@ -41,7 +41,7 @@ __feclearexcept (int excepts)
+   __asm__ ("fldenv %0" : : "m" (*&temp));
+ 
+   /* If the CPU supports SSE, we clear the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int xnew_exc;
+ 
+diff --git a/sysdeps/i386/fpu/fedisblxcpt.c b/sysdeps/i386/fpu/fedisblxcpt.c
+index a12fcaf..f8db665 100644
+--- a/sysdeps/i386/fpu/fedisblxcpt.c
++++ b/sysdeps/i386/fpu/fedisblxcpt.c
+@@ -38,7 +38,7 @@ fedisableexcept (int excepts)
+   __asm__ ("fldcw %0" : : "m" (*&new_exc));
+ 
+   /* If the CPU supports SSE we set the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int xnew_exc;
+ 
+diff --git a/sysdeps/i386/fpu/feenablxcpt.c b/sysdeps/i386/fpu/feenablxcpt.c
+index 8336c1f..f1c42d7 100644
+--- a/sysdeps/i386/fpu/feenablxcpt.c
++++ b/sysdeps/i386/fpu/feenablxcpt.c
+@@ -38,7 +38,7 @@ feenableexcept (int excepts)
+   __asm__ ("fldcw %0" : : "m" (*&new_exc));
+ 
+   /* If the CPU supports SSE we set the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int xnew_exc;
+ 
+diff --git a/sysdeps/i386/fpu/fegetenv.c b/sysdeps/i386/fpu/fegetenv.c
+index 9ce890e..983f6af 100644
+--- a/sysdeps/i386/fpu/fegetenv.c
++++ b/sysdeps/i386/fpu/fegetenv.c
+@@ -31,7 +31,7 @@ __fegetenv (fenv_t *envp)
+      would block all exceptions.  */
+   __asm__ ("fldenv %0" : : "m" (*envp));
+ 
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     __asm__ ("stmxcsr %0" : "=m" (envp->__eip));
+ 
+   /* Success.  */
+diff --git a/sysdeps/i386/fpu/fegetmode.c b/sysdeps/i386/fpu/fegetmode.c
+index 3785851..abbce30 100644
+--- a/sysdeps/i386/fpu/fegetmode.c
++++ b/sysdeps/i386/fpu/fegetmode.c
+@@ -26,7 +26,7 @@ int
+ fegetmode (femode_t *modep)
+ {
+   _FPU_GETCW (modep->__control_word);
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     __asm__ ("stmxcsr %0" : "=m" (modep->__mxcsr));
+   return 0;
+ }
+diff --git a/sysdeps/i386/fpu/feholdexcpt.c b/sysdeps/i386/fpu/feholdexcpt.c
+index cce883c..d327358 100644
+--- a/sysdeps/i386/fpu/feholdexcpt.c
++++ b/sysdeps/i386/fpu/feholdexcpt.c
+@@ -30,7 +30,7 @@ __feholdexcept (fenv_t *envp)
+   __asm__ volatile ("fnstenv %0; fnclex" : "=m" (*envp));
+ 
+   /* If the CPU supports SSE we set the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int xwork;
+ 
+diff --git a/sysdeps/i386/fpu/fesetenv.c b/sysdeps/i386/fpu/fesetenv.c
+index 18fca30..a338e5d 100644
+--- a/sysdeps/i386/fpu/fesetenv.c
++++ b/sysdeps/i386/fpu/fesetenv.c
+@@ -79,7 +79,7 @@ __fesetenv (const fenv_t *envp)
+ 
+   __asm__ ("fldenv %0" : : "m" (temp));
+ 
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int mxcsr;
+       __asm__ ("stmxcsr %0" : "=m" (mxcsr));
+diff --git a/sysdeps/i386/fpu/fesetmode.c b/sysdeps/i386/fpu/fesetmode.c
+index 2d03846..bd9f74c 100644
+--- a/sysdeps/i386/fpu/fesetmode.c
++++ b/sysdeps/i386/fpu/fesetmode.c
+@@ -35,7 +35,7 @@ fesetmode (const femode_t *modep)
+   else
+     cw = modep->__control_word;
+   _FPU_SETCW (cw);
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int mxcsr;
+       __asm__ ("stmxcsr %0" : "=m" (mxcsr));
+diff --git a/sysdeps/i386/fpu/fesetround.c b/sysdeps/i386/fpu/fesetround.c
+index fabf0b1..a3fa623 100644
+--- a/sysdeps/i386/fpu/fesetround.c
++++ b/sysdeps/i386/fpu/fesetround.c
+@@ -37,7 +37,7 @@ __fesetround (int round)
+   __asm__ ("fldcw %0" : : "m" (*&cw));
+ 
+   /* If the CPU supports SSE we set the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int xcw;
+ 
+diff --git a/sysdeps/i386/fpu/feupdateenv.c b/sysdeps/i386/fpu/feupdateenv.c
+index 4b46868..b610289 100644
+--- a/sysdeps/i386/fpu/feupdateenv.c
++++ b/sysdeps/i386/fpu/feupdateenv.c
+@@ -32,7 +32,7 @@ __feupdateenv (const fenv_t *envp)
+   __asm__ ("fnstsw %0" : "=m" (*&temp));
+ 
+   /* If the CPU supports SSE we test the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     __asm__ ("stmxcsr %0" : "=m" (*&xtemp));
+ 
+   temp = (temp | xtemp) & FE_ALL_EXCEPT;
+diff --git a/sysdeps/i386/fpu/fgetexcptflg.c b/sysdeps/i386/fpu/fgetexcptflg.c
+index bf3c73c..954e5f6 100644
+--- a/sysdeps/i386/fpu/fgetexcptflg.c
++++ b/sysdeps/i386/fpu/fgetexcptflg.c
+@@ -34,7 +34,7 @@ __fegetexceptflag (fexcept_t *flagp, int excepts)
+   *flagp = temp & excepts & FE_ALL_EXCEPT;
+ 
+   /* If the CPU supports SSE, we clear the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int sse_exc;
+ 
+diff --git a/sysdeps/i386/fpu/fsetexcptflg.c b/sysdeps/i386/fpu/fsetexcptflg.c
+index efea610..efa64aa 100644
+--- a/sysdeps/i386/fpu/fsetexcptflg.c
++++ b/sysdeps/i386/fpu/fsetexcptflg.c
+@@ -41,7 +41,7 @@ __fesetexceptflag (const fexcept_t *flagp, int excepts)
+   __asm__ ("fldenv %0" : : "m" (*&temp));
+ 
+   /* If the CPU supports SSE, we set the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int xnew_exc;
+ 
+diff --git a/sysdeps/i386/fpu/ftestexcept.c b/sysdeps/i386/fpu/ftestexcept.c
+index 476db1e..f523f9e 100644
+--- a/sysdeps/i386/fpu/ftestexcept.c
++++ b/sysdeps/i386/fpu/ftestexcept.c
+@@ -32,7 +32,7 @@ fetestexcept (int excepts)
+   __asm__ ("fnstsw %0" : "=a" (temp));
+ 
+   /* If the CPU supports SSE we test the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     __asm__ ("stmxcsr %0" : "=m" (*&xtemp));
+ 
+   return (temp | xtemp) & excepts & FE_ALL_EXCEPT;
+diff --git a/sysdeps/i386/setfpucw.c b/sysdeps/i386/setfpucw.c
+index 7c41486..40b995f 100644
+--- a/sysdeps/i386/setfpucw.c
++++ b/sysdeps/i386/setfpucw.c
+@@ -39,7 +39,7 @@ __setfpucw (fpu_control_t set)
+   __asm__ ("fldcw %0" : : "m" (*&cw));
+ 
+   /* If the CPU supports SSE, we set the MXCSR as well.  */
+-  if ((GLRO(dl_hwcap) & HWCAP_I386_XMM) != 0)
++  if (HAS_CPU_FEATURE (SSE))
+     {
+       unsigned int xnew_exc;
+ 
+diff --git a/sysdeps/x86/cpu-features.h b/sysdeps/x86/cpu-features.h
+index 95f0fcf..8ec1562 100644
+--- a/sysdeps/x86/cpu-features.h
++++ b/sysdeps/x86/cpu-features.h
+@@ -45,6 +45,7 @@
+ /* COMMON_CPUID_INDEX_1.  */
+ #define bit_cpu_CX8		(1 << 8)
+ #define bit_cpu_CMOV		(1 << 15)
++#define bit_cpu_SSE		(1 << 25)
+ #define bit_cpu_SSE2		(1 << 26)
+ #define bit_cpu_SSSE3		(1 << 9)
+ #define bit_cpu_SSE4_1		(1 << 19)
+@@ -82,6 +83,7 @@
+ 
+ # define index_cpu_CX8	COMMON_CPUID_INDEX_1*CPUID_SIZE+CPUID_EDX_OFFSET
+ # define index_cpu_CMOV	COMMON_CPUID_INDEX_1*CPUID_SIZE+CPUID_EDX_OFFSET
++# define index_cpu_SSE	COMMON_CPUID_INDEX_1*CPUID_SIZE+CPUID_EDX_OFFSET
+ # define index_cpu_SSE2	COMMON_CPUID_INDEX_1*CPUID_SIZE+CPUID_EDX_OFFSET
+ # define index_cpu_SSSE3 COMMON_CPUID_INDEX_1*CPUID_SIZE+CPUID_ECX_OFFSET
+ # define index_cpu_SSE4_1 COMMON_CPUID_INDEX_1*CPUID_SIZE+CPUID_ECX_OFFSET
+@@ -228,6 +230,7 @@ extern const struct cpu_features *__get_cpu_features (void)
+ 
+ # define index_cpu_CX8		COMMON_CPUID_INDEX_1
+ # define index_cpu_CMOV		COMMON_CPUID_INDEX_1
++# define index_cpu_SSE		COMMON_CPUID_INDEX_1
+ # define index_cpu_SSE2		COMMON_CPUID_INDEX_1
+ # define index_cpu_SSSE3	COMMON_CPUID_INDEX_1
+ # define index_cpu_SSE4_1	COMMON_CPUID_INDEX_1
+@@ -246,6 +249,7 @@ extern const struct cpu_features *__get_cpu_features (void)
+ 
+ # define reg_CX8		edx
+ # define reg_CMOV		edx
++# define reg_SSE		edx
+ # define reg_SSE2		edx
+ # define reg_SSSE3		ecx
+ # define reg_SSE4_1		ecx
+-- 
+2.9.3
+
