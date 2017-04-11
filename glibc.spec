@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        115
+Release:        116
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -170,7 +170,7 @@ GNU C library extra components.
 %patch19 -p1
 %patch20 -p1
 %patch21 -p1
-%patch23 -p1
+#%patch23 -p1
 %patch24 -p1
 %patch25 -p1
 
