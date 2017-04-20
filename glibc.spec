@@ -32,6 +32,7 @@ Patch22:	    cve-2016-6323.nopatch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
 Patch25:	prefer_erms.patch
+Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 
 BuildRequires:  grep
 BuildRequires:  texinfo
@@ -175,6 +176,7 @@ GNU C library extra components.
 #%patch23 -p1
 %patch24 -p1
 %patch25 -p1
+%patch26 -p1
 
 
 %build
