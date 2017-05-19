@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        121
+Release:        122
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -33,6 +33,9 @@ Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
 Patch25:	prefer_erms.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
+
+
+Patch100:       CVE-2016-10228.nopatch
 
 BuildRequires:  grep
 BuildRequires:  texinfo
@@ -177,6 +180,8 @@ GNU C library extra components.
 %patch24 -p1
 %patch25 -p1
 %patch26 -p1
+
+
 
 
 %build
