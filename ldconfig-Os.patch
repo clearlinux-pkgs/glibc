@@ -1,0 +1,31 @@
+--- glibc-2.25/elf/Makefile~	2017-02-05 15:28:43.000000000 +0000
++++ glibc-2.25/elf/Makefile	2017-06-03 21:41:38.216095575 +0000
+@@ -72,9 +72,9 @@
+ $(if $(filter $(@F),$(patsubst %,%$(1),$(2))), $(no-stack-protector))
+ endef
+ 
+-CFLAGS-.o += $(call elide-stack-protector,.o,$(elide-routines.os))
+-CFLAGS-.op += $(call elide-stack-protector,.op,$(elide-routines.os))
+-CFLAGS-.os += $(call elide-stack-protector,.os,$(all-rtld-routines))
++CFLAGS-.o += $(call elide-stack-protector,.o,$(elide-routines.os)) -Os
++CFLAGS-.op += $(call elide-stack-protector,.op,$(elide-routines.os)) -Os
++CFLAGS-.os += $(call elide-stack-protector,.os,$(all-rtld-routines)) -Os
+ 
+ ifeq ($(unwind-find-fde),yes)
+ routines += unwind-dw2-fde-glibc
+@@ -539,11 +539,11 @@
+ 
+ SYSCONF-FLAGS := -D'SYSCONFDIR="$(sysconfdir)"'
+ CFLAGS-ldconfig.c = $(SYSCONF-FLAGS) -D'LIBDIR="$(libdir)"' \
+-		    -D'SLIBDIR="$(slibdir)"'
++		    -D'SLIBDIR="$(slibdir)"' -Os
+ libof-ldconfig = ldconfig
+-CFLAGS-dl-cache.c = $(SYSCONF-FLAGS)
+-CFLAGS-cache.c = $(SYSCONF-FLAGS)
+-CFLAGS-rtld.c = $(SYSCONF-FLAGS)
++CFLAGS-dl-cache.c = $(SYSCONF-FLAGS) -Os
++CFLAGS-cache.c = $(SYSCONF-FLAGS) -Os
++CFLAGS-rtld.c = $(SYSCONF-FLAGS) -Os
+ 
+ cpp-srcs-left := $(all-rtld-routines:=.os)
+ lib := rtld
