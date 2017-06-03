@@ -199,12 +199,12 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --exec_prefix=/usr \
     --bindir=/usr/bin \
     --sbindir=/usr/bin \
-    --libexecdir=%{_libdir}/glibc \
+    --libexecdir=/usr/lib64/glibc \
     --datadir=/usr/share \
     --sysconfdir=%{_sysconfdir} \
     --sharedstatedir=%{_localstatedir}/lib \
     --localstatedir=%{_localstatedir} \
-    --libdir=%{_libdir} \
+    --libdir=/usr/lib64 \
     --localedir=/usr/lib/locale \
     --infodir=/usr/share/info \
     --mandir=/usr/share/man \
@@ -226,7 +226,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-bind-now  \
     --enable-tunables \
     --enable-stack-protector=strong \
-    libc_cv_slibdir=%{_libdir} \
+    libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/lib/locale
 
 make %{?_smp_mflags}
@@ -364,52 +364,52 @@ popd
 %files -n libc6
 %dir /usr/lib/locale
 /usr/lib/locale/en_US.UTF-8
-%{_libdir}/audit/sotruss-lib.so
-%{_libdir}/gconv
-%{_libdir}/glibc/getconf
-%{_libdir}/ld-2.25.so
-%{_libdir}/ld-linux-x86-64.so.2
-%{_libdir}/libBrokenLocale-2.25.so
-%{_libdir}/libBrokenLocale.so.1
-%{_libdir}/libSegFault.so
-%{_libdir}/libanl-2.25.so
-%{_libdir}/libanl.so.1
-%{_libdir}/libc-2.25.so
-%{_libdir}/libc.so.6
-%{_libdir}/libcidn-2.25.so
-%{_libdir}/libcidn.so.1
-%{_libdir}/libcrypt-2.25.so
-%{_libdir}/libcrypt.so.1
-%{_libdir}/libdl-2.25.so
-%{_libdir}/libdl.so.2
-%{_libdir}/libm-2.25.so
-%{_libdir}/libm.so.6
-%{_libdir}/libmemusage.so
-%{_libdir}/libnsl-2.25.so
-%{_libdir}/libnsl.so.1
-%{_libdir}/libnss_compat-2.25.so
-%{_libdir}/libnss_compat.so.2
-%{_libdir}/libnss_dns-2.25.so
-%{_libdir}/libnss_dns.so.2
-%{_libdir}/libnss_files-2.25.so
-%{_libdir}/libnss_files.so.2
-%{_libdir}/libnss_hesiod-2.25.so
-%{_libdir}/libnss_hesiod.so.2
-%{_libdir}/libnss_nis-2.25.so
-%{_libdir}/libnss_nis.so.2
-%{_libdir}/libnss_nisplus-2.25.so
-%{_libdir}/libnss_nisplus.so.2
-%{_libdir}/libpcprofile.so
-%{_libdir}/libpthread-2.25.so
-%{_libdir}/libpthread.so.0
-%{_libdir}/libresolv-2.25.so
-%{_libdir}/libresolv.so.2
-%{_libdir}/librt-2.25.so
-%{_libdir}/librt.so.1
-%{_libdir}/libthread_db-1.0.so
-%{_libdir}/libthread_db.so.1
-%{_libdir}/libutil-2.25.so
-%{_libdir}/libutil.so.1
+/usr/lib64/audit/sotruss-lib.so
+/usr/lib64/gconv
+/usr/lib64/glibc/getconf
+/usr/lib64/ld-2.25.so
+/usr/lib64/ld-linux-x86-64.so.2
+/usr/lib64/libBrokenLocale-2.25.so
+/usr/lib64/libBrokenLocale.so.1
+/usr/lib64/libSegFault.so
+/usr/lib64/libanl-2.25.so
+/usr/lib64/libanl.so.1
+/usr/lib64/libc-2.25.so
+/usr/lib64/libc.so.6
+/usr/lib64/libcidn-2.25.so
+/usr/lib64/libcidn.so.1
+/usr/lib64/libcrypt-2.25.so
+/usr/lib64/libcrypt.so.1
+/usr/lib64/libdl-2.25.so
+/usr/lib64/libdl.so.2
+/usr/lib64/libm-2.25.so
+/usr/lib64/libm.so.6
+/usr/lib64/libmemusage.so
+/usr/lib64/libnsl-2.25.so
+/usr/lib64/libnsl.so.1
+/usr/lib64/libnss_compat-2.25.so
+/usr/lib64/libnss_compat.so.2
+/usr/lib64/libnss_dns-2.25.so
+/usr/lib64/libnss_dns.so.2
+/usr/lib64/libnss_files-2.25.so
+/usr/lib64/libnss_files.so.2
+/usr/lib64/libnss_hesiod-2.25.so
+/usr/lib64/libnss_hesiod.so.2
+/usr/lib64/libnss_nis-2.25.so
+/usr/lib64/libnss_nis.so.2
+/usr/lib64/libnss_nisplus-2.25.so
+/usr/lib64/libnss_nisplus.so.2
+/usr/lib64/libpcprofile.so
+/usr/lib64/libpthread-2.25.so
+/usr/lib64/libpthread.so.0
+/usr/lib64/libresolv-2.25.so
+/usr/lib64/libresolv.so.2
+/usr/lib64/librt-2.25.so
+/usr/lib64/librt.so.1
+/usr/lib64/libthread_db-1.0.so
+/usr/lib64/libthread_db.so.1
+/usr/lib64/libutil-2.25.so
+/usr/lib64/libutil.so.1
 /usr/lib64/libmvec-2.25.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
@@ -448,34 +448,34 @@ popd
 /usr/include/rpcsvc/
 /usr/include/scsi/
 /usr/include/sys/
-%{_libdir}/Mcrt1.o
-%{_libdir}/Scrt1.o
-%{_libdir}/crt1.o
-%{_libdir}/crti.o
-%{_libdir}/crtn.o
-%{_libdir}/gcrt1.o
-%{_libdir}/libBrokenLocale.so
-%{_libdir}/libanl.so
-%{_libdir}/libc.so
-%{_libdir}/libc_nonshared.a
-%{_libdir}/libcidn.so
-%{_libdir}/libcrypt.so
-%{_libdir}/libdl.so
-%{_libdir}/libm.so
-%{_libdir}/libmvec_nonshared.a
-%{_libdir}/libnsl.so
-%{_libdir}/libnss_compat.so
-%{_libdir}/libnss_dns.so
-%{_libdir}/libnss_files.so
-%{_libdir}/libnss_hesiod.so
-%{_libdir}/libnss_nis.so
-%{_libdir}/libnss_nisplus.so
-%{_libdir}/libpthread.so
-%{_libdir}/libpthread_nonshared.a
-%{_libdir}/libresolv.so
-%{_libdir}/librt.so
-%{_libdir}/libthread_db.so
-%{_libdir}/libutil.so
+/usr/lib64/Mcrt1.o
+/usr/lib64/Scrt1.o
+/usr/lib64/crt1.o
+/usr/lib64/crti.o
+/usr/lib64/crtn.o
+/usr/lib64/gcrt1.o
+/usr/lib64/libBrokenLocale.so
+/usr/lib64/libanl.so
+/usr/lib64/libc.so
+/usr/lib64/libc_nonshared.a
+/usr/lib64/libcidn.so
+/usr/lib64/libcrypt.so
+/usr/lib64/libdl.so
+/usr/lib64/libm.so
+/usr/lib64/libmvec_nonshared.a
+/usr/lib64/libnsl.so
+/usr/lib64/libnss_compat.so
+/usr/lib64/libnss_dns.so
+/usr/lib64/libnss_files.so
+/usr/lib64/libnss_hesiod.so
+/usr/lib64/libnss_nis.so
+/usr/lib64/libnss_nisplus.so
+/usr/lib64/libpthread.so
+/usr/lib64/libpthread_nonshared.a
+/usr/lib64/libresolv.so
+/usr/lib64/librt.so
+/usr/lib64/libthread_db.so
+/usr/lib64/libutil.so
 
 %files dev32
 /usr/lib32/*.a
@@ -513,21 +513,21 @@ popd
 
 
 %files -n glibc-staticdev
-%{_libdir}/libBrokenLocale.a
-%{_libdir}/libanl.a
-%{_libdir}/libc.a
-%{_libdir}/libcrypt.a
-%{_libdir}/libdl.a
-%{_libdir}/libg.a
-%{_libdir}/libieee.a
-%{_libdir}/libm.a
-%{_libdir}/libmcheck.a
-%{_libdir}/libnsl.a
-%{_libdir}/libpthread.a
-%{_libdir}/libresolv.a
-%{_libdir}/librpcsvc.a
-%{_libdir}/librt.a
-%{_libdir}/libutil.a
+/usr/lib64/libBrokenLocale.a
+/usr/lib64/libanl.a
+/usr/lib64/libc.a
+/usr/lib64/libcrypt.a
+/usr/lib64/libdl.a
+/usr/lib64/libg.a
+/usr/lib64/libieee.a
+/usr/lib64/libm.a
+/usr/lib64/libmcheck.a
+/usr/lib64/libnsl.a
+/usr/lib64/libpthread.a
+/usr/lib64/libresolv.a
+/usr/lib64/librpcsvc.a
+/usr/lib64/librt.a
+/usr/lib64/libutil.a
 /usr/lib64/libm-2.25.a
 /usr/lib64/libmvec.a
 
@@ -537,8 +537,8 @@ popd
 
 %files extras
 /usr/bin/makedb
-%{_libdir}/libnss_db-2.25.so
-%{_libdir}/libnss_db.so.2
-%{_libdir}/libnss_db.so
+/usr/lib64/libnss_db-2.25.so
+/usr/lib64/libnss_db.so.2
+/usr/lib64/libnss_db.so
 %exclude %{_localstatedir}/db/Makefile
 
