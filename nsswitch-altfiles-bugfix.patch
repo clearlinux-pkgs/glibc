@@ -1,0 +1,52 @@
+From 9acf8168e3a37d43358cfb05f2cefb58380851d2 Mon Sep 17 00:00:00 2001
+From: Tim Pepper <timothy.c.pepper@linux.intel.com>
+Date: Thu, 6 Jul 2017 12:03:39 -0700
+Subject: [PATCH] stateless nsswitch bugfix
+
+Patrick Ohly reported that an empty user nsswitch segfaults, eg:
+
+	# id
+	uid=0(root) gid=0(root) groups=0(root)
+	# touch /etc/nsswitch.conf
+	# id
+	Segmentation fault (core dumped)
+
+and that the guilty lines are from the ClearLinux stateless patch.
+
+As currently implemented the stateless patch assumes the service_table
+(non-NULL when file _PATH_NSSWITCH_CONF exists) will have a non-NULL
+service_table->entry (not true for an empty file).  Trivial fix is to
+test that entries list is non-NULL before iterating on it to find the end.
+
+Signed-off-by: Tim Pepper <timothy.c.pepper@linux.intel.com>
+---
+ nss/nsswitch.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/nss/nsswitch.c b/nss/nsswitch.c
+index b038677..9c8b054 100644
+--- a/nss/nsswitch.c
++++ b/nss/nsswitch.c
+@@ -138,12 +138,14 @@ __nss_database_lookup (const char *database, const char *alternate_name,
+ 			} else {
+ 				name_database_entry *curr;
+ 				curr = service_table->entry;
+-				/* Wind to the end of the list */
+-				while (curr->next != NULL) {
+-					curr = curr->next;
++				if (curr != NULL ) {
++					/* Wind to the end of the list */
++					while (curr->next != NULL) {
++						curr = curr->next;
++					}
++					/* End of system service_table is alt files (vendor) */
++					curr->next = service_table_altfiles->entry;
+ 				}
+-				/* End of system service_table is alt files (vendor) */
+-				curr->next = service_table_altfiles->entry;
+ 				free (service_table_altfiles);
+ 			}
+ 		}
+-- 
+2.9.4
+

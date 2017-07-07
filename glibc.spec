@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        125
+Release:        126
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -35,6 +35,7 @@ Patch25:	prefer_erms.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch27:	ldconfig-Os.patch
 Patch28:	stateless.patch
+Patch29:        nsswitch-altfiles-bugfix.patch
 
 
 Patch100:       CVE-2016-10228.nopatch
@@ -182,7 +183,7 @@ GNU C library extra components.
 %patch26 -p1
 %patch27 -p1
 %patch28 -p1
-
+%patch29 -p1
 
 
 
