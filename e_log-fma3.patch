@@ -1,3 +1,32 @@
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_atan2.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_atan2.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_atan2.c	2017-02-05 15:28:43.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_atan2.c	2017-07-09 16:49:56.883305720 +0000
+@@ -5,9 +5,10 @@
+ extern double __ieee754_atan2_sse2 (double, double);
+ extern double __ieee754_atan2_avx (double, double);
+ extern double __ieee754_atan2_fma4 (double, double);
++extern double __ieee754_atan2_fma3 (double, double);
+ 
+ libm_ifunc (__ieee754_atan2,
+-	    HAS_ARCH_FEATURE (FMA4_Usable) ? __ieee754_atan2_fma4
++	    HAS_ARCH_FEATURE (FMA_Usable) ? __ieee754_atan2_fma3
+ 	    : (HAS_ARCH_FEATURE (AVX_Usable)
+ 	       ? __ieee754_atan2_avx : __ieee754_atan2_sse2));
+ strong_alias (__ieee754_atan2, __atan2_finite)
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_atan2-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_atan2-fma3.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_atan2-fma3.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_atan2-fma3.c	2017-07-09 16:49:41.910525935 +0000
+@@ -0,0 +1,10 @@
++#define __ieee754_atan2 __ieee754_atan2_fma3
++#define __add __add_fma3
++#define __dbl_mp __dbl_mp_fma3
++#define __dvd __dvd_fma3
++#define __mpatan2 __mpatan2_fma3
++#define __mul __mul_fma3
++#define __sub __sub_fma3
++#define SECTION __attribute__ ((section (".text.fma3")))
++
++#include <sysdeps/ieee754/dbl-64/e_atan2.c>
 diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_exp.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_exp.c
 --- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_exp.c	2017-02-05 15:28:43.000000000 +0000
 +++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_exp.c	2017-07-09 16:19:23.782870525 +0000
@@ -50,25 +79,64 @@ diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_log-fma3.c glibc-2.25/s
 +#define SECTION __attribute__ ((section (".text.fma3")))
 +
 +#include <sysdeps/ieee754/dbl-64/e_log.c>
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_pow.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_pow.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_pow.c	2017-02-05 15:28:43.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_pow.c	2017-07-09 16:55:04.289949186 +0000
+@@ -3,11 +3,12 @@
+ #include <math_private.h>
+ 
+ extern double __ieee754_pow_sse2 (double, double);
++extern double __ieee754_pow_fma3 (double, double);
+ extern double __ieee754_pow_fma4 (double, double);
+ 
+ libm_ifunc (__ieee754_pow,
+-	    HAS_ARCH_FEATURE (FMA4_Usable)
+-	    ? __ieee754_pow_fma4
++	    HAS_ARCH_FEATURE (FMA_Usable)
++	    ? __ieee754_pow_fma3
+ 	    : __ieee754_pow_sse2);
+ strong_alias (__ieee754_pow, __pow_finite)
+ 
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_pow-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_pow-fma3.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/e_pow-fma3.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/e_pow-fma3.c	2017-07-09 16:50:44.710608204 +0000
+@@ -0,0 +1,6 @@
++#define __ieee754_pow __ieee754_pow_fma3
++#define __exp1 __exp1_fma3
++#define __slowpow __slowpow_fma3
++#define SECTION __attribute__ ((section (".text.fma3")))
++
++#include <sysdeps/ieee754/dbl-64/e_pow.c>
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/halfulp-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/halfulp-fma3.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/halfulp-fma3.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/halfulp-fma3.c	2017-07-09 16:57:46.763739705 +0000
+@@ -0,0 +1,4 @@
++#define __halfulp __halfulp_fma3
++#define SECTION __attribute__ ((section (".text.fma3")))
++
++#include <sysdeps/ieee754/dbl-64/halfulp.c>
 diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/Makefile glibc-2.25/sysdeps/x86_64/fpu/multiarch/Makefile
 --- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/Makefile	2017-02-05 15:28:43.000000000 +0000
-+++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/Makefile	2017-07-09 16:20:35.220010560 +0000
-@@ -2,11 +2,11 @@ ifeq ($(subdir),math)
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/Makefile	2017-07-09 16:59:55.722016656 +0000
+@@ -2,12 +2,12 @@ ifeq ($(subdir),math)
  libm-sysdep_routines += s_floor-c s_ceil-c s_floorf-c s_ceilf-c \
  			s_rint-c s_rintf-c s_nearbyint-c s_nearbyintf-c
  
 -libm-sysdep_routines += e_exp-fma4 e_log-fma4 e_pow-fma4 s_atan-fma4 \
-+libm-sysdep_routines += e_exp-fma4 e_exp-fma3 e_log-fma3 e_log-fma4 e_pow-fma4 s_atan-fma4 \
- 			e_asin-fma4 e_atan2-fma4 s_sin-fma4 s_tan-fma4 \
+-			e_asin-fma4 e_atan2-fma4 s_sin-fma4 s_tan-fma4 \
 -			mplog-fma4 mpa-fma4 slowexp-fma4 slowpow-fma4 \
-+			mplog-fma4 mplog-fma3 mpa-fma4 mpa-fma3 slowexp-fma4 slowexp-fma3 slowpow-fma4 \
++libm-sysdep_routines += e_exp-fma4 e_exp-fma3 e_log-fma3 e_log-fma4 e_pow-fma4 e_pow-fma3 s_atan-fma4 \
++			e_asin-fma4 e_atan2-fma4 e_atan2-fma3 s_sin-fma4 s_tan-fma4 \
++			mplog-fma4 mplog-fma3 mpa-fma4 mpa-fma3 slowexp-fma4 slowexp-fma3 slowpow-fma4  slowpow-fma3 \
  			sincos32-fma4 doasin-fma4 dosincos-fma4 \
 -			halfulp-fma4 mpexp-fma4 \
-+			halfulp-fma4 mpexp-fma4 mpexp-fma3 \
- 			mpatan2-fma4 mpatan-fma4 mpsqrt-fma4 mptan-fma4
+-			mpatan2-fma4 mpatan-fma4 mpsqrt-fma4 mptan-fma4
++			halfulp-fma4 halfulp-fma3 mpexp-fma4 mpexp-fma3 \
++			mpatan2-fma4 mpatan2-fma3 mpatan-fma4 mpatan-fma3 mpsqrt-fma4 mpsqrt-fma3 mptan-fma4
  
  CFLAGS-doasin-fma4.c = -mfma4
-@@ -31,6 +31,12 @@ CFLAGS-slowpow-fma4.c = -mfma4
+ CFLAGS-dosincos-fma4.c = -mfma4
+@@ -31,6 +31,19 @@ CFLAGS-slowpow-fma4.c = -mfma4
  CFLAGS-s_sin-fma4.c = -mfma4
  CFLAGS-s_tan-fma4.c = -mfma4
  
@@ -77,6 +145,13 @@ diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/Makefile glibc-2.25/sysde
 +CFLAGS-mplog-fma3.c = -mfma -mavx2
 +CFLAGS-mpexp-fma3.c = -mfma -mavx2
 +CFLAGS-slowexp-fma3.c = -mfma -mavx2
++CFLAGS-slowpow-fma3.c = -mfma -mavx2
++CFLAGS-mpatan-fma3.c = -mfma -mavx2
++CFLAGS-mpatan2-fma3.c = -mfma -mavx2
++CFLAGS-e_atan2-fma3.c = -mfma -mavx2
++CFLAGS-e_pow-fma3.c = -mfma -mavx2
++CFLAGS-halfulp-fma3.c = -mfma -mavx2
++CFLAGS-mpsqrt-fma3.c = -mfma -mavx2
 +
  libm-sysdep_routines += e_exp-avx e_log-avx s_atan-avx \
  			e_atan2-avx s_sin-avx s_tan-avx \
@@ -99,6 +174,33 @@ diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpa-fma3.c glibc-2.25/sys
 +#define SECTION __attribute__ ((section (".text.fma3")))
 +
 +#include <sysdeps/ieee754/dbl-64/mpa.c>
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpatan2-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpatan2-fma3.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpatan2-fma3.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpatan2-fma3.c	2017-07-09 16:48:38.017476231 +0000
+@@ -0,0 +1,9 @@
++#define __mpatan2 __mpatan2_fma3
++#define __add __add_fma3
++#define __dvd __dvd_fma3
++#define __mpatan __mpatan_fma3
++#define __mpsqrt __mpsqrt_fma3
++#define __mul __mul_fma3
++#define SECTION __attribute__ ((section (".text.fma3")))
++
++#include <sysdeps/ieee754/dbl-64/mpatan2.c>
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpatan-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpatan-fma3.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpatan-fma3.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpatan-fma3.c	2017-07-09 16:58:39.443033020 +0000
+@@ -0,0 +1,10 @@
++#define __mpatan __mpatan_fma3
++#define __add __add_fma3
++#define __dvd __dvd_fma3
++#define __mpsqrt __mpsqrt_fma3
++#define __mul __mul_fma3
++#define __sub __sub_fma3
++#define AVOID_MPATAN_H 1
++#define SECTION __attribute__ ((section (".text.fma3")))
++
++#include <sysdeps/ieee754/dbl-64/mpatan.c>
 diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpexp-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpexp-fma3.c
 --- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpexp-fma3.c	1970-01-01 00:00:00.000000000 +0000
 +++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpexp-fma3.c	2017-07-09 15:48:47.877604953 +0000
@@ -124,6 +226,18 @@ diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mplog-fma3.c glibc-2.25/s
 +#define SECTION __attribute__ ((section (".text.fma3")))
 +
 +#include <sysdeps/ieee754/dbl-64/mplog.c>
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpsqrt-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpsqrt-fma3.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/mpsqrt-fma3.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/mpsqrt-fma3.c	2017-07-09 16:59:29.726362161 +0000
+@@ -0,0 +1,8 @@
++#define __mpsqrt __mpsqrt_fma3
++#define __dbl_mp __dbl_mp_fma3
++#define __mul __mul_fma3
++#define __sub __sub_fma3
++#define AVOID_MPSQRT_H 1
++#define SECTION __attribute__ ((section (".text.fma3")))
++
++#include <sysdeps/ieee754/dbl-64/mpsqrt.c>
 diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/slowexp-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/slowexp-fma3.c
 --- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/slowexp-fma3.c	1970-01-01 00:00:00.000000000 +0000
 +++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/slowexp-fma3.c	2017-07-09 16:20:07.124348562 +0000
@@ -137,3 +251,18 @@ diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/slowexp-fma3.c glibc-2.25
 +#define SECTION __attribute__ ((section (".text.fma3")))
 +
 +#include <sysdeps/ieee754/dbl-64/slowexp.c>
+diff -purN glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/slowpow-fma3.c glibc-2.25/sysdeps/x86_64/fpu/multiarch/slowpow-fma3.c
+--- glibc-2.25/sysdeps/x86_64/fpu.org/multiarch/slowpow-fma3.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc-2.25/sysdeps/x86_64/fpu/multiarch/slowpow-fma3.c	2017-07-09 16:51:06.176297858 +0000
+@@ -0,0 +1,11 @@
++#define __slowpow __slowpow_fma3
++#define __add __add_fma3
++#define __dbl_mp __dbl_mp_fma3
++#define __mpexp __mpexp_fma3
++#define __mplog __mplog_fma3
++#define __mul __mul_fma3
++#define __sub __sub_fma3
++#define __halfulp __halfulp_fma3
++#define SECTION __attribute__ ((section (".text.fma3")))
++
++#include <sysdeps/ieee754/dbl-64/slowpow.c>
