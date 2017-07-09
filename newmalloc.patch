@@ -1,3 +1,7 @@
+Backport from 2.26 (so drop on rebase)
+
+backport the new per-thread memory pool patches
+
 diff -purN glibc/malloc.org/alloc_buffer_alloc_array.c glibc/malloc/alloc_buffer_alloc_array.c
 --- glibc/malloc.org/alloc_buffer_alloc_array.c	1970-01-01 00:00:00.000000000 +0000
 +++ glibc/malloc/alloc_buffer_alloc_array.c	2017-07-07 14:08:10.302882549 +0000
