@@ -1,0 +1,4117 @@
+diff -purN glibc/malloc.org/alloc_buffer_alloc_array.c glibc/malloc/alloc_buffer_alloc_array.c
+--- glibc/malloc.org/alloc_buffer_alloc_array.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/alloc_buffer_alloc_array.c	2017-07-07 14:08:10.302882549 +0000
+@@ -0,0 +1,47 @@
++/* Array allocation from a fixed-size buffer.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <alloc_buffer.h>
++#include <malloc-internal.h>
++#include <libc-internal.h>
++
++void *
++__libc_alloc_buffer_alloc_array (struct alloc_buffer *buf, size_t element_size,
++                                 size_t align, size_t count)
++{
++  size_t current = buf->__alloc_buffer_current;
++  /* The caller asserts that align is a power of two.  */
++  size_t aligned = ALIGN_UP (current, align);
++  size_t size;
++  bool overflow = check_mul_overflow_size_t (element_size, count, &size);
++  size_t new_current = aligned + size;
++  if (!overflow                /* Multiplication did not overflow.  */
++      && aligned >= current    /* No overflow in align step.  */
++      && new_current >= size   /* No overflow in size computation.  */
++      && new_current <= buf->__alloc_buffer_end) /* Room in buffer.  */
++    {
++      buf->__alloc_buffer_current = new_current;
++      return (void *) aligned;
++    }
++  else
++    {
++      alloc_buffer_mark_failed (buf);
++      return NULL;
++    }
++}
++libc_hidden_def (__libc_alloc_buffer_alloc_array)
+diff -purN glibc/malloc.org/alloc_buffer_allocate.c glibc/malloc/alloc_buffer_allocate.c
+--- glibc/malloc.org/alloc_buffer_allocate.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/alloc_buffer_allocate.c	2017-07-07 14:08:10.302882549 +0000
+@@ -0,0 +1,36 @@
++/* Allocate a fixed-size allocation buffer using malloc.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <alloc_buffer.h>
++
++#include <stdlib.h>
++
++struct alloc_buffer
++__libc_alloc_buffer_allocate (size_t size, void **pptr)
++{
++  *pptr = malloc (size);
++  if (*pptr == NULL)
++    return (struct alloc_buffer)
++      {
++        .__alloc_buffer_current = __ALLOC_BUFFER_INVALID_POINTER,
++        .__alloc_buffer_end = __ALLOC_BUFFER_INVALID_POINTER
++      };
++  else
++    return alloc_buffer_create (*pptr, size);
++}
++libc_hidden_def (__libc_alloc_buffer_allocate)
+diff -purN glibc/malloc.org/alloc_buffer_copy_bytes.c glibc/malloc/alloc_buffer_copy_bytes.c
+--- glibc/malloc.org/alloc_buffer_copy_bytes.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/alloc_buffer_copy_bytes.c	2017-07-07 14:08:10.302882549 +0000
+@@ -0,0 +1,34 @@
++/* Copy an array of bytes into the buffer.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <alloc_buffer.h>
++
++#include <string.h>
++
++/* This function works on a copy of the buffer object, so that it can
++   remain non-addressable in the caller.  */
++struct alloc_buffer
++__libc_alloc_buffer_copy_bytes (struct alloc_buffer buf,
++                                const void *src, size_t len)
++{
++  void *ptr = alloc_buffer_alloc_bytes (&buf, len);
++  if (ptr != NULL)
++    memcpy (ptr, src, len);
++  return buf;
++}
++libc_hidden_def (__libc_alloc_buffer_copy_bytes)
+diff -purN glibc/malloc.org/alloc_buffer_copy_string.c glibc/malloc/alloc_buffer_copy_string.c
+--- glibc/malloc.org/alloc_buffer_copy_string.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/alloc_buffer_copy_string.c	2017-07-07 14:08:10.302882549 +0000
+@@ -0,0 +1,30 @@
++/* Copy a string into the allocation buffer.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <alloc_buffer.h>
++
++#include <string.h>
++
++/* This function works on a copy of the buffer object, so that it can
++   remain non-addressable in the caller.  */
++struct alloc_buffer
++__libc_alloc_buffer_copy_string (struct alloc_buffer buf, const char *src)
++{
++  return __libc_alloc_buffer_copy_bytes (buf, src, strlen (src) + 1);
++}
++libc_hidden_def (__libc_alloc_buffer_copy_string)
+diff -purN glibc/malloc.org/alloc_buffer_create_failure.c glibc/malloc/alloc_buffer_create_failure.c
+--- glibc/malloc.org/alloc_buffer_create_failure.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/alloc_buffer_create_failure.c	2017-07-07 14:08:10.302882549 +0000
+@@ -0,0 +1,31 @@
++/* Terminate the process as the result of an invalid allocation buffer.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <alloc_buffer.h>
++#include <stdio.h>
++
++void
++__libc_alloc_buffer_create_failure (void *start, size_t size)
++{
++  char buf[200];
++  __snprintf (buf, sizeof (buf), "Fatal glibc error: "
++              "invalid allocation buffer of size %zu\n",
++              size);
++  __libc_fatal (buf);
++}
++libc_hidden_def (__libc_alloc_buffer_create_failure)
+diff -purN glibc/malloc.org/dynarray_at_failure.c glibc/malloc/dynarray_at_failure.c
+--- glibc/malloc.org/dynarray_at_failure.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/dynarray_at_failure.c	2017-07-07 14:08:10.303882532 +0000
+@@ -0,0 +1,31 @@
++/* Report an dynamic array index out of bounds condition.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <dynarray.h>
++#include <stdio.h>
++
++void
++__libc_dynarray_at_failure (size_t size, size_t index)
++{
++  char buf[200];
++  __snprintf (buf, sizeof (buf), "Fatal glibc error: "
++              "array index %zu not less than array length %zu\n",
++              index, size);
++ __libc_fatal (buf);
++}
++libc_hidden_def (__libc_dynarray_at_failure)
+diff -purN glibc/malloc.org/dynarray_emplace_enlarge.c glibc/malloc/dynarray_emplace_enlarge.c
+--- glibc/malloc.org/dynarray_emplace_enlarge.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/dynarray_emplace_enlarge.c	2017-07-07 14:08:10.303882532 +0000
+@@ -0,0 +1,69 @@
++/* Increase the size of a dynamic array in preparation of an emplace operation.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <dynarray.h>
++#include <malloc-internal.h>
++#include <stdlib.h>
++#include <string.h>
++
++bool
++__libc_dynarray_emplace_enlarge (struct dynarray_header *list,
++                                 void *scratch, size_t element_size)
++{
++  size_t new_allocated;
++  if (list->allocated == 0)
++    {
++      /* No scratch buffer provided.  Choose a reasonable default
++         size.  */
++      if (element_size < 4)
++        new_allocated = 16;
++      if (element_size < 8)
++        new_allocated = 8;
++      else
++        new_allocated = 4;
++    }
++  else
++    /* Increase the allocated size, using an exponential growth
++       policy.  */
++    {
++      new_allocated = list->allocated + list->allocated / 2 + 1;
++      if (new_allocated <= list->allocated)
++        /* Overflow.  */
++        return false;
++    }
++
++  size_t new_size;
++  if (check_mul_overflow_size_t (new_allocated, element_size, &new_size))
++    return false;
++  void *new_array;
++  if (list->array == scratch)
++    {
++      /* The previous array was not heap-allocated.  */
++      new_array = malloc (new_size);
++      if (new_array != NULL && list->array != NULL)
++        memcpy (new_array, list->array, list->used * element_size);
++    }
++  else
++    new_array = realloc (list->array, new_size);
++  if (new_array == NULL)
++    return false;
++  list->array = new_array;
++  list->allocated = new_allocated;
++  return true;
++}
++libc_hidden_def (__libc_dynarray_emplace_enlarge)
+diff -purN glibc/malloc.org/dynarray_finalize.c glibc/malloc/dynarray_finalize.c
+--- glibc/malloc.org/dynarray_finalize.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/dynarray_finalize.c	2017-07-07 14:08:10.303882532 +0000
+@@ -0,0 +1,62 @@
++/* Copy the dynamically-allocated area to an explicitly-sized heap allocation.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <dynarray.h>
++#include <stdlib.h>
++#include <string.h>
++
++bool
++__libc_dynarray_finalize (struct dynarray_header *list,
++                          void *scratch, size_t element_size,
++                          struct dynarray_finalize_result *result)
++{
++  if (__dynarray_error (list))
++    /* The caller will reported the deferred error.  */
++    return false;
++
++  size_t used = list->used;
++
++  /* Empty list.  */
++  if (used == 0)
++    {
++      /* An empty list could still be backed by a heap-allocated
++         array.  Free it if necessary.  */
++      if (list->array != scratch)
++        free (list->array);
++      *result = (struct dynarray_finalize_result) { NULL, 0 };
++      return true;
++    }
++
++  size_t allocation_size = used * element_size;
++  void *heap_array = malloc (allocation_size);
++  if (heap_array != NULL)
++    {
++      /* The new array takes ownership of the strings.  */
++      if (list->array != NULL)
++        memcpy (heap_array, list->array, allocation_size);
++      if (list->array != scratch)
++        free (list->array);
++      *result = (struct dynarray_finalize_result)
++        { .array = heap_array, .length = used };
++      return true;
++    }
++  else
++    /* The caller will perform the freeing operation.  */
++    return false;
++}
++libc_hidden_def (__libc_dynarray_finalize)
+diff -purN glibc/malloc.org/dynarray.h glibc/malloc/dynarray.h
+--- glibc/malloc.org/dynarray.h	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/dynarray.h	2017-07-07 14:08:10.303882532 +0000
+@@ -0,0 +1,179 @@
++/* Type-safe arrays which grow dynamically.  Shared definitions.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++/* To use the dynarray facility, you need to include
++   <malloc/dynarray-skeleton.c> and define the parameter macros
++   documented in that file.
++
++   A minimal example which provides a growing list of integers can be
++   defined like this:
++
++     struct int_array
++     {
++       // Pointer to result array followed by its length,
++       // as required by DYNARRAY_FINAL_TYPE.
++       int *array;
++       size_t length;
++     };
++
++     #define DYNARRAY_STRUCT dynarray_int
++     #define DYNARRAY_ELEMENT int
++     #define DYNARRAY_PREFIX dynarray_int_
++     #define DYNARRAY_FINAL_TYPE struct int_array
++     #include <malloc/dynarray-skeleton.c>
++
++   To create a three-element array with elements 1, 2, 3, use this
++   code:
++
++     struct dynarray_int dyn;
++     dynarray_int_init (&dyn);
++     for (int i = 1; i <= 3; ++i)
++       {
++         int *place = dynarray_int_emplace (&dyn);
++         assert (place != NULL);
++         *place = i;
++       }
++     struct int_array result;
++     bool ok = dynarray_int_finalize (&dyn, &result);
++     assert (ok);
++     assert (result.length == 3);
++     assert (result.array[0] == 1);
++     assert (result.array[1] == 2);
++     assert (result.array[2] == 3);
++     free (result.array);
++
++   If the elements contain resources which must be freed, define
++   DYNARRAY_ELEMENT_FREE appropriately, like this:
++
++     struct str_array
++     {
++       char **array;
++       size_t length;
++     };
++
++     #define DYNARRAY_STRUCT dynarray_str
++     #define DYNARRAY_ELEMENT char *
++     #define DYNARRAY_ELEMENT_FREE(ptr) free (*ptr)
++     #define DYNARRAY_PREFIX dynarray_str_
++     #define DYNARRAY_FINAL_TYPE struct str_array
++     #include <malloc/dynarray-skeleton.c>
++
++   Compared to scratch buffers, dynamic arrays have the following
++   features:
++
++   - They have an element type, and are not just an untyped buffer of
++     bytes.
++
++   - When growing, previously stored elements are preserved.  (It is
++     expected that scratch_buffer_grow_preserve and
++     scratch_buffer_set_array_size eventually go away because all
++     current users are moved to dynamic arrays.)
++
++   - Scratch buffers have a more aggressive growth policy because
++     growing them typically means a retry of an operation (across an
++     NSS service module boundary), which is expensive.
++
++   - For the same reason, scratch buffers have a much larger initial
++     stack allocation.  */
++
++#ifndef _DYNARRAY_H
++#define _DYNARRAY_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <string.h>
++
++struct dynarray_header
++{
++  size_t used;
++  size_t allocated;
++  void *array;
++};
++
++/* Marker used in the allocated member to indicate that an error was
++   encountered.  */
++static inline size_t
++__dynarray_error_marker (void)
++{
++  return -1;
++}
++
++/* Internal function.  See the has_failed function in
++   dynarray-skeleton.c.  */
++static inline bool
++__dynarray_error (struct dynarray_header *list)
++{
++  return list->allocated == __dynarray_error_marker ();
++}
++
++/* Internal function.  Enlarge the dynamically allocated area of the
++   array to make room for one more element.  SCRATCH is a pointer to
++   the scratch area (which is not heap-allocated and must not be
++   freed).  ELEMENT_SIZE is the size, in bytes, of one element.
++   Return false on failure, true on success.  */
++bool __libc_dynarray_emplace_enlarge (struct dynarray_header *,
++                                      void *scratch, size_t element_size);
++
++/* Internal function.  Enlarge the dynamically allocated area of the
++   array to make room for at least SIZE elements (which must be larger
++   than the existing used part of the dynamic array).  SCRATCH is a
++   pointer to the scratch area (which is not heap-allocated and must
++   not be freed).  ELEMENT_SIZE is the size, in bytes, of one element.
++   Return false on failure, true on success.  */
++bool __libc_dynarray_resize (struct dynarray_header *, size_t size,
++                             void *scratch, size_t element_size);
++
++/* Internal function.  Like __libc_dynarray_resize, but clear the new
++   part of the dynamic array.  */
++bool __libc_dynarray_resize_clear (struct dynarray_header *, size_t size,
++                                   void *scratch, size_t element_size);
++
++/* Internal type.  */
++struct dynarray_finalize_result
++{
++  void *array;
++  size_t length;
++};
++
++/* Internal function.  Copy the dynamically-allocated area to an
++   explicitly-sized heap allocation.  SCRATCH is a pointer to the
++   embedded scratch space.  ELEMENT_SIZE is the size, in bytes, of the
++   element type.  On success, true is returned, and pointer and length
++   are written to *RESULT.  On failure, false is returned.  The caller
++   has to take care of some of the memory management; this function is
++   expected to be called from dynarray-skeleton.c.  */
++bool __libc_dynarray_finalize (struct dynarray_header *list, void *scratch,
++                               size_t element_size,
++                               struct dynarray_finalize_result *result);
++
++
++/* Internal function.  Terminate the process after an index error.
++   SIZE is the number of elements of the dynamic array.  INDEX is the
++   lookup index which triggered the failure.  */
++void __libc_dynarray_at_failure (size_t size, size_t index)
++  __attribute__ ((noreturn));
++
++#ifndef _ISOMAC
++libc_hidden_proto (__libc_dynarray_emplace_enlarge)
++libc_hidden_proto (__libc_dynarray_resize)
++libc_hidden_proto (__libc_dynarray_resize_clear)
++libc_hidden_proto (__libc_dynarray_finalize)
++libc_hidden_proto (__libc_dynarray_at_failure)
++#endif
++
++#endif /* _DYNARRAY_H */
+diff -purN glibc/malloc.org/dynarray_resize.c glibc/malloc/dynarray_resize.c
+--- glibc/malloc.org/dynarray_resize.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/dynarray_resize.c	2017-07-07 14:08:10.303882532 +0000
+@@ -0,0 +1,59 @@
++/* Increase the size of a dynamic array.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <dynarray.h>
++#include <malloc-internal.h>
++#include <stdlib.h>
++#include <string.h>
++
++bool
++__libc_dynarray_resize (struct dynarray_header *list, size_t size,
++                        void *scratch, size_t element_size)
++{
++  /* The existing allocation provides sufficient room.  */
++  if (size <= list->allocated)
++    {
++      list->used = size;
++      return true;
++    }
++
++  /* Otherwise, use size as the new allocation size.  The caller is
++     expected to provide the final size of the array, so there is no
++     over-allocation here.  */
++
++  size_t new_size_bytes;
++  if (check_mul_overflow_size_t (size, element_size, &new_size_bytes))
++    return false;
++  void *new_array;
++  if (list->array == scratch)
++    {
++      /* The previous array was not heap-allocated.  */
++      new_array = malloc (new_size_bytes);
++      if (new_array != NULL && list->array != NULL)
++        memcpy (new_array, list->array, list->used * element_size);
++    }
++  else
++    new_array = realloc (list->array, new_size_bytes);
++  if (new_array == NULL)
++    return false;
++  list->array = new_array;
++  list->allocated = size;
++  list->used = size;
++  return true;
++}
++libc_hidden_def (__libc_dynarray_resize)
+diff -purN glibc/malloc.org/dynarray_resize_clear.c glibc/malloc/dynarray_resize_clear.c
+--- glibc/malloc.org/dynarray_resize_clear.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/dynarray_resize_clear.c	2017-07-07 14:08:10.303882532 +0000
+@@ -0,0 +1,35 @@
++/* Increase the size of a dynamic array and clear the new part.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <dynarray.h>
++#include <stdlib.h>
++#include <string.h>
++
++bool
++__libc_dynarray_resize_clear (struct dynarray_header *list, size_t size,
++                              void *scratch, size_t element_size)
++{
++  size_t old_size = list->used;
++  if (!__libc_dynarray_resize (list, size, scratch, element_size))
++    return false;
++  /* __libc_dynarray_resize already checked for overflow.  */
++  memset (list->array + (old_size * element_size), 0,
++          (size - old_size) * element_size);
++  return true;
++}
++libc_hidden_def (__libc_dynarray_resize_clear)
+diff -purN glibc/malloc.org/dynarray-skeleton.c glibc/malloc/dynarray-skeleton.c
+--- glibc/malloc.org/dynarray-skeleton.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/dynarray-skeleton.c	2017-07-07 14:08:10.303882532 +0000
+@@ -0,0 +1,521 @@
++/* Type-safe arrays which grow dynamically.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++/* Pre-processor macros which act as parameters:
++
++   DYNARRAY_STRUCT
++      The struct tag of dynamic array to be defined.
++   DYNARRAY_ELEMENT
++      The type name of the element type.  Elements are copied
++      as if by memcpy, and can change address as the dynamic
++      array grows.
++   DYNARRAY_PREFIX
++      The prefix of the functions which are defined.
++
++   The following parameters are optional:
++
++   DYNARRAY_ELEMENT_FREE
++      DYNARRAY_ELEMENT_FREE (E) is evaluated to deallocate the
++      contents of elements. E is of type  DYNARRAY_ELEMENT *.
++   DYNARRAY_ELEMENT_INIT
++      DYNARRAY_ELEMENT_INIT (E) is evaluated to initialize a new
++      element.  E is of type  DYNARRAY_ELEMENT *.
++      If DYNARRAY_ELEMENT_FREE but not DYNARRAY_ELEMENT_INIT is
++      defined, new elements are automatically zero-initialized.
++      Otherwise, new elements have undefined contents.
++   DYNARRAY_INITIAL_SIZE
++      The size of the statically allocated array (default:
++      at least 2, more elements if they fit into 128 bytes).
++      Must be a preprocessor constant.  If DYNARRAY_INITIAL_SIZE is 0,
++      there is no statically allocated array at, and all non-empty
++      arrays are heap-allocated.
++   DYNARRAY_FINAL_TYPE
++      The name of the type which holds the final array.  If not
++      defined, is PREFIX##finalize not provided.  DYNARRAY_FINAL_TYPE
++      must be a struct type, with members of type DYNARRAY_ELEMENT and
++      size_t at the start (in this order).
++
++   These macros are undefined after this header file has been
++   included.
++
++   The following types are provided (their members are private to the
++   dynarray implementation):
++
++     struct DYNARRAY_STRUCT
++
++   The following functions are provided:
++
++     void DYNARRAY_PREFIX##init (struct DYNARRAY_STRUCT *);
++     void DYNARRAY_PREFIX##free (struct DYNARRAY_STRUCT *);
++     bool DYNARRAY_PREFIX##has_failed (const struct DYNARRAY_STRUCT *);
++     void DYNARRAY_PREFIX##mark_failed (struct DYNARRAY_STRUCT *);
++     size_t DYNARRAY_PREFIX##size (const struct DYNARRAY_STRUCT *);
++     DYNARRAY_ELEMENT *DYNARRAY_PREFIX##begin (const struct DYNARRAY_STRUCT *);
++     DYNARRAY_ELEMENT *DYNARRAY_PREFIX##end (const struct DYNARRAY_STRUCT *);
++     DYNARRAY_ELEMENT *DYNARRAY_PREFIX##at (struct DYNARRAY_STRUCT *, size_t);
++     void DYNARRAY_PREFIX##add (struct DYNARRAY_STRUCT *, DYNARRAY_ELEMENT);
++     DYNARRAY_ELEMENT *DYNARRAY_PREFIX##emplace (struct DYNARRAY_STRUCT *);
++     bool DYNARRAY_PREFIX##resize (struct DYNARRAY_STRUCT *, size_t);
++     void DYNARRAY_PREFIX##remove_last (struct DYNARRAY_STRUCT *);
++     void DYNARRAY_PREFIX##clear (struct DYNARRAY_STRUCT *);
++
++   The following functions are provided are provided if the
++   prerequisites are met:
++
++     bool DYNARRAY_PREFIX##finalize (struct DYNARRAY_STRUCT *,
++                                     DYNARRAY_FINAL_TYPE *);
++       (if DYNARRAY_FINAL_TYPE is defined)
++     DYNARRAY_ELEMENT *DYNARRAY_PREFIX##finalize (struct DYNARRAY_STRUCT *,
++                                                  size_t *);
++       (if DYNARRAY_FINAL_TYPE is not defined)
++*/
++
++#include <malloc/dynarray.h>
++
++#include <errno.h>
++#include <stdlib.h>
++#include <string.h>
++
++#ifndef DYNARRAY_STRUCT
++# error "DYNARRAY_STRUCT must be defined"
++#endif
++
++#ifndef DYNARRAY_ELEMENT
++# error "DYNARRAY_ELEMENT must be defined"
++#endif
++
++#ifndef DYNARRAY_PREFIX
++# error "DYNARRAY_PREFIX must be defined"
++#endif
++
++#ifdef DYNARRAY_INITIAL_SIZE
++# if DYNARRAY_INITIAL_SIZE < 0
++#  error "DYNARRAY_INITIAL_SIZE must be non-negative"
++# endif
++# if DYNARRAY_INITIAL_SIZE > 0
++#  define DYNARRAY_HAVE_SCRATCH 1
++# else
++#  define DYNARRAY_HAVE_SCRATCH 0
++# endif
++#else
++/* Provide a reasonable default which limits the size of
++   DYNARRAY_STRUCT.  */
++# define DYNARRAY_INITIAL_SIZE \
++  (sizeof (DYNARRAY_ELEMENT) > 64 ? 2 : 128 / sizeof (DYNARRAY_ELEMENT))
++# define DYNARRAY_HAVE_SCRATCH 1
++#endif
++
++/* Public type definitions.  */
++
++/* All fields of this struct are private to the implementation.  */
++struct DYNARRAY_STRUCT
++{
++  union
++  {
++    struct dynarray_header dynarray_abstract;
++    struct
++    {
++      /* These fields must match struct dynarray_header.  */
++      size_t used;
++      size_t allocated;
++      DYNARRAY_ELEMENT *array;
++    } dynarray_header;
++  };
++
++#if DYNARRAY_HAVE_SCRATCH
++  /* Initial inline allocation.  */
++  DYNARRAY_ELEMENT scratch[DYNARRAY_INITIAL_SIZE];
++#endif
++};
++
++/* Internal use only: Helper macros.  */
++
++/* Ensure macro-expansion of DYNARRAY_PREFIX.  */
++#define DYNARRAY_CONCAT0(prefix, name) prefix##name
++#define DYNARRAY_CONCAT1(prefix, name) DYNARRAY_CONCAT0(prefix, name)
++#define DYNARRAY_NAME(name) DYNARRAY_CONCAT1(DYNARRAY_PREFIX, name)
++
++/* Address of the scratch buffer if any.  */
++#if DYNARRAY_HAVE_SCRATCH
++# define DYNARRAY_SCRATCH(list) (list)->scratch
++#else
++# define DYNARRAY_SCRATCH(list) NULL
++#endif
++
++/* Internal use only: Helper functions.  */
++
++/* Internal function.  Call DYNARRAY_ELEMENT_FREE with the array
++   elements.  Name mangling needed due to the DYNARRAY_ELEMENT_FREE
++   macro expansion.  */
++static inline void
++DYNARRAY_NAME (free__elements__) (DYNARRAY_ELEMENT *__dynarray_array,
++                                  size_t __dynarray_used)
++{
++#ifdef DYNARRAY_ELEMENT_FREE
++  for (size_t __dynarray_i = 0; __dynarray_i < __dynarray_used; ++__dynarray_i)
++    DYNARRAY_ELEMENT_FREE (&__dynarray_array[__dynarray_i]);
++#endif /* DYNARRAY_ELEMENT_FREE */
++}
++
++/* Internal function.  Free the non-scratch array allocation.  */
++static inline void
++DYNARRAY_NAME (free__array__) (struct DYNARRAY_STRUCT *list)
++{
++#if DYNARRAY_HAVE_SCRATCH
++  if (list->dynarray_header.array != list->scratch)
++    free (list->dynarray_header.array);
++#else
++  free (list->dynarray_header.array);
++#endif
++}
++
++/* Public functions.  */
++
++/* Initialize a dynamic array object.  This must be called before any
++   use of the object.  */
++__attribute__ ((nonnull (1)))
++static void
++DYNARRAY_NAME (init) (struct DYNARRAY_STRUCT *list)
++{
++  list->dynarray_header.used = 0;
++  list->dynarray_header.allocated = DYNARRAY_INITIAL_SIZE;
++  list->dynarray_header.array = DYNARRAY_SCRATCH (list);
++}
++
++/* Deallocate the dynamic array and its elements.  */
++__attribute__ ((unused, nonnull (1)))
++static void
++DYNARRAY_NAME (free) (struct DYNARRAY_STRUCT *list)
++{
++  DYNARRAY_NAME (free__elements__)
++    (list->dynarray_header.array, list->dynarray_header.used);
++  DYNARRAY_NAME (free__array__) (list);
++  DYNARRAY_NAME (init) (list);
++}
++
++/* Return true if the dynamic array is in an error state.  */
++__attribute__ ((nonnull (1)))
++static inline bool
++DYNARRAY_NAME (has_failed) (const struct DYNARRAY_STRUCT *list)
++{
++  return list->dynarray_header.allocated == __dynarray_error_marker ();
++}
++
++/* Mark the dynamic array as failed.  All elements are deallocated as
++   a side effect.  */
++__attribute__ ((nonnull (1)))
++static void
++DYNARRAY_NAME (mark_failed) (struct DYNARRAY_STRUCT *list)
++{
++  DYNARRAY_NAME (free__elements__)
++    (list->dynarray_header.array, list->dynarray_header.used);
++  DYNARRAY_NAME (free__array__) (list);
++  list->dynarray_header.array = DYNARRAY_SCRATCH (list);
++  list->dynarray_header.used = 0;
++  list->dynarray_header.allocated = __dynarray_error_marker ();
++}
++
++/* Return the number of elements which have been added to the dynamic
++   array.  */
++__attribute__ ((nonnull (1)))
++static inline size_t
++DYNARRAY_NAME (size) (const struct DYNARRAY_STRUCT *list)
++{
++  return list->dynarray_header.used;
++}
++
++/* Return a pointer to the array element at INDEX.  Terminate the
++   process if INDEX is out of bounds.  */
++__attribute__ ((nonnull (1)))
++static inline DYNARRAY_ELEMENT *
++DYNARRAY_NAME (at) (struct DYNARRAY_STRUCT *list, size_t index)
++{
++  if (__glibc_unlikely (index >= DYNARRAY_NAME (size) (list)))
++    __libc_dynarray_at_failure (DYNARRAY_NAME (size) (list), index);
++  return list->dynarray_header.array + index;
++}
++
++/* Return a pointer to the first array element, if any.  For a
++   zero-length array, the pointer can be NULL even though the dynamic
++   array has not entered the failure state.  */
++__attribute__ ((nonnull (1)))
++static inline DYNARRAY_ELEMENT *
++DYNARRAY_NAME (begin) (struct DYNARRAY_STRUCT *list)
++{
++  return list->dynarray_header.array;
++}
++
++/* Return a pointer one element past the last array element.  For a
++   zero-length array, the pointer can be NULL even though the dynamic
++   array has not entered the failure state.  */
++__attribute__ ((nonnull (1)))
++static inline DYNARRAY_ELEMENT *
++DYNARRAY_NAME (end) (struct DYNARRAY_STRUCT *list)
++{
++  return list->dynarray_header.array + list->dynarray_header.used;
++}
++
++/* Internal function.  Slow path for the add function below.  */
++static void
++DYNARRAY_NAME (add__) (struct DYNARRAY_STRUCT *list, DYNARRAY_ELEMENT item)
++{
++  if (__glibc_unlikely
++      (!__libc_dynarray_emplace_enlarge (&list->dynarray_abstract,
++                                         DYNARRAY_SCRATCH (list),
++                                         sizeof (DYNARRAY_ELEMENT))))
++    {
++      DYNARRAY_NAME (mark_failed) (list);
++      return;
++    }
++
++  /* Copy the new element and increase the array length.  */
++  list->dynarray_header.array[list->dynarray_header.used++] = item;
++}
++
++/* Add ITEM at the end of the array, enlarging it by one element.
++   Mark *LIST as failed if the dynamic array allocation size cannot be
++   increased.  */
++__attribute__ ((unused, nonnull (1)))
++static inline void
++DYNARRAY_NAME (add) (struct DYNARRAY_STRUCT *list, DYNARRAY_ELEMENT item)
++{
++  /* Do nothing in case of previous error.  */
++  if (DYNARRAY_NAME (has_failed) (list))
++    return;
++
++  /* Enlarge the array if necessary.  */
++  if (__glibc_unlikely (list->dynarray_header.used
++                        == list->dynarray_header.allocated))
++    {
++      DYNARRAY_NAME (add__) (list, item);
++      return;
++    }
++
++  /* Copy the new element and increase the array length.  */
++  list->dynarray_header.array[list->dynarray_header.used++] = item;
++}
++
++/* Internal function.  Building block for the emplace functions below.
++   Assumes space for one more element in *LIST.  */
++static inline DYNARRAY_ELEMENT *
++DYNARRAY_NAME (emplace__tail__) (struct DYNARRAY_STRUCT *list)
++{
++  DYNARRAY_ELEMENT *result
++    = &list->dynarray_header.array[list->dynarray_header.used];
++  ++list->dynarray_header.used;
++#if defined (DYNARRAY_ELEMENT_INIT)
++  DYNARRAY_ELEMENT_INIT (result);
++#elif defined (DYNARRAY_ELEMENT_FREE)
++  memset (result, 0, sizeof (*result));
++#endif
++  return result;
++}
++
++/* Internal function.  Slow path for the emplace function below.  */
++static DYNARRAY_ELEMENT *
++DYNARRAY_NAME (emplace__) (struct DYNARRAY_STRUCT *list)
++{
++  if (__glibc_unlikely
++      (!__libc_dynarray_emplace_enlarge (&list->dynarray_abstract,
++                                         DYNARRAY_SCRATCH (list),
++                                         sizeof (DYNARRAY_ELEMENT))))
++    {
++      DYNARRAY_NAME (mark_failed) (list);
++      return NULL;
++    }
++  return DYNARRAY_NAME (emplace__tail__) (list);
++}
++
++/* Allocate a place for a new element in *LIST and return a pointer to
++   it.  The pointer can be NULL if the dynamic array cannot be
++   enlarged due to a memory allocation failure.  */
++__attribute__ ((unused, warn_unused_result, nonnull (1)))
++static
++/* Avoid inlining with the larger initialization code.  */
++#if !(defined (DYNARRAY_ELEMENT_INIT) || defined (DYNARRAY_ELEMENT_FREE))
++inline
++#endif
++DYNARRAY_ELEMENT *
++DYNARRAY_NAME (emplace) (struct DYNARRAY_STRUCT *list)
++{
++  /* Do nothing in case of previous error.  */
++  if (DYNARRAY_NAME (has_failed) (list))
++    return NULL;
++
++  /* Enlarge the array if necessary.  */
++  if (__glibc_unlikely (list->dynarray_header.used
++                        == list->dynarray_header.allocated))
++    return (DYNARRAY_NAME (emplace__) (list));
++  return DYNARRAY_NAME (emplace__tail__) (list);
++}
++
++/* Change the size of *LIST to SIZE.  If SIZE is larger than the
++   existing size, new elements are added (which can be initialized).
++   Otherwise, the list is truncated, and elements are freed.  Return
++   false on memory allocation failure (and mark *LIST as failed).  */
++__attribute__ ((unused, nonnull (1)))
++static bool
++DYNARRAY_NAME (resize) (struct DYNARRAY_STRUCT *list, size_t size)
++{
++  if (size > list->dynarray_header.used)
++    {
++      bool ok;
++#if defined (DYNARRAY_ELEMENT_INIT)
++      /* The new elements have to be initialized.  */
++      size_t old_size = list->dynarray_header.used;
++      ok = __libc_dynarray_resize (&list->dynarray_abstract,
++                                   size, DYNARRAY_SCRATCH (list),
++                                   sizeof (DYNARRAY_ELEMENT));
++      if (ok)
++        for (size_t i = old_size; i < size; ++i)
++          {
++            DYNARRAY_ELEMENT_INIT (&list->dynarray_header.array[i]);
++          }
++#elif defined (DYNARRAY_ELEMENT_FREE)
++      /* Zero initialization is needed so that the elements can be
++         safely freed.  */
++      ok = __libc_dynarray_resize_clear
++        (&list->dynarray_abstract, size,
++         DYNARRAY_SCRATCH (list), sizeof (DYNARRAY_ELEMENT));
++#else
++      ok =  __libc_dynarray_resize (&list->dynarray_abstract,
++                                    size, DYNARRAY_SCRATCH (list),
++                                    sizeof (DYNARRAY_ELEMENT));
++#endif
++      if (__glibc_unlikely (!ok))
++        DYNARRAY_NAME (mark_failed) (list);
++      return ok;
++    }
++  else
++    {
++      /* The list has shrunk in size.  Free the removed elements.  */
++      DYNARRAY_NAME (free__elements__)
++        (list->dynarray_header.array + size,
++         list->dynarray_header.used - size);
++      list->dynarray_header.used = size;
++      return true;
++    }
++}
++
++/* Remove the last element of LIST if it is present.  */
++__attribute__ ((unused, nonnull (1)))
++static void
++DYNARRAY_NAME (remove_last) (struct DYNARRAY_STRUCT *list)
++{
++  /* used > 0 implies that the array is the non-failed state.  */
++  if (list->dynarray_header.used > 0)
++    {
++      size_t new_length = list->dynarray_header.used - 1;
++#ifdef DYNARRAY_ELEMENT_FREE
++      DYNARRAY_ELEMENT_FREE (&list->dynarray_header.array[new_length]);
++#endif
++      list->dynarray_header.used = new_length;
++    }
++}
++
++/* Remove all elements from the list.  The elements are freed, but the
++   list itself is not.  */
++__attribute__ ((unused, nonnull (1)))
++static void
++DYNARRAY_NAME (clear) (struct DYNARRAY_STRUCT *list)
++{
++  /* free__elements__ does nothing if the list is in the failed
++     state.  */
++  DYNARRAY_NAME (free__elements__)
++    (list->dynarray_header.array, list->dynarray_header.used);
++  list->dynarray_header.used = 0;
++}
++
++#ifdef DYNARRAY_FINAL_TYPE
++/* Transfer the dynamic array to a permanent location at *RESULT.
++   Returns true on success on false on allocation failure.  In either
++   case, *LIST is re-initialized and can be reused.  A NULL pointer is
++   stored in *RESULT if LIST refers to an empty list.  On success, the
++   pointer in *RESULT is heap-allocated and must be deallocated using
++   free.  */
++__attribute__ ((unused, warn_unused_result, nonnull (1, 2)))
++static bool
++DYNARRAY_NAME (finalize) (struct DYNARRAY_STRUCT *list,
++                          DYNARRAY_FINAL_TYPE *result)
++{
++  struct dynarray_finalize_result res;
++  if (__libc_dynarray_finalize (&list->dynarray_abstract,
++                                DYNARRAY_SCRATCH (list),
++                                sizeof (DYNARRAY_ELEMENT), &res))
++    {
++      /* On success, the result owns all the data.  */
++      DYNARRAY_NAME (init) (list);
++      *result = (DYNARRAY_FINAL_TYPE) { res.array, res.length };
++      return true;
++    }
++  else
++    {
++      /* On error, we need to free all data.  */
++      DYNARRAY_NAME (free) (list);
++      errno = ENOMEM;
++      return false;
++    }
++}
++#else /* !DYNARRAY_FINAL_TYPE */
++/* Transfer the dynamic array to a heap-allocated array and return a
++   pointer to it.  The pointer is NULL if memory allocation fails, or
++   if the array is empty, so this function should be used only for
++   arrays which are known not be empty (usually because they always
++   have a sentinel at the end).  If LENGTHP is not NULL, the array
++   length is written to *LENGTHP.  *LIST is re-initialized and can be
++   reused.  */
++__attribute__ ((unused, warn_unused_result, nonnull (1)))
++static DYNARRAY_ELEMENT *
++DYNARRAY_NAME (finalize) (struct DYNARRAY_STRUCT *list, size_t *lengthp)
++{
++  struct dynarray_finalize_result res;
++  if (__libc_dynarray_finalize (&list->dynarray_abstract,
++                                DYNARRAY_SCRATCH (list),
++                                sizeof (DYNARRAY_ELEMENT), &res))
++    {
++      /* On success, the result owns all the data.  */
++      DYNARRAY_NAME (init) (list);
++      if (lengthp != NULL)
++        *lengthp = res.length;
++      return res.array;
++    }
++  else
++    {
++      /* On error, we need to free all data.  */
++      DYNARRAY_NAME (free) (list);
++      errno = ENOMEM;
++      return NULL;
++    }
++}
++#endif /* !DYNARRAY_FINAL_TYPE */
++
++/* Undo macro definitions.  */
++
++#undef DYNARRAY_CONCAT0
++#undef DYNARRAY_CONCAT1
++#undef DYNARRAY_NAME
++#undef DYNARRAY_SCRATCH
++#undef DYNARRAY_HAVE_SCRATCH
++
++#undef DYNARRAY_STRUCT
++#undef DYNARRAY_ELEMENT
++#undef DYNARRAY_PREFIX
++#undef DYNARRAY_ELEMENT_FREE
++#undef DYNARRAY_ELEMENT_INIT
++#undef DYNARRAY_INITIAL_SIZE
++#undef DYNARRAY_FINAL_TYPE
+diff -purN glibc/malloc.org/Makefile glibc/malloc/Makefile
+--- glibc/malloc.org/Makefile	2017-02-05 15:28:43.000000000 +0000
++++ glibc/malloc/Makefile	2017-07-07 14:08:10.302882549 +0000
+@@ -25,20 +25,29 @@ include ../Makeconfig
+ dist-headers := malloc.h
+ headers := $(dist-headers) obstack.h mcheck.h
+ tests := mallocbug tst-malloc tst-valloc tst-calloc tst-obstack \
+-	 tst-mallocstate tst-mcheck tst-mallocfork tst-trim1 \
+-	 tst-malloc-usable tst-realloc tst-posix_memalign \
+-	 tst-pvalloc tst-memalign tst-mallopt tst-scratch_buffer \
++	 tst-mcheck tst-mallocfork tst-trim1 \
++	 tst-malloc-usable tst-realloc tst-posix_memalign \
++	 tst-pvalloc tst-memalign tst-mallopt \
+ 	 tst-malloc-backtrace tst-malloc-thread-exit \
+ 	 tst-malloc-thread-fail tst-malloc-fork-deadlock \
+ 	 tst-mallocfork2 \
+ 	 tst-interpose-nothread \
+ 	 tst-interpose-thread \
++	 tst-alloc_buffer \
+ 
+ tests-static := \
+ 	 tst-interpose-static-nothread \
+ 	 tst-interpose-static-thread \
+ 	 tst-malloc-usable-static \
+ 
++tests-internal := tst-mallocstate tst-scratch_buffer
++
++# The dynarray framework is only available inside glibc.
++tests-internal += \
++	 tst-dynarray \
++	 tst-dynarray-fail \
++	 tst-dynarray-at-fail \
++
+ ifneq (no,$(have-tunables))
+ tests += tst-malloc-usable-tunables
+ tests-static += tst-malloc-usable-static-tunables
+@@ -47,9 +56,19 @@ endif
+ tests += $(tests-static)
+ test-srcs = tst-mtrace
+ 
+-routines = malloc morecore mcheck mtrace obstack \
++routines = malloc morecore mcheck mtrace obstack  \
+   scratch_buffer_grow scratch_buffer_grow_preserve \
+-  scratch_buffer_set_array_size
++  scratch_buffer_set_array_size \
++  dynarray_at_failure \
++  dynarray_emplace_enlarge \
++  dynarray_finalize \
++  dynarray_resize \
++  dynarray_resize_clear \
++  alloc_buffer_alloc_array \
++  alloc_buffer_allocate \
++  alloc_buffer_copy_bytes  \
++  alloc_buffer_copy_string \
++  alloc_buffer_create_failure \
+ 
+ install-lib := libmcheck.a
+ non-lib.a := libmcheck.a
+@@ -135,6 +154,8 @@ ifeq ($(run-built-tests),yes)
+ ifeq (yes,$(build-shared))
+ ifneq ($(PERL),no)
+ tests-special += $(objpfx)tst-mtrace.out
++tests-special += $(objpfx)tst-dynarray-mem.out
++tests-special += $(objpfx)tst-dynarray-fail-mem.out
+ endif
+ endif
+ endif
+@@ -168,6 +189,11 @@ tst-malloc-usable-static-ENV = $(tst-mal
+ tst-malloc-usable-tunables-ENV = GLIBC_TUNABLES=glibc.malloc.check=3
+ tst-malloc-usable-static-tunables-ENV = $(tst-malloc-usable-tunables-ENV)
+ 
++ifeq ($(experimental-malloc),yes)
++CPPFLAGS-malloc.c += -DUSE_TCACHE=1
++else
++CPPFLAGS-malloc.c += -DUSE_TCACHE=0
++endif
+ # Uncomment this for test releases.  For public releases it is too expensive.
+ #CPPFLAGS-malloc.o += -DMALLOC_DEBUG=1
+ 
+@@ -206,3 +232,13 @@ $(objpfx)tst-interpose-thread: \
+ $(objpfx)tst-interpose-static-nothread: $(objpfx)tst-interpose-aux-nothread.o
+ $(objpfx)tst-interpose-static-thread: \
+   $(objpfx)tst-interpose-aux-thread.o $(static-thread-library)
++
++tst-dynarray-ENV = MALLOC_TRACE=$(objpfx)tst-dynarray.mtrace
++$(objpfx)tst-dynarray-mem.out: $(objpfx)tst-dynarray.out
++	$(common-objpfx)malloc/mtrace $(objpfx)tst-dynarray.mtrace > $@; \
++	$(evaluate-test)
++
++tst-dynarray-fail-ENV = MALLOC_TRACE=$(objpfx)tst-dynarray-fail.mtrace
++$(objpfx)tst-dynarray-fail-mem.out: $(objpfx)tst-dynarray-fail.out
++	$(common-objpfx)malloc/mtrace $(objpfx)tst-dynarray-fail.mtrace > $@; \
++	$(evaluate-test)
+diff -purN glibc/malloc.org/malloc.c glibc/malloc/malloc.c
+--- glibc/malloc.org/malloc.c	2017-02-05 15:28:43.000000000 +0000
++++ glibc/malloc/malloc.c	2017-07-07 14:08:10.305882499 +0000
+@@ -84,7 +84,6 @@
+     independent_calloc(size_t n_elements, size_t size, void* chunks[]);
+     independent_comalloc(size_t n_elements, size_t sizes[], void* chunks[]);
+     pvalloc(size_t n);
+-    cfree(void* p);
+     malloc_trim(size_t pad);
+     malloc_usable_size(void* p);
+     malloc_stats();
+@@ -297,6 +299,30 @@ __malloc_assert (const char *assertion,
+ }
+ #endif
+ 
++#if USE_TCACHE
++/* We want 64 entries.  This is an arbitrary limit, which tunables can reduce.  */
++# define TCACHE_MAX_BINS		64
++# define MAX_TCACHE_SIZE	tidx2usize (TCACHE_MAX_BINS-1)
++
++/* Only used to pre-fill the tunables.  */
++# define tidx2usize(idx)	(((size_t) idx) * MALLOC_ALIGNMENT + MINSIZE - SIZE_SZ)
++
++/* When "x" is from chunksize().  */
++# define csize2tidx(x) (((x) - MINSIZE + MALLOC_ALIGNMENT - 1) / MALLOC_ALIGNMENT)
++/* When "x" is a user-provided size.  */
++# define usize2tidx(x) csize2tidx (request2size (x))
++
++/* With rounding and alignment, the bins are...
++   idx 0   bytes 0..24 (64-bit) or 0..12 (32-bit)
++   idx 1   bytes 25..40 or 13..20
++   idx 2   bytes 41..56 or 21..28
++   etc.  */
++
++/* This is another arbitrary limit, which tunables can change.  Each
++   tcache bin will hold at most this number of chunks.  */
++# define TCACHE_FILL_COUNT 7
++#endif
++
+ 
+ /*
+   REALLOC_ZERO_BYTES_FREES should be set if a call to
+@@ -515,9 +541,9 @@ void*  __libc_calloc(size_t, size_t);
+   REALLOC_ZERO_BYTES_FREES is set, realloc with a size argument of
+   zero (re)allocates a minimum-sized chunk.
+ 
+-  Large chunks that were internally obtained via mmap will always
+-  be reallocated using malloc-copy-free sequences unless
+-  the system supports MREMAP (currently only linux).
++  Large chunks that were internally obtained via mmap will always be
++  grown using malloc-copy-free sequences unless the system supports
++  MREMAP (currently only linux).
+ 
+   The old unix realloc convention of allowing the last-free'd chunk
+   to be used as an argument to realloc is not supported.
+@@ -1376,6 +1402,8 @@ typedef struct malloc_chunk *mbinptr;
+ 
+ /* Take a chunk off a bin list */
+ #define unlink(AV, P, BK, FD) {                                            \
++    if (__builtin_expect (chunksize(P) != prev_size (next_chunk(P)), 0))      \
++      malloc_printerr (check_action, "corrupted size vs. prev_size", P, AV);  \
+     FD = P->fd;								      \
+     BK = P->bk;								      \
+     if (__builtin_expect (FD->bk != P || BK->fd != P, 0))		      \
+@@ -1711,6 +1739,17 @@ struct malloc_par
+ 
+   /* First address handed out by MORECORE/sbrk.  */
+   char *sbrk_base;
++
++#if USE_TCACHE
++  /* Maximum number of buckets to use.  */
++  size_t tcache_bins;
++  size_t tcache_max_bytes;
++  /* Maximum number of chunks in each bucket.  */
++  size_t tcache_count;
++  /* Maximum number of chunks to remove from the unsorted list, which
++     aren't used to prefill the cache.  */
++  size_t tcache_unsorted_limit;
++#endif
+ };
+ 
+ /* There are several instances of this struct ("arenas") in this
+@@ -1749,6 +1788,13 @@ static struct malloc_par mp_ =
+   .trim_threshold = DEFAULT_TRIM_THRESHOLD,
+ #define NARENAS_FROM_NCORES(n) ((n) * (sizeof (long) == 4 ? 2 : 8))
+   .arena_test = NARENAS_FROM_NCORES (1)
++#if USE_TCACHE
++  ,
++  .tcache_count = TCACHE_FILL_COUNT,
++  .tcache_bins = TCACHE_MAX_BINS,
++  .tcache_max_bytes = tidx2usize (TCACHE_MAX_BINS-1),
++  .tcache_unsorted_limit = 0 /* No limit.  */
++#endif
+ };
+ 
+ /* Maximum size of memory handled in fastbins.  */
+@@ -2874,6 +2920,124 @@ mremap_chunk (mchunkptr p, size_t new_si
+ 
+ /*------------------------ Public wrappers. --------------------------------*/
+ 
++#if USE_TCACHE
++
++/* We overlay this structure on the user-data portion of a chunk when
++   the chunk is stored in the per-thread cache.  */
++typedef struct tcache_entry
++{
++  struct tcache_entry *next;
++} tcache_entry;
++
++/* There is one of these for each thread, which contains the
++   per-thread cache (hence "tcache_perthread_struct").  Keeping
++   overall size low is mildly important.  Note that COUNTS and ENTRIES
++   are redundant (we could have just counted the linked list each
++   time), this is for performance reasons.  */
++typedef struct tcache_perthread_struct
++{
++  char counts[TCACHE_MAX_BINS];
++  tcache_entry *entries[TCACHE_MAX_BINS];
++} tcache_perthread_struct;
++
++static __thread char tcache_shutting_down = 0;
++static __thread tcache_perthread_struct *tcache = NULL;
++
++/* Caller must ensure that we know tc_idx is valid and there's room
++   for more chunks.  */
++static void
++tcache_put (mchunkptr chunk, size_t tc_idx)
++{
++  tcache_entry *e = (tcache_entry *) chunk2mem (chunk);
++  assert (tc_idx < TCACHE_MAX_BINS);
++  e->next = tcache->entries[tc_idx];
++  tcache->entries[tc_idx] = e;
++  ++(tcache->counts[tc_idx]);
++}
++
++/* Caller must ensure that we know tc_idx is valid and there's
++   available chunks to remove.  */
++static void *
++tcache_get (size_t tc_idx)
++{
++  tcache_entry *e = tcache->entries[tc_idx];
++  assert (tc_idx < TCACHE_MAX_BINS);
++  assert (tcache->entries[tc_idx] > 0);
++  tcache->entries[tc_idx] = e->next;
++  --(tcache->counts[tc_idx]);
++  return (void *) e;
++}
++
++static void __attribute__ ((section ("__libc_thread_freeres_fn")))
++tcache_thread_freeres (void)
++{
++  int i;
++  tcache_perthread_struct *tcache_tmp = tcache;
++
++  if (!tcache)
++    return;
++
++  tcache = NULL;
++
++  for (i = 0; i < TCACHE_MAX_BINS; ++i)
++    {
++      while (tcache_tmp->entries[i])
++	{
++	  tcache_entry *e = tcache_tmp->entries[i];
++	  tcache_tmp->entries[i] = e->next;
++	  __libc_free (e);
++	}
++    }
++
++  __libc_free (tcache_tmp);
++
++  tcache_shutting_down = 1;
++}
++text_set_element (__libc_thread_subfreeres, tcache_thread_freeres);
++
++static void
++tcache_init(void)
++{
++  mstate ar_ptr;
++  void *victim = 0;
++  const size_t bytes = sizeof (tcache_perthread_struct);
++
++  if (tcache_shutting_down)
++    return;
++
++  arena_get (ar_ptr, bytes);
++  victim = _int_malloc (ar_ptr, bytes);
++  if (!victim && ar_ptr != NULL)
++    {
++      ar_ptr = arena_get_retry (ar_ptr, bytes);
++      victim = _int_malloc (ar_ptr, bytes);
++    }
++
++
++  if (ar_ptr != NULL)
++    __libc_lock_unlock (ar_ptr->mutex);
++
++  /* In a low memory situation, we may not be able to allocate memory
++     - in which case, we just keep trying later.  However, we
++     typically do this very early, so either there is sufficient
++     memory, or there isn't enough memory to do non-trivial
++     allocations anyway.  */
++  if (victim)
++    {
++      tcache = (tcache_perthread_struct *) victim;
++      memset (tcache, 0, sizeof (tcache_perthread_struct));
++    }
++
++}
++
++#define MAYBE_INIT_TCACHE() \
++  if (__glibc_unlikely (tcache == NULL)) \
++    tcache_init();
++
++#else
++#define MAYBE_INIT_TCACHE()
++#endif
++
+ void *
+ __libc_malloc (size_t bytes)
+ {
+@@ -2884,6 +3048,23 @@ __libc_malloc (size_t bytes)
+     = atomic_forced_read (__malloc_hook);
+   if (__builtin_expect (hook != NULL, 0))
+     return (*hook)(bytes, RETURN_ADDRESS (0));
++#if USE_TCACHE
++  /* int_free also calls request2size, be careful to not pad twice.  */
++  size_t tbytes = request2size (bytes);
++  size_t tc_idx = csize2tidx (tbytes);
++
++  MAYBE_INIT_TCACHE ();
++
++  DIAG_PUSH_NEEDS_COMMENT;
++  if (tc_idx < mp_.tcache_bins
++      /*&& tc_idx < TCACHE_MAX_BINS*/ /* to appease gcc */
++      && tcache
++      && tcache->entries[tc_idx] != NULL)
++    {
++      return tcache_get (tc_idx);
++    }
++  DIAG_POP_NEEDS_COMMENT;
++#endif
+ 
+   arena_get (ar_ptr, bytes);
+ 
+@@ -2943,6 +3124,8 @@ __libc_free (void *mem)
+       return;
+     }
+ 
++  MAYBE_INIT_TCACHE ();
++
+   ar_ptr = arena_for_chunk (p);
+   _int_free (ar_ptr, p, 0);
+ }
+@@ -2980,7 +3163,10 @@ __libc_realloc (void *oldmem, size_t byt
+   if (chunk_is_mmapped (oldp))
+     ar_ptr = NULL;
+   else
+-    ar_ptr = arena_for_chunk (oldp);
++    {
++      MAYBE_INIT_TCACHE ();
++      ar_ptr = arena_for_chunk (oldp);
++    }
+ 
+   /* Little security check which won't hurt performance: the allocator
+      never wrapps around at the end of the address space.  Therefore
+@@ -3205,6 +3391,8 @@ __libc_calloc (size_t n, size_t elem_siz
+ 
+   sz = bytes;
+ 
++  MAYBE_INIT_TCACHE ();
++
+   arena_get (av, sz);
+   if (av)
+     {
+@@ -3335,6 +3523,10 @@ _int_malloc (mstate av, size_t bytes)
+   mchunkptr fwd;                    /* misc temp for linking */
+   mchunkptr bck;                    /* misc temp for linking */
+ 
++#if USE_TCACHE
++  size_t tcache_unsorted_count;	    /* count of unsorted chunks processed */
++#endif
++
+   const char *errstr = NULL;
+ 
+   /*
+@@ -3364,19 +3556,22 @@ _int_malloc (mstate av, size_t bytes)
+      can try it without checking, which saves some time on this fast path.
+    */
+ 
++#define REMOVE_FB(fb, victim, pp)			\
++  do							\
++    {							\
++      victim = pp;					\
++      if (victim == NULL)				\
++	break;						\
++    }							\
++  while ((pp = catomic_compare_and_exchange_val_acq (fb, victim->fd, victim)) \
++	 != victim);					\
++
+   if ((unsigned long) (nb) <= (unsigned long) (get_max_fast ()))
+     {
+       idx = fastbin_index (nb);
+       mfastbinptr *fb = &fastbin (av, idx);
+       mchunkptr pp = *fb;
+-      do
+-        {
+-          victim = pp;
+-          if (victim == NULL)
+-            break;
+-        }
+-      while ((pp = catomic_compare_and_exchange_val_acq (fb, victim->fd, victim))
+-             != victim);
++      REMOVE_FB (fb, victim, pp);
+       if (victim != 0)
+         {
+           if (__builtin_expect (fastbin_index (chunksize (victim)) != idx, 0))
+@@ -3387,6 +3582,26 @@ _int_malloc (mstate av, size_t bytes)
+               return NULL;
+             }
+           check_remalloced_chunk (av, victim, nb);
++#if USE_TCACHE
++	  /* While we're here, if we see other chunks of the same size,
++	     stash them in the tcache.  */
++	  size_t tc_idx = csize2tidx (nb);
++	  if (tcache && tc_idx < mp_.tcache_bins)
++	    {
++	      mchunkptr tc_victim;
++
++	      /* While bin not empty and tcache not full, copy chunks over.  */
++	      while (tcache->counts[tc_idx] < mp_.tcache_count
++		     && (pp = *fb) != NULL)
++		{
++		  REMOVE_FB (fb, tc_victim, pp);
++		  if (tc_victim != 0)
++		    {
++		      tcache_put (tc_victim, tc_idx);
++	            }
++		}
++	    }
++#endif
+           void *p = chunk2mem (victim);
+           alloc_perturb (p, bytes);
+           return p;
+@@ -3425,6 +3640,32 @@ _int_malloc (mstate av, size_t bytes)
+               if (av != &main_arena)
+ 		set_non_main_arena (victim);
+               check_malloced_chunk (av, victim, nb);
++#if USE_TCACHE
++	  /* While we're here, if we see other chunks of the same size,
++	     stash them in the tcache.  */
++	  size_t tc_idx = csize2tidx (nb);
++	  if (tcache && tc_idx < mp_.tcache_bins)
++	    {
++	      mchunkptr tc_victim;
++
++	      /* While bin not empty and tcache not full, copy chunks over.  */
++	      while (tcache->counts[tc_idx] < mp_.tcache_count
++		     && (tc_victim = last (bin)) != bin)
++		{
++		  if (tc_victim != 0)
++		    {
++		      bck = tc_victim->bk;
++		      set_inuse_bit_at_offset (tc_victim, nb);
++		      if (av != &main_arena)
++			set_non_main_arena (tc_victim);
++		      bin->bk = bck;
++		      bck->fd = bin;
++
++		      tcache_put (tc_victim, tc_idx);
++	            }
++		}
++	    }
++#endif
+               void *p = chunk2mem (victim);
+               alloc_perturb (p, bytes);
+               return p;
+@@ -3463,6 +3704,16 @@ _int_malloc (mstate av, size_t bytes)
+      otherwise need to expand memory to service a "small" request.
+    */
+ 
++#if USE_TCACHE
++  INTERNAL_SIZE_T tcache_nb = 0;
++  size_t tc_idx = csize2tidx (nb);
++  if (tcache && tc_idx < mp_.tcache_bins)
++    tcache_nb = nb;
++  int return_cached = 0;
++
++  tcache_unsorted_count = 0;
++#endif
++
+   for (;; )
+     {
+       int iters = 0;
+@@ -3523,10 +3774,26 @@ _int_malloc (mstate av, size_t bytes)
+               set_inuse_bit_at_offset (victim, size);
+               if (av != &main_arena)
+ 		set_non_main_arena (victim);
++#if USE_TCACHE
++	      /* Fill cache first, return to user only if cache fills.
++		 We may return one of these chunks later.  */
++	      if (tcache_nb
++		  && tcache->counts[tc_idx] < mp_.tcache_count)
++		{
++		  tcache_put (victim, tc_idx);
++		  return_cached = 1;
++		  continue;
++		}
++	      else
++		{
++#endif
+               check_malloced_chunk (av, victim, nb);
+               void *p = chunk2mem (victim);
+               alloc_perturb (p, bytes);
+               return p;
++#if USE_TCACHE
++		}
++#endif
+             }
+ 
+           /* place chunk in bin */
+@@ -3593,11 +3860,31 @@ _int_malloc (mstate av, size_t bytes)
+           fwd->bk = victim;
+           bck->fd = victim;
+ 
++#if USE_TCACHE
++      /* If we've processed as many chunks as we're allowed while
++	 filling the cache, return one of the cached ones.  */
++      ++tcache_unsorted_count;
++      if (return_cached
++	  && mp_.tcache_unsorted_limit > 0
++	  && tcache_unsorted_count > mp_.tcache_unsorted_limit)
++	{
++	  return tcache_get (tc_idx);
++	}
++#endif
++
+ #define MAX_ITERS       10000
+           if (++iters >= MAX_ITERS)
+             break;
+         }
+ 
++#if USE_TCACHE
++      /* If all the small chunks we found ended up cached, return one now.  */
++      if (return_cached)
++	{
++	  return tcache_get (tc_idx);
++	}
++#endif
++
+       /*
+          If a large request, scan through the chunks of current bin in
+          sorted order to find smallest that fits.  Use the skip list for this.
+@@ -3883,6 +4170,20 @@ _int_free (mstate av, mchunkptr p, int h
+ 
+   check_inuse_chunk(av, p);
+ 
++#if USE_TCACHE
++  {
++    size_t tc_idx = csize2tidx (size);
++
++    if (tcache
++	&& tc_idx < mp_.tcache_bins
++	&& tcache->counts[tc_idx] < mp_.tcache_count)
++      {
++	tcache_put (p, tc_idx);
++	return;
++      }
++  }
++#endif
++
+   /*
+     If eligible, place chunk on a fastbin so it can be found
+     and used quickly in malloc.
+@@ -4844,6 +5145,38 @@ do_set_arena_max (size_t value)
+   return 1;
+ }
+ 
++#if USE_TCACHE
++static inline int
++__always_inline
++do_set_tcache_max (size_t value)
++{
++  if (value >= 0 && value <= MAX_TCACHE_SIZE)
++    {
++      LIBC_PROBE (memory_tunable_tcache_max_bytes, 2, value, mp_.tcache_max_bytes);
++      mp_.tcache_max_bytes = value;
++      mp_.tcache_bins = csize2tidx (request2size(value)) + 1;
++    }
++  return 1;
++}
++
++static inline int
++__always_inline
++do_set_tcache_count (size_t value)
++{
++  LIBC_PROBE (memory_tunable_tcache_count, 2, value, mp_.tcache_count);
++  mp_.tcache_count = value;
++  return 1;
++}
++
++static inline int
++__always_inline
++do_set_tcache_unsorted_limit (size_t value)
++{
++  LIBC_PROBE (memory_tunable_tcache_unsorted_limit, 2, value, mp_.tcache_unsorted_limit);
++  mp_.tcache_unsorted_limit = value;
++  return 1;
++}
++#endif
+ 
+ int
+ __libc_mallopt (int param_number, int value)
+@@ -4902,7 +5235,7 @@ __libc_mallopt (int param_number, int va
+ 
+     case M_ARENA_MAX:
+       if (value > 0)
+-	do_set_arena_test (value);
++	do_set_arena_max (value);
+       break;
+     }
+   __libc_lock_unlock (av->mutex);
+diff -purN glibc/malloc.org/malloc-internal.h glibc/malloc/malloc-internal.h
+--- glibc/malloc.org/malloc-internal.h	2017-02-05 15:28:43.000000000 +0000
++++ glibc/malloc/malloc-internal.h	2017-07-07 14:08:10.303882532 +0000
+@@ -81,5 +71,24 @@ void __malloc_fork_unlock_parent (void)
+ /* Called in the child process after a fork.  */
+ void __malloc_fork_unlock_child (void) internal_function attribute_hidden;
+ 
++/* Set *RESULT to LEFT * RIGHT.  Return true if the multiplication
++   overflowed.  */
++static inline bool
++check_mul_overflow_size_t (size_t left, size_t right, size_t *result)
++{
++#if __GNUC__ >= 5
++  return __builtin_mul_overflow (left, right, result);
++#else
++  /* size_t is unsigned so the behavior on overflow is defined.  */
++  *result = left * right;
++  size_t half_size_t = ((size_t) 1) << (8 * sizeof (size_t) / 2);
++  if (__glibc_unlikely ((left | right) >= half_size_t))
++    {
++      if (__glibc_unlikely (right != 0 && *result / right != left))
++        return true;
++    }
++  return false;
++#endif
++}
+ 
+ #endif /* _MALLOC_INTERNAL_H */
+diff -purN glibc/malloc.org/mtrace.c glibc/malloc/mtrace.c
+--- glibc/malloc.org/mtrace.c	2017-02-05 15:28:43.000000000 +0000
++++ glibc/malloc/mtrace.c	2017-07-07 14:08:10.305882499 +0000
+@@ -300,15 +300,6 @@ mtrace (void)
+       mallstream = fopen (mallfile != NULL ? mallfile : "/dev/null", "wce");
+       if (mallstream != NULL)
+         {
+-#ifndef __ASSUME_O_CLOEXEC
+-          /* Make sure we close the file descriptor on exec.  */
+-          int flags = __fcntl (fileno (mallstream), F_GETFD, 0);
+-          if (flags >= 0)
+-            {
+-              flags |= FD_CLOEXEC;
+-              __fcntl (fileno (mallstream), F_SETFD, flags);
+-            }
+-#endif
+           /* Be sure it doesn't malloc its buffer!  */
+           malloc_trace_buffer = mtb;
+           setvbuf (mallstream, malloc_trace_buffer, _IOFBF, TRACE_BUFFER_SIZE);
+diff -purN glibc/malloc.org/tst-alloc_buffer.c glibc/malloc/tst-alloc_buffer.c
+--- glibc/malloc.org/tst-alloc_buffer.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/tst-alloc_buffer.c	2017-07-07 14:08:10.306882482 +0000
+@@ -0,0 +1,665 @@
++/* Tests for struct alloc_buffer.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <arpa/inet.h>
++#include <alloc_buffer.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/support.h>
++#include <support/test-driver.h>
++
++/* Return true if PTR is sufficiently aligned for TYPE.  */
++#define IS_ALIGNED(ptr, type) \
++  ((((uintptr_t) ptr) & (__alloc_buffer_assert_align (__alignof (type)) - 1)) \
++   == 0)
++
++/* Structure with non-power-of-two size.  */
++struct twelve
++{
++  uint32_t buffer[3] __attribute__ ((aligned (4)));
++};
++_Static_assert (sizeof (struct twelve) == 12, "struct twelve");
++_Static_assert (__alignof__ (struct twelve) == 4, "struct twelve");
++
++/* Check for success obtaining empty arrays.  Does not assume the
++   buffer is empty.  */
++static void
++test_empty_array (struct alloc_buffer refbuf)
++{
++  bool refbuf_failed = alloc_buffer_has_failed (&refbuf);
++  if (test_verbose)
++    printf ("info: %s: current=0x%llx end=0x%llx refbuf_failed=%d\n",
++            __func__, (unsigned long long) refbuf.__alloc_buffer_current,
++            (unsigned long long) refbuf.__alloc_buffer_end, refbuf_failed);
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY ((alloc_buffer_alloc_bytes (&buf, 0) == NULL)
++                 == refbuf_failed);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf) == refbuf_failed);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY ((alloc_buffer_alloc_array (&buf, char, 0) == NULL)
++                 == refbuf_failed);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf) == refbuf_failed);
++  }
++  /* The following tests can fail due to the need for aligning the
++     returned pointer.  */
++  {
++    struct alloc_buffer buf = refbuf;
++    bool expect_failure = refbuf_failed
++      || !IS_ALIGNED (alloc_buffer_next (&buf, void), double);
++    double *ptr = alloc_buffer_alloc_array (&buf, double, 0);
++    TEST_VERIFY (IS_ALIGNED (ptr, double));
++    TEST_VERIFY ((ptr == NULL) == expect_failure);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf) == expect_failure);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    bool expect_failure = refbuf_failed
++      || !IS_ALIGNED (alloc_buffer_next (&buf, void), struct twelve);
++    struct twelve *ptr = alloc_buffer_alloc_array (&buf, struct twelve, 0);
++    TEST_VERIFY (IS_ALIGNED (ptr, struct twelve));
++    TEST_VERIFY ((ptr == NULL) == expect_failure);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf) == expect_failure);
++  }
++}
++
++/* Test allocation of impossibly large arrays.  */
++static void
++test_impossible_array (struct alloc_buffer refbuf)
++{
++  if (test_verbose)
++    printf ("info: %s: current=0x%llx end=0x%llx\n",
++            __func__, (unsigned long long) refbuf.__alloc_buffer_current,
++            (unsigned long long) refbuf.__alloc_buffer_end);
++  static const size_t counts[] =
++    { SIZE_MAX, SIZE_MAX - 1, SIZE_MAX - 2, SIZE_MAX - 3, SIZE_MAX - 4,
++      SIZE_MAX / 2, SIZE_MAX / 2 + 1, SIZE_MAX / 2 - 1, 0};
++
++  for (int i = 0; counts[i] != 0; ++i)
++    {
++      size_t count = counts[i];
++      if (test_verbose)
++        printf ("info: %s: count=%zu\n", __func__, count);
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_bytes (&buf, count) == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_array (&buf, char, count) == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_array (&buf, short, count) == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_array (&buf, double, count) == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_array (&buf, struct twelve, count)
++                     == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++    }
++}
++
++/* Check for failure to obtain anything from a failed buffer.  */
++static void
++test_after_failure (struct alloc_buffer refbuf)
++{
++  if (test_verbose)
++    printf ("info: %s: current=0x%llx end=0x%llx\n",
++            __func__, (unsigned long long) refbuf.__alloc_buffer_current,
++            (unsigned long long) refbuf.__alloc_buffer_end);
++  TEST_VERIFY (alloc_buffer_has_failed (&refbuf));
++  {
++    struct alloc_buffer buf = refbuf;
++    alloc_buffer_add_byte (&buf, 17);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, char) == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, double) == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, struct twelve) == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++  }
++
++  test_impossible_array (refbuf);
++  for (int count = 0; count <= 4; ++count)
++    {
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_bytes (&buf, count) == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_array (&buf, char, count) == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_array (&buf, double, count) == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++      {
++        struct alloc_buffer buf = refbuf;
++        TEST_VERIFY (alloc_buffer_alloc_array (&buf, struct twelve, count)
++                     == NULL);
++        TEST_VERIFY (alloc_buffer_has_failed (&buf));
++      }
++    }
++}
++
++static void
++test_empty (struct alloc_buffer refbuf)
++{
++  TEST_VERIFY (alloc_buffer_size (&refbuf) == 0);
++  if (alloc_buffer_next (&refbuf, void) != NULL)
++    TEST_VERIFY (!alloc_buffer_has_failed (&refbuf));
++  test_empty_array (refbuf);
++  test_impossible_array (refbuf);
++
++  /* Failure to obtain non-empty objects.  */
++  {
++    struct alloc_buffer buf = refbuf;
++    alloc_buffer_add_byte (&buf, 17);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, char) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, double) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, struct twelve) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, char, 1) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, double, 1) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, struct twelve, 1) == NULL);
++    test_after_failure (buf);
++  }
++}
++
++static void
++test_size_1 (struct alloc_buffer refbuf)
++{
++  TEST_VERIFY (!alloc_buffer_has_failed (&refbuf));
++  TEST_VERIFY (alloc_buffer_size (&refbuf) == 1);
++  test_empty_array (refbuf);
++  test_impossible_array (refbuf);
++
++  /* Success adding a single byte.  */
++  {
++    struct alloc_buffer buf = refbuf;
++    alloc_buffer_add_byte (&buf, 17);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    test_empty (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "\x11", 1) == 0);
++  {
++    struct alloc_buffer buf = refbuf;
++    signed char *ptr = alloc_buffer_alloc (&buf, signed char);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    *ptr = 126;
++    test_empty (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "\176", 1) == 0);
++  {
++    struct alloc_buffer buf = refbuf;
++    char *ptr = alloc_buffer_alloc_array (&buf, char, 1);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    *ptr = (char) 253;
++    test_empty (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "\xfd", 1) == 0);
++
++  /* Failure with larger objects.  */
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, short) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, double) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, struct twelve) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, short, 1) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, double, 1) == NULL);
++    test_after_failure (buf);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, struct twelve, 1) == NULL);
++    test_after_failure (buf);
++  }
++}
++
++static void
++test_size_2 (struct alloc_buffer refbuf)
++{
++  TEST_VERIFY (!alloc_buffer_has_failed (&refbuf));
++  TEST_VERIFY (alloc_buffer_size (&refbuf) == 2);
++  TEST_VERIFY (IS_ALIGNED (alloc_buffer_next (&refbuf, void), short));
++  test_empty_array (refbuf);
++  test_impossible_array (refbuf);
++
++  /* Success adding two bytes.  */
++  {
++    struct alloc_buffer buf = refbuf;
++    alloc_buffer_add_byte (&buf, '@');
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    test_size_1 (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "@\xfd", 2) == 0);
++  {
++    struct alloc_buffer buf = refbuf;
++    signed char *ptr = alloc_buffer_alloc (&buf, signed char);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    *ptr = 'A';
++    test_size_1 (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "A\xfd", 2) == 0);
++  {
++    struct alloc_buffer buf = refbuf;
++    char *ptr = alloc_buffer_alloc_array (&buf, char, 1);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    *ptr = 'B';
++    test_size_1 (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "B\xfd", 2) == 0);
++  {
++    struct alloc_buffer buf = refbuf;
++    unsigned short *ptr = alloc_buffer_alloc (&buf, unsigned short);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (IS_ALIGNED (ptr, unsigned short));
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    *ptr = htons (0x12f4);
++    test_empty (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "\x12\xf4", 2) == 0);
++  {
++    struct alloc_buffer buf = refbuf;
++    unsigned short *ptr = alloc_buffer_alloc_array (&buf, unsigned short, 1);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (IS_ALIGNED (ptr, unsigned short));
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    *ptr = htons (0x13f5);
++    test_empty (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "\x13\xf5", 2) == 0);
++  {
++    struct alloc_buffer buf = refbuf;
++    char *ptr = alloc_buffer_alloc_array (&buf, char, 2);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    memcpy (ptr, "12", 2);
++    test_empty (buf);
++  }
++  TEST_VERIFY (memcmp (alloc_buffer_next (&refbuf, void), "12", 2) == 0);
++}
++
++static void
++test_misaligned (char pad)
++{
++  enum { SIZE = 23 };
++  char *backing = xmalloc (SIZE + 2);
++  backing[0] = ~pad;
++  backing[SIZE + 1] = pad;
++  struct alloc_buffer refbuf = alloc_buffer_create (backing + 1, SIZE);
++
++  {
++    struct alloc_buffer buf = refbuf;
++    short *ptr = alloc_buffer_alloc_array (&buf, short, SIZE / sizeof (short));
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (IS_ALIGNED (ptr, short));
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    for (int i = 0; i < SIZE / sizeof (short); ++i)
++      ptr[i] = htons (0xff01 + i);
++    TEST_VERIFY (memcmp (ptr,
++                         "\xff\x01\xff\x02\xff\x03\xff\x04"
++                         "\xff\x05\xff\x06\xff\x07\xff\x08"
++                         "\xff\x09\xff\x0a\xff\x0b", 22) == 0);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    uint32_t *ptr = alloc_buffer_alloc_array
++      (&buf, uint32_t, SIZE / sizeof (uint32_t));
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (IS_ALIGNED (ptr, uint32_t));
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    for (int i = 0; i < SIZE / sizeof (uint32_t); ++i)
++      ptr[i] = htonl (0xf1e2d301 + i);
++    TEST_VERIFY (memcmp (ptr,
++                         "\xf1\xe2\xd3\x01\xf1\xe2\xd3\x02"
++                         "\xf1\xe2\xd3\x03\xf1\xe2\xd3\x04"
++                         "\xf1\xe2\xd3\x05", 20) == 0);
++  }
++  {
++    struct alloc_buffer buf = refbuf;
++    struct twelve *ptr = alloc_buffer_alloc (&buf, struct twelve);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (IS_ALIGNED (ptr, struct twelve));
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    ptr->buffer[0] = htonl (0x11223344);
++    ptr->buffer[1] = htonl (0x55667788);
++    ptr->buffer[2] = htonl (0x99aabbcc);
++    TEST_VERIFY (memcmp (ptr,
++                         "\x11\x22\x33\x44"
++                         "\x55\x66\x77\x88"
++                         "\x99\xaa\xbb\xcc", 12) == 0);
++  }
++  {
++    static const double nums[] = { 1, 2 };
++    struct alloc_buffer buf = refbuf;
++    double *ptr = alloc_buffer_alloc_array (&buf, double, 2);
++    TEST_VERIFY_EXIT (ptr != NULL);
++    TEST_VERIFY (IS_ALIGNED (ptr, double));
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    ptr[0] = nums[0];
++    ptr[1] = nums[1];
++    TEST_VERIFY (memcmp (ptr, nums, sizeof (nums)) == 0);
++  }
++
++  /* Verify that padding was not overwritten.  */
++  TEST_VERIFY (backing[0] == (char) ~pad);
++  TEST_VERIFY (backing[SIZE + 1] == pad);
++  free (backing);
++}
++
++/* Check that overflow during alignment is handled properly.  */
++static void
++test_large_misaligned (void)
++{
++  uintptr_t minus1 = -1;
++  uintptr_t start = minus1 & ~0xfe;
++  struct alloc_buffer refbuf = alloc_buffer_create ((void *) start, 16);
++  TEST_VERIFY (!alloc_buffer_has_failed (&refbuf));
++
++  struct __attribute__ ((aligned (256))) align256
++  {
++    int dymmy;
++  };
++
++  {
++    struct alloc_buffer buf = refbuf;
++    TEST_VERIFY (alloc_buffer_alloc (&buf, struct align256) == NULL);
++    test_after_failure (buf);
++  }
++  for (int count = 0; count < 3; ++count)
++    {
++      struct alloc_buffer buf = refbuf;
++      TEST_VERIFY (alloc_buffer_alloc_array (&buf, struct align256, count)
++                   == NULL);
++      test_after_failure (buf);
++    }
++}
++
++/* Check behavior of large allocations.  */
++static void
++test_large (void)
++{
++  {
++    /* Allocation which wraps around.  */
++    struct alloc_buffer buf = { 1, SIZE_MAX };
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, char, SIZE_MAX) == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++  }
++
++  {
++    /* Successful very large allocation.  */
++    struct alloc_buffer buf = { 1, SIZE_MAX };
++    uintptr_t val = (uintptr_t) alloc_buffer_alloc_array
++      (&buf, char, SIZE_MAX - 1);
++    TEST_VERIFY (val == 1);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    test_empty (buf);
++  }
++
++  {
++    typedef char __attribute__ ((aligned (2))) char2;
++
++    /* Overflow in array size computation.   */
++    struct alloc_buffer buf = { 1, SIZE_MAX };
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, char2, SIZE_MAX - 1) == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++
++    /* Successful allocation after alignment.  */
++    buf = (struct alloc_buffer) { 1, SIZE_MAX };
++    uintptr_t val = (uintptr_t) alloc_buffer_alloc_array
++      (&buf, char2, SIZE_MAX - 2);
++    TEST_VERIFY (val == 2);
++    test_empty (buf);
++
++    /* Alignment behavior near the top of the address space.  */
++    buf = (struct alloc_buffer) { SIZE_MAX, SIZE_MAX };
++    TEST_VERIFY (alloc_buffer_next (&buf, char2) == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++    buf = (struct alloc_buffer) { SIZE_MAX, SIZE_MAX };
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, char2, 0) == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++  }
++
++  {
++    typedef short __attribute__ ((aligned (2))) short2;
++
++    /* Test overflow in size computation.  */
++    struct alloc_buffer buf = { 1, SIZE_MAX };
++    TEST_VERIFY (alloc_buffer_alloc_array (&buf, short2, SIZE_MAX / 2)
++                 == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++
++    /* A slightly smaller array fits within the allocation.  */
++    buf = (struct alloc_buffer) { 2, SIZE_MAX - 1 };
++    uintptr_t val = (uintptr_t) alloc_buffer_alloc_array
++      (&buf, short2, SIZE_MAX / 2 - 1);
++    TEST_VERIFY (val == 2);
++    test_empty (buf);
++  }
++}
++
++static void
++test_copy_bytes (void)
++{
++  char backing[4];
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    alloc_buffer_copy_bytes (&buf, "1", 1);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (alloc_buffer_size (&buf) == 3);
++    TEST_VERIFY (memcmp (backing, "1@@@", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    alloc_buffer_copy_bytes (&buf, "12", 3);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (alloc_buffer_size (&buf) == 1);
++    TEST_VERIFY (memcmp (backing, "12\0@", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    alloc_buffer_copy_bytes (&buf, "1234", 4);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (alloc_buffer_size (&buf) == 0);
++    TEST_VERIFY (memcmp (backing, "1234", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    alloc_buffer_copy_bytes (&buf, "1234", 5);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (memcmp (backing, "@@@@", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    alloc_buffer_copy_bytes (&buf, "1234", -1);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (memcmp (backing, "@@@@", 4) == 0);
++  }
++}
++
++static void
++test_copy_string (void)
++{
++  char backing[4];
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    const char *p = alloc_buffer_copy_string (&buf, "");
++    TEST_VERIFY (p == backing);
++    TEST_VERIFY (strcmp (p, "") == 0);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (alloc_buffer_size (&buf) == 3);
++    TEST_VERIFY (memcmp (backing, "\0@@@", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    const char *p = alloc_buffer_copy_string (&buf, "1");
++    TEST_VERIFY (p == backing);
++    TEST_VERIFY (strcmp (p, "1") == 0);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (alloc_buffer_size (&buf) == 2);
++    TEST_VERIFY (memcmp (backing, "1\0@@", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    const char *p = alloc_buffer_copy_string (&buf, "12");
++    TEST_VERIFY (p == backing);
++    TEST_VERIFY (strcmp (p, "12") == 0);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (alloc_buffer_size (&buf) == 1);
++    TEST_VERIFY (memcmp (backing, "12\0@", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    const char *p = alloc_buffer_copy_string (&buf, "123");
++    TEST_VERIFY (p == backing);
++    TEST_VERIFY (strcmp (p, "123") == 0);
++    TEST_VERIFY (!alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (alloc_buffer_size (&buf) == 0);
++    TEST_VERIFY (memcmp (backing, "123", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    TEST_VERIFY (alloc_buffer_copy_string (&buf, "1234") == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (memcmp (backing, "@@@@", 4) == 0);
++  }
++  {
++    memset (backing, '@', sizeof (backing));
++    struct alloc_buffer buf = alloc_buffer_create (backing, sizeof (backing));
++    TEST_VERIFY (alloc_buffer_copy_string (&buf, "12345") == NULL);
++    TEST_VERIFY (alloc_buffer_has_failed (&buf));
++    TEST_VERIFY (memcmp (backing, "@@@@", 4) == 0);
++  }
++}
++
++static int
++do_test (void)
++{
++  test_empty (alloc_buffer_create (NULL, 0));
++  test_empty (alloc_buffer_create ((char *) "", 0));
++  test_empty (alloc_buffer_create ((void *) 1, 0));
++
++  {
++    void *ptr = (void *) "";    /* Cannot be freed. */
++    struct alloc_buffer buf = alloc_buffer_allocate (1, &ptr);
++    test_size_1 (buf);
++    free (ptr);                 /* Should have been overwritten.  */
++  }
++
++  {
++    void *ptr= (void *) "";     /* Cannot be freed.  */
++    struct alloc_buffer buf = alloc_buffer_allocate (2, &ptr);
++    test_size_2 (buf);
++    free (ptr);                 /* Should have been overwritten.  */
++  }
++
++  test_misaligned (0);
++  test_misaligned (0xc7);
++  test_misaligned (0xff);
++
++  test_large_misaligned ();
++  test_large ();
++  test_copy_bytes ();
++  test_copy_string ();
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff -purN glibc/malloc.org/tst-dynarray-at-fail.c glibc/malloc/tst-dynarray-at-fail.c
+--- glibc/malloc.org/tst-dynarray-at-fail.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/tst-dynarray-at-fail.c	2017-07-07 14:08:10.307882465 +0000
+@@ -0,0 +1,125 @@
++/* Test reporting of out-of-bounds access for dynamic arrays.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include "tst-dynarray-shared.h"
++
++#include <signal.h>
++#include <stdint.h>
++#include <string.h>
++#include <support/capture_subprocess.h>
++#include <support/check.h>
++
++/* Run CALLBACK and check that the data on standard error equals
++   EXPECTED.  */
++static void
++check (const char *test, void (*callback) (void *), size_t index,
++       const char *expected)
++{
++  struct support_capture_subprocess result
++    = support_capture_subprocess (callback, &index);
++  if (strcmp (result.err.buffer, expected) != 0)
++    {
++      support_record_failure ();
++      printf ("error: test %s (%zu) unexpected standard error data\n"
++              "  expected: %s\n"
++              "  actual:   %s\n",
++              test, index, expected, result.err.buffer);
++    }
++  TEST_VERIFY (strlen (result.out.buffer) == 0);
++  TEST_VERIFY (WIFSIGNALED (result.status));
++  if (WIFSIGNALED (result.status))
++    TEST_VERIFY (WTERMSIG (result.status) == SIGABRT);
++  support_capture_subprocess_free (&result);
++}
++
++/* Try indexing an empty array.  */
++static void
++test_empty (void *closure)
++{
++  size_t *pindex = closure;
++  struct dynarray_int dyn;
++  dynarray_int_init (&dyn);
++  dynarray_int_at (&dyn, *pindex);
++}
++
++/* Try indexing a one-element array.  */
++static void
++test_one (void *closure)
++{
++  size_t *pindex = closure;
++  struct dynarray_int dyn;
++  dynarray_int_init (&dyn);
++  TEST_VERIFY (dynarray_int_resize (&dyn, 1));
++  dynarray_int_at (&dyn, *pindex);
++}
++
++/* Try indexing a longer array.  */
++static void
++test_many (void *closure)
++{
++  size_t *pindex = closure;
++  struct dynarray_int dyn;
++  dynarray_int_init (&dyn);
++  TEST_VERIFY (dynarray_int_resize (&dyn, 5371));
++  dynarray_int_at (&dyn, *pindex);
++}
++
++/* (size_t) -1 for use in string literals.  */
++#if SIZE_WIDTH == 32
++# define MINUS_1 "4294967295"
++#elif SIZE_WIDTH == 64
++# define MINUS_1 "18446744073709551615"
++#else
++# error "unknown value for SIZE_WIDTH"
++#endif
++
++static int
++do_test (void)
++{
++  TEST_VERIFY (setenv ("LIBC_FATAL_STDERR_", "1", 1) == 0);
++
++  check ("test_empty", test_empty, 0,
++         "Fatal glibc error: array index 0 not less than array length 0\n");
++  check ("test_empty", test_empty, 1,
++         "Fatal glibc error: array index 1 not less than array length 0\n");
++  check ("test_empty", test_empty, -1,
++         "Fatal glibc error: array index " MINUS_1
++         " not less than array length 0\n");
++
++  check ("test_one", test_one, 1,
++         "Fatal glibc error: array index 1 not less than array length 1\n");
++  check ("test_one", test_one, 2,
++         "Fatal glibc error: array index 2 not less than array length 1\n");
++  check ("test_one", test_one, -1,
++         "Fatal glibc error: array index " MINUS_1
++         " not less than array length 1\n");
++
++  check ("test_many", test_many, 5371,
++         "Fatal glibc error: array index 5371"
++         " not less than array length 5371\n");
++  check ("test_many", test_many, 5372,
++         "Fatal glibc error: array index 5372"
++         " not less than array length 5371\n");
++  check ("test_many", test_many, -1,
++         "Fatal glibc error: array index " MINUS_1
++         " not less than array length 5371\n");
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff -purN glibc/malloc.org/tst-dynarray.c glibc/malloc/tst-dynarray.c
+--- glibc/malloc.org/tst-dynarray.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/tst-dynarray.c	2017-07-07 14:08:10.307882465 +0000
+@@ -0,0 +1,545 @@
++/* Test for dynamic arrays.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include "tst-dynarray-shared.h"
++
++#define DYNARRAY_STRUCT dynarray_long
++#define DYNARRAY_ELEMENT long
++#define DYNARRAY_PREFIX dynarray_long_
++#define DYNARRAY_ELEMENT_INIT(e) (*(e) = 17)
++#include <malloc/dynarray-skeleton.c>
++
++struct long_array
++{
++  long *array;
++  size_t length;
++};
++
++#define DYNARRAY_STRUCT dynarray_long_noscratch
++#define DYNARRAY_ELEMENT long
++#define DYNARRAY_PREFIX dynarray_long_noscratch_
++#define DYNARRAY_ELEMENT_INIT(e) (*(e) = 23)
++#define DYNARRAY_FINAL_TYPE struct long_array
++#define DYNARRAY_INITIAL_SIZE 0
++#include <malloc/dynarray-skeleton.c>
++
++#define DYNARRAY_STRUCT zstr
++#define DYNARRAY_ELEMENT char
++#define DYNARRAY_PREFIX zstr_
++#define DYNARRAY_INITIAL_SIZE 128
++#include <malloc/dynarray-skeleton.c>
++
++#include <malloc.h>
++#include <mcheck.h>
++#include <stdint.h>
++#include <support/check.h>
++#include <support/support.h>
++
++enum { max_count = 20 };
++
++/* Test dynamic arrays with int elements (no automatic deallocation
++   for elements).  */
++static void
++test_int (void)
++{
++  /* Empty array.  */
++  {
++    struct dynarray_int dyn;
++    dynarray_int_init (&dyn);
++    CHECK_EMPTY (int, &dyn);
++  }
++
++  /* Empty array with finalization.  */
++  {
++    struct dynarray_int dyn;
++    dynarray_int_init (&dyn);
++    CHECK_INIT_STATE (int, &dyn);
++    struct int_array result = { (int *) (uintptr_t) -1, -1 };
++    TEST_VERIFY_EXIT (dynarray_int_finalize (&dyn, &result));
++    CHECK_INIT_STATE (int, &dyn);
++    TEST_VERIFY_EXIT (result.array == NULL);
++    TEST_VERIFY_EXIT (result.length == 0);
++  }
++
++  /* Non-empty array tests.
++
++     do_add: Switch between emplace (false) and add (true).
++     do_finalize: Perform finalize call at the end.
++     do_clear: Perform clear call at the end.
++     do_remove_last: Perform remove_last call after adding elements.
++     count: Number of elements added to the array.  */
++  for (int do_add = 0; do_add < 2; ++do_add)
++    for (int do_finalize = 0; do_finalize < 2; ++do_finalize)
++      for (int do_clear = 0; do_clear < 2; ++do_clear)
++        for (int do_remove_last = 0; do_remove_last < 2; ++do_remove_last)
++          for (unsigned int count = 0; count < max_count; ++count)
++            {
++              if (do_remove_last && count == 0)
++                continue;
++              unsigned int base = count * count;
++              struct dynarray_int dyn;
++              dynarray_int_init (&dyn);
++              for (unsigned int i = 0; i < count; ++i)
++                {
++                  if (do_add)
++                    dynarray_int_add (&dyn, base + i);
++                  else
++                    {
++                      int *place = dynarray_int_emplace (&dyn);
++                      TEST_VERIFY_EXIT (place != NULL);
++                      *place = base + i;
++                    }
++                  TEST_VERIFY_EXIT (!dynarray_int_has_failed (&dyn));
++                  TEST_VERIFY_EXIT (dynarray_int_size (&dyn) == i + 1);
++                  TEST_VERIFY_EXIT (dynarray_int_size (&dyn)
++                                    <= dyn.dynarray_header.allocated);
++                }
++              TEST_VERIFY_EXIT (dynarray_int_size (&dyn) == count);
++              TEST_VERIFY_EXIT (count <= dyn.dynarray_header.allocated);
++              if (count > 0)
++                {
++                  TEST_VERIFY (dynarray_int_begin (&dyn)
++                               == dynarray_int_at (&dyn, 0));
++                  TEST_VERIFY (dynarray_int_end (&dyn)
++                               == dynarray_int_at (&dyn, count - 1) + 1);
++                }
++              unsigned final_count;
++              bool heap_array = dyn.dynarray_header.array != dyn.scratch;
++              if (do_remove_last)
++                {
++                  dynarray_int_remove_last (&dyn);
++                  if (count == 0)
++                    final_count = 0;
++                  else
++                    final_count = count - 1;
++                }
++              else
++                final_count = count;
++              if (final_count > 0)
++                {
++                  TEST_VERIFY (dynarray_int_begin (&dyn)
++                               == dynarray_int_at (&dyn, 0));
++                  TEST_VERIFY (dynarray_int_end (&dyn)
++                               == dynarray_int_at (&dyn, final_count - 1) + 1);
++                }
++              if (do_clear)
++                {
++                  dynarray_int_clear (&dyn);
++                  final_count = 0;
++                }
++              TEST_VERIFY_EXIT (!dynarray_int_has_failed (&dyn));
++              TEST_VERIFY_EXIT ((dyn.dynarray_header.array != dyn.scratch)
++                                == heap_array);
++              TEST_VERIFY_EXIT (dynarray_int_size (&dyn) == final_count);
++              TEST_VERIFY_EXIT (dyn.dynarray_header.allocated >= final_count);
++              if (!do_clear)
++                for (unsigned int i = 0; i < final_count; ++i)
++                  TEST_VERIFY_EXIT (*dynarray_int_at (&dyn, i) == base + i);
++              if (do_finalize)
++                {
++                  struct int_array result = { (int *) (uintptr_t) -1, -1 };
++                  TEST_VERIFY_EXIT (dynarray_int_finalize (&dyn, &result));
++                  CHECK_INIT_STATE (int, &dyn);
++                  TEST_VERIFY_EXIT (result.length == final_count);
++                  if (final_count == 0)
++                    TEST_VERIFY_EXIT (result.array == NULL);
++                  else
++                    {
++                      TEST_VERIFY_EXIT (result.array != NULL);
++                      TEST_VERIFY_EXIT (result.array != (int *) (uintptr_t) -1);
++                      TEST_VERIFY_EXIT
++                        (malloc_usable_size (result.array)
++                         >= final_count * sizeof (result.array[0]));
++                      for (unsigned int i = 0; i < final_count; ++i)
++                        TEST_VERIFY_EXIT (result.array[i] == base + i);
++                      free (result.array);
++                    }
++                }
++              else /* !do_finalize */
++                {
++                  dynarray_int_free (&dyn);
++                  CHECK_INIT_STATE (int, &dyn);
++                }
++            }
++}
++
++/* Test dynamic arrays with char * elements (with automatic
++   deallocation of the pointed-to strings).  */
++static void
++test_str (void)
++{
++  /* Empty array.  */
++  {
++    struct dynarray_str dyn;
++    dynarray_str_init (&dyn);
++    CHECK_EMPTY (str, &dyn);
++  }
++
++  /* Empty array with finalization.  */
++  {
++    struct dynarray_str dyn;
++    dynarray_str_init (&dyn);
++    TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++    struct str_array result = { (char **) (uintptr_t) -1, -1 };
++    TEST_VERIFY_EXIT (dynarray_str_finalize (&dyn, &result));
++    CHECK_INIT_STATE (str, &dyn);
++    TEST_VERIFY_EXIT (result.array == NULL);
++    TEST_VERIFY_EXIT (result.length == 0);
++  }
++
++  /* Non-empty array tests.
++
++     do_add: Switch between emplace (false) and add (true).
++     do_finalize: Perform finalize call at the end.
++     do_clear: Perform clear call at the end.
++     do_remove_last: Perform remove_last call after adding elements.
++     count: Number of elements added to the array.  */
++  for (int do_add = 0; do_add < 2; ++do_add)
++    for (int do_finalize = 0; do_finalize < 2; ++do_finalize)
++      for (int do_clear = 0; do_clear < 2; ++do_clear)
++        for (int do_remove_last = 0; do_remove_last < 2; ++do_remove_last)
++          for (unsigned int count = 0; count < max_count; ++count)
++            {
++              if (do_remove_last && count == 0)
++                continue;
++              unsigned int base = count * count;
++              struct dynarray_str dyn;
++              dynarray_str_init (&dyn);
++              for (unsigned int i = 0; i < count; ++i)
++                {
++                  char *item = xasprintf ("%d", base + i);
++                  if (do_add)
++                    dynarray_str_add (&dyn, item);
++                  else
++                    {
++                      char **place = dynarray_str_emplace (&dyn);
++                      TEST_VERIFY_EXIT (place != NULL);
++                      TEST_VERIFY_EXIT (*place == NULL);
++                      *place = item;
++                    }
++                  TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++                  TEST_VERIFY_EXIT (dynarray_str_size (&dyn) == i + 1);
++                  TEST_VERIFY_EXIT (dynarray_str_size (&dyn)
++                                    <= dyn.dynarray_header.allocated);
++                }
++              TEST_VERIFY_EXIT (dynarray_str_size (&dyn) == count);
++              TEST_VERIFY_EXIT (count <= dyn.dynarray_header.allocated);
++              if (count > 0)
++                {
++                  TEST_VERIFY (dynarray_str_begin (&dyn)
++                               == dynarray_str_at (&dyn, 0));
++                  TEST_VERIFY (dynarray_str_end (&dyn)
++                               == dynarray_str_at (&dyn, count - 1) + 1);
++                }
++              unsigned final_count;
++              bool heap_array = dyn.dynarray_header.array != dyn.scratch;
++              if (do_remove_last)
++                {
++                  dynarray_str_remove_last (&dyn);
++                  if (count == 0)
++                    final_count = 0;
++                  else
++                    final_count = count - 1;
++                }
++              else
++                final_count = count;
++              if (final_count > 0)
++                {
++                  TEST_VERIFY (dynarray_str_begin (&dyn)
++                               == dynarray_str_at (&dyn, 0));
++                  TEST_VERIFY (dynarray_str_end (&dyn)
++                               == dynarray_str_at (&dyn, final_count - 1) + 1);
++                }
++              if (do_clear)
++                {
++                  dynarray_str_clear (&dyn);
++                  final_count = 0;
++                }
++              TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++              TEST_VERIFY_EXIT ((dyn.dynarray_header.array != dyn.scratch)
++                                == heap_array);
++              TEST_VERIFY_EXIT (dynarray_str_size (&dyn) == final_count);
++              TEST_VERIFY_EXIT (dyn.dynarray_header.allocated >= final_count);
++              if (!do_clear)
++                for (unsigned int i = 0; i < count - do_remove_last; ++i)
++                  {
++                    char *expected = xasprintf ("%d", base + i);
++                    const char *actual = *dynarray_str_at (&dyn, i);
++                    TEST_VERIFY_EXIT (strcmp (actual, expected) == 0);
++                    free (expected);
++                  }
++              if (do_finalize)
++                {
++                  struct str_array result = { (char **) (uintptr_t) -1, -1 };
++                  TEST_VERIFY_EXIT (dynarray_str_finalize (&dyn, &result));
++                  CHECK_INIT_STATE (str, &dyn);
++                  TEST_VERIFY_EXIT (result.length == final_count);
++                  if (final_count == 0)
++                    TEST_VERIFY_EXIT (result.array == NULL);
++                  else
++                    {
++                      TEST_VERIFY_EXIT (result.array != NULL);
++                      TEST_VERIFY_EXIT (result.array
++                                        != (char **) (uintptr_t) -1);
++                      TEST_VERIFY_EXIT (result.length
++                                        == count - do_remove_last);
++                      TEST_VERIFY_EXIT
++                        (malloc_usable_size (result.array)
++                         >= final_count * sizeof (result.array[0]));
++                      for (unsigned int i = 0; i < count - do_remove_last; ++i)
++                        {
++                          char *expected = xasprintf ("%d", base + i);
++                          char *actual = result.array[i];
++                          TEST_VERIFY_EXIT (strcmp (actual, expected) == 0);
++                          free (expected);
++                          free (actual);
++                        }
++                      free (result.array);
++                    }
++                }
++              else /* !do_finalize */
++                {
++                  dynarray_str_free (&dyn);
++                  CHECK_INIT_STATE (str, &dyn);
++                }
++            }
++
++  /* Test resizing.  */
++  {
++    enum { count = 2131 };
++    struct dynarray_str dyn;
++    dynarray_str_init (&dyn);
++
++    /* From length 0 to length 1.  */
++    TEST_VERIFY (dynarray_str_resize (&dyn, 1));
++    TEST_VERIFY (dynarray_str_size (&dyn) == 1);
++    TEST_VERIFY (*dynarray_str_at (&dyn, 0) == NULL);
++    *dynarray_str_at (&dyn, 0) = xstrdup ("allocated");
++    dynarray_str_free (&dyn);
++
++    /* From length 0 to length 1 and 2.  */
++    TEST_VERIFY (dynarray_str_resize (&dyn, 1));
++    TEST_VERIFY (dynarray_str_size (&dyn) == 1);
++    TEST_VERIFY (*dynarray_str_at (&dyn, 0) == NULL);
++    *dynarray_str_at (&dyn, 0) = xstrdup ("allocated0");
++    TEST_VERIFY (dynarray_str_resize (&dyn, 2));
++    TEST_VERIFY (dynarray_str_size (&dyn) == 2);
++    TEST_VERIFY (strcmp (*dynarray_str_at (&dyn, 0), "allocated0") == 0);
++    TEST_VERIFY (*dynarray_str_at (&dyn, 1) == NULL);
++    *dynarray_str_at (&dyn, 1) = xstrdup ("allocated1");
++    TEST_VERIFY (dynarray_str_resize (&dyn, count));
++    TEST_VERIFY (dynarray_str_size (&dyn) == count);
++    TEST_VERIFY (strcmp (*dynarray_str_at (&dyn, 0), "allocated0") == 0);
++    TEST_VERIFY (strcmp (*dynarray_str_at (&dyn, 1), "allocated1") == 0);
++    for (int i = 2; i < count; ++i)
++      TEST_VERIFY (*dynarray_str_at (&dyn, i) == NULL);
++    *dynarray_str_at (&dyn, count - 1) = xstrdup ("allocated2");
++    TEST_VERIFY (dynarray_str_resize (&dyn, 3));
++    TEST_VERIFY (strcmp (*dynarray_str_at (&dyn, 0), "allocated0") == 0);
++    TEST_VERIFY (strcmp (*dynarray_str_at (&dyn, 1), "allocated1") == 0);
++    TEST_VERIFY (*dynarray_str_at (&dyn, 2) == NULL);
++    dynarray_str_free (&dyn);
++  }
++}
++
++/* Verify that DYNARRAY_ELEMENT_INIT has an effect.  */
++static void
++test_long_init (void)
++{
++  enum { count = 2131 };
++  {
++    struct dynarray_long dyn;
++    dynarray_long_init (&dyn);
++    for (int i = 0; i < count; ++i)
++      {
++        long *place = dynarray_long_emplace (&dyn);
++        TEST_VERIFY_EXIT (place != NULL);
++        TEST_VERIFY (*place == 17);
++      }
++    TEST_VERIFY (dynarray_long_size (&dyn) == count);
++    for (int i = 0; i < count; ++i)
++      TEST_VERIFY (*dynarray_long_at (&dyn, i) == 17);
++    dynarray_long_free (&dyn);
++
++    TEST_VERIFY (dynarray_long_resize (&dyn, 1));
++    TEST_VERIFY (dynarray_long_size (&dyn) == 1);
++    TEST_VERIFY (*dynarray_long_at (&dyn, 0) == 17);
++    *dynarray_long_at (&dyn, 0) = 18;
++    dynarray_long_free (&dyn);
++    TEST_VERIFY (dynarray_long_resize (&dyn, 1));
++    TEST_VERIFY (dynarray_long_size (&dyn) == 1);
++    TEST_VERIFY (*dynarray_long_at (&dyn, 0) == 17);
++    TEST_VERIFY (dynarray_long_resize (&dyn, 2));
++    TEST_VERIFY (dynarray_long_size (&dyn) == 2);
++    TEST_VERIFY (*dynarray_long_at (&dyn, 0) == 17);
++    TEST_VERIFY (*dynarray_long_at (&dyn, 1) == 17);
++    *dynarray_long_at (&dyn, 0) = 18;
++    TEST_VERIFY (dynarray_long_resize (&dyn, count));
++    TEST_VERIFY (dynarray_long_size (&dyn) == count);
++    TEST_VERIFY (*dynarray_long_at (&dyn, 0) == 18);
++    for (int i = 1; i < count; ++i)
++      TEST_VERIFY (*dynarray_long_at (&dyn, i) == 17);
++    dynarray_long_free (&dyn);
++  }
++
++  /* Similar, but without an on-stack scratch region
++     (DYNARRAY_INITIAL_SIZE is 0).  */
++  {
++    struct dynarray_long_noscratch dyn;
++    dynarray_long_noscratch_init (&dyn);
++    struct long_array result;
++    TEST_VERIFY_EXIT (dynarray_long_noscratch_finalize (&dyn, &result));
++    TEST_VERIFY (result.array == NULL);
++    TEST_VERIFY (result.length == 0);
++
++    /* Test with one element.  */
++    {
++      long *place = dynarray_long_noscratch_emplace (&dyn);
++      TEST_VERIFY_EXIT (place != NULL);
++      TEST_VERIFY (*place == 23);
++    }
++    TEST_VERIFY (dynarray_long_noscratch_size (&dyn) == 1);
++    TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, 0) == 23);
++    TEST_VERIFY_EXIT (dynarray_long_noscratch_finalize (&dyn, &result));
++    TEST_VERIFY_EXIT (result.array != NULL);
++    TEST_VERIFY (result.length == 1);
++    TEST_VERIFY (result.array[0] == 23);
++    free (result.array);
++
++    for (int i = 0; i < count; ++i)
++      {
++        long *place = dynarray_long_noscratch_emplace (&dyn);
++        TEST_VERIFY_EXIT (place != NULL);
++        TEST_VERIFY (*place == 23);
++        if (i == 0)
++          *place = 29;
++      }
++    TEST_VERIFY (dynarray_long_noscratch_size (&dyn) == count);
++    TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, 0) == 29);
++    for (int i = 1; i < count; ++i)
++      TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, i) == 23);
++    TEST_VERIFY_EXIT (dynarray_long_noscratch_finalize (&dyn, &result));
++    TEST_VERIFY_EXIT (result.array != NULL);
++    TEST_VERIFY (result.length == count);
++    TEST_VERIFY (result.array[0] == 29);
++    for (int i = 1; i < count; ++i)
++      TEST_VERIFY (result.array[i] == 23);
++    free (result.array);
++
++    TEST_VERIFY (dynarray_long_noscratch_resize (&dyn, 1));
++    TEST_VERIFY (dynarray_long_noscratch_size (&dyn) == 1);
++    TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, 0) == 23);
++    *dynarray_long_noscratch_at (&dyn, 0) = 24;
++    dynarray_long_noscratch_free (&dyn);
++    TEST_VERIFY (dynarray_long_noscratch_resize (&dyn, 1));
++    TEST_VERIFY (dynarray_long_noscratch_size (&dyn) == 1);
++    TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, 0) == 23);
++    TEST_VERIFY (dynarray_long_noscratch_resize (&dyn, 2));
++    TEST_VERIFY (dynarray_long_noscratch_size (&dyn) == 2);
++    TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, 0) == 23);
++    TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, 1) == 23);
++    *dynarray_long_noscratch_at (&dyn, 0) = 24;
++    TEST_VERIFY (dynarray_long_noscratch_resize (&dyn, count));
++    TEST_VERIFY (dynarray_long_noscratch_size (&dyn) == count);
++    TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, 0) == 24);
++    for (int i = 1; i < count; ++i)
++      TEST_VERIFY (*dynarray_long_noscratch_at (&dyn, i) == 23);
++    dynarray_long_noscratch_free (&dyn);
++  }
++}
++
++/* Test NUL-terminated string construction with the add function and
++   the simple finalize function.  */
++static void
++test_zstr (void)
++{
++  /* Totally empty string (no NUL termination).  */
++  {
++    struct zstr s;
++    zstr_init (&s);
++    char *result = zstr_finalize (&s, NULL);
++    TEST_VERIFY (result == NULL);
++    TEST_VERIFY (zstr_size (&s) == 0);
++    size_t length = 1;
++    result = zstr_finalize (&s, &length);
++    TEST_VERIFY (result == NULL);
++    TEST_VERIFY (length == 0);
++    TEST_VERIFY (zstr_size (&s) == 0);
++  }
++
++  /* Empty string.  */
++  {
++    struct zstr s;
++    zstr_init (&s);
++    zstr_add (&s, '\0');
++    char *result = zstr_finalize (&s, NULL);
++    TEST_VERIFY_EXIT (result != NULL);
++    TEST_VERIFY (*result == '\0');
++    TEST_VERIFY (zstr_size (&s) == 0);
++    free (result);
++
++    zstr_add (&s, '\0');
++    size_t length = 1;
++    result = zstr_finalize (&s, &length);
++    TEST_VERIFY_EXIT (result != NULL);
++    TEST_VERIFY (*result == '\0');
++    TEST_VERIFY (length == 1);
++    TEST_VERIFY (zstr_size (&s) == 0);
++    free (result);
++  }
++
++  /* A few characters.  */
++  {
++    struct zstr s;
++    zstr_init (&s);
++    zstr_add (&s, 'A');
++    zstr_add (&s, 'b');
++    zstr_add (&s, 'c');
++    zstr_add (&s, '\0');
++    char *result = zstr_finalize (&s, NULL);
++    TEST_VERIFY_EXIT (result != NULL);
++    TEST_VERIFY (strcmp (result, "Abc") == 0);
++    TEST_VERIFY (zstr_size (&s) == 0);
++    free (result);
++
++    zstr_add (&s, 'X');
++    zstr_add (&s, 'y');
++    zstr_add (&s, 'z');
++    zstr_add (&s, '\0');
++    size_t length = 1;
++    result = zstr_finalize (&s, &length);
++    TEST_VERIFY_EXIT (result != NULL);
++    TEST_VERIFY (strcmp (result, "Xyz") == 0);
++    TEST_VERIFY (length == 4);
++    TEST_VERIFY (zstr_size (&s) == 0);
++    free (result);
++  }
++}
++
++static int
++do_test (void)
++{
++  mtrace ();
++  test_int ();
++  test_str ();
++  test_long_init ();
++  test_zstr ();
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff -purN glibc/malloc.org/tst-dynarray-fail.c glibc/malloc/tst-dynarray-fail.c
+--- glibc/malloc.org/tst-dynarray-fail.c	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/tst-dynarray-fail.c	2017-07-07 14:08:10.307882465 +0000
+@@ -0,0 +1,418 @@
++/* Test allocation failures with dynamic arrays.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++/* This test is separate from tst-dynarray because it cannot run under
++   valgrind.  */
++
++#include "tst-dynarray-shared.h"
++
++#include <mcheck.h>
++#include <stdio.h>
++#include <support/check.h>
++#include <support/support.h>
++#include <support/xunistd.h>
++#include <sys/mman.h>
++#include <sys/resource.h>
++#include <unistd.h>
++
++/* Data structure to fill up the heap.  */
++struct heap_filler
++{
++  struct heap_filler *next;
++};
++
++/* Allocate objects until the heap is full.  */
++static struct heap_filler *
++fill_heap (void)
++{
++  size_t pad = 4096;
++  struct heap_filler *head = NULL;
++  while (true)
++    {
++      struct heap_filler *new_head = malloc (sizeof (*new_head) + pad);
++      if (new_head == NULL)
++        {
++          if (pad > 0)
++            {
++              /* Try again with smaller allocations.  */
++              pad = 0;
++              continue;
++            }
++          else
++            break;
++        }
++      new_head->next = head;
++      head = new_head;
++    }
++  return head;
++}
++
++/* Free the heap-filling allocations, so that we can continue testing
++   and detect memory leaks elsewhere.  */
++static void
++free_fill_heap (struct heap_filler *head)
++{
++  while (head != NULL)
++    {
++      struct heap_filler *next = head->next;
++      free (head);
++      head = next;
++    }
++}
++
++/* Check allocation failures for int arrays (without an element free
++   function).  */
++static void
++test_int_fail (void)
++{
++  /* Exercise failure in add/emplace.
++
++     do_add: Use emplace (false) or add (true) to add elements.
++     do_finalize: Perform finalization at the end (instead of free).  */
++  for (int do_add = 0; do_add < 2; ++do_add)
++    for (int do_finalize = 0; do_finalize < 2; ++do_finalize)
++      {
++        struct dynarray_int dyn;
++        dynarray_int_init (&dyn);
++        size_t count = 0;
++        while (true)
++          {
++            if (do_add)
++              {
++                dynarray_int_add (&dyn, 0);
++                if (dynarray_int_has_failed (&dyn))
++                  break;
++              }
++            else
++              {
++                int *place = dynarray_int_emplace (&dyn);
++                if (place == NULL)
++                  break;
++                TEST_VERIFY_EXIT (!dynarray_int_has_failed (&dyn));
++                *place = 0;
++              }
++            ++count;
++          }
++        printf ("info: %s: failure after %zu elements\n", __func__, count);
++        TEST_VERIFY_EXIT (dynarray_int_has_failed (&dyn));
++        if (do_finalize)
++          {
++            struct int_array result = { (int *) (uintptr_t) -1, -1 };
++            TEST_VERIFY_EXIT (!dynarray_int_finalize (&dyn, &result));
++            TEST_VERIFY_EXIT (result.array == (int *) (uintptr_t) -1);
++            TEST_VERIFY_EXIT (result.length == (size_t) -1);
++          }
++        else
++          dynarray_int_free (&dyn);
++        CHECK_INIT_STATE (int, &dyn);
++      }
++
++  /* Exercise failure in finalize.  */
++  for (int do_add = 0; do_add < 2; ++do_add)
++    {
++      struct dynarray_int dyn;
++      dynarray_int_init (&dyn);
++      for (unsigned int i = 0; i < 10000; ++i)
++        {
++          if (do_add)
++            {
++              dynarray_int_add (&dyn, i);
++              TEST_VERIFY_EXIT (!dynarray_int_has_failed (&dyn));
++            }
++          else
++            {
++              int *place = dynarray_int_emplace (&dyn);
++              TEST_VERIFY_EXIT (place != NULL);
++              *place = i;
++            }
++        }
++      TEST_VERIFY_EXIT (!dynarray_int_has_failed (&dyn));
++      struct heap_filler *heap_filler = fill_heap ();
++      struct int_array result = { (int *) (uintptr_t) -1, -1 };
++      TEST_VERIFY_EXIT (!dynarray_int_finalize (&dyn, &result));
++      TEST_VERIFY_EXIT (result.array == (int *) (uintptr_t) -1);
++      TEST_VERIFY_EXIT (result.length == (size_t) -1);
++      CHECK_INIT_STATE (int, &dyn);
++      free_fill_heap (heap_filler);
++    }
++
++  /* Exercise failure in resize.  */
++  {
++    struct dynarray_int dyn;
++    dynarray_int_init (&dyn);
++    struct heap_filler *heap_filler = fill_heap ();
++    TEST_VERIFY (!dynarray_int_resize (&dyn, 1000));
++    TEST_VERIFY (dynarray_int_has_failed (&dyn));
++    free_fill_heap (heap_filler);
++
++    dynarray_int_init (&dyn);
++    TEST_VERIFY (dynarray_int_resize (&dyn, 1));
++    heap_filler = fill_heap ();
++    TEST_VERIFY (!dynarray_int_resize (&dyn, 1000));
++    TEST_VERIFY (dynarray_int_has_failed (&dyn));
++    free_fill_heap (heap_filler);
++
++    dynarray_int_init (&dyn);
++    TEST_VERIFY (dynarray_int_resize (&dyn, 1000));
++    heap_filler = fill_heap ();
++    TEST_VERIFY (!dynarray_int_resize (&dyn, 2000));
++    TEST_VERIFY (dynarray_int_has_failed (&dyn));
++    free_fill_heap (heap_filler);
++  }
++}
++
++/* Check allocation failures for char * arrays (which automatically
++   free the pointed-to strings).  */
++static void
++test_str_fail (void)
++{
++  /* Exercise failure in add/emplace.
++
++     do_add: Use emplace (false) or add (true) to add elements.
++     do_finalize: Perform finalization at the end (instead of free).  */
++  for (int do_add = 0; do_add < 2; ++do_add)
++    for (int do_finalize = 0; do_finalize < 2; ++do_finalize)
++      {
++        struct dynarray_str dyn;
++        dynarray_str_init (&dyn);
++        size_t count = 0;
++        while (true)
++          {
++            char **place;
++            if (do_add)
++              {
++                dynarray_str_add (&dyn, NULL);
++                if (dynarray_str_has_failed (&dyn))
++                  break;
++                else
++                  place = dynarray_str_at (&dyn, dynarray_str_size (&dyn) - 1);
++              }
++            else
++              {
++                place = dynarray_str_emplace (&dyn);
++                if (place == NULL)
++                  break;
++              }
++            TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++            TEST_VERIFY_EXIT (*place == NULL);
++            *place = strdup ("placeholder");
++            if (*place == NULL)
++              {
++                /* Second loop to wait for failure of
++                   dynarray_str_emplace.  */
++                while (true)
++                  {
++                    if (do_add)
++                      {
++                        dynarray_str_add (&dyn, NULL);
++                        if (dynarray_str_has_failed (&dyn))
++                          break;
++                      }
++                    else
++                      {
++                        char **place = dynarray_str_emplace (&dyn);
++                        if (place == NULL)
++                          break;
++                        TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++                        *place = NULL;
++                      }
++                    ++count;
++                  }
++                break;
++              }
++            ++count;
++          }
++        printf ("info: %s: failure after %zu elements\n", __func__, count);
++        TEST_VERIFY_EXIT (dynarray_str_has_failed (&dyn));
++        if (do_finalize)
++          {
++            struct str_array result = { (char **) (uintptr_t) -1, -1 };
++            TEST_VERIFY_EXIT (!dynarray_str_finalize (&dyn, &result));
++            TEST_VERIFY_EXIT (result.array == (char **) (uintptr_t) -1);
++            TEST_VERIFY_EXIT (result.length == (size_t) -1);
++          }
++        else
++          dynarray_str_free (&dyn);
++        TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++        TEST_VERIFY_EXIT (dyn.dynarray_header.array == dyn.scratch);
++        TEST_VERIFY_EXIT (dynarray_str_size (&dyn) == 0);
++        TEST_VERIFY_EXIT (dyn.dynarray_header.allocated > 0);
++      }
++
++  /* Exercise failure in finalize.  */
++  for (int do_add = 0; do_add < 2; ++do_add)
++    {
++      struct dynarray_str dyn;
++      dynarray_str_init (&dyn);
++      for (unsigned int i = 0; i < 1000; ++i)
++        {
++          if (do_add)
++            dynarray_str_add (&dyn, xstrdup ("placeholder"));
++          else
++            {
++              char **place = dynarray_str_emplace (&dyn);
++              TEST_VERIFY_EXIT (place != NULL);
++              TEST_VERIFY_EXIT (*place == NULL);
++              *place = xstrdup ("placeholder");
++            }
++        }
++      TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++      struct heap_filler *heap_filler = fill_heap ();
++      struct str_array result = { (char **) (uintptr_t) -1, -1 };
++      TEST_VERIFY_EXIT (!dynarray_str_finalize (&dyn, &result));
++      TEST_VERIFY_EXIT (result.array == (char **) (uintptr_t) -1);
++      TEST_VERIFY_EXIT (result.length == (size_t) -1);
++      TEST_VERIFY_EXIT (!dynarray_str_has_failed (&dyn));
++      TEST_VERIFY_EXIT (dyn.dynarray_header.array == dyn.scratch);
++      TEST_VERIFY_EXIT (dynarray_str_size (&dyn) == 0);
++      TEST_VERIFY_EXIT (dyn.dynarray_header.allocated > 0);
++      free_fill_heap (heap_filler);
++    }
++
++  /* Exercise failure in resize.  */
++  {
++    struct dynarray_str dyn;
++    dynarray_str_init (&dyn);
++    struct heap_filler *heap_filler = fill_heap ();
++    TEST_VERIFY (!dynarray_str_resize (&dyn, 1000));
++    TEST_VERIFY (dynarray_str_has_failed (&dyn));
++    free_fill_heap (heap_filler);
++
++    dynarray_str_init (&dyn);
++    TEST_VERIFY (dynarray_str_resize (&dyn, 1));
++    *dynarray_str_at (&dyn, 0) = xstrdup ("allocated");
++    heap_filler = fill_heap ();
++    TEST_VERIFY (!dynarray_str_resize (&dyn, 1000));
++    TEST_VERIFY (dynarray_str_has_failed (&dyn));
++    free_fill_heap (heap_filler);
++
++    dynarray_str_init (&dyn);
++    TEST_VERIFY (dynarray_str_resize (&dyn, 1000));
++    *dynarray_str_at (&dyn, 0) = xstrdup ("allocated");
++    heap_filler = fill_heap ();
++    TEST_VERIFY (!dynarray_str_resize (&dyn, 2000));
++    TEST_VERIFY (dynarray_str_has_failed (&dyn));
++    free_fill_heap (heap_filler);
++  }
++}
++
++/* Test if mmap can allocate a page.  This is necessary because
++   setrlimit does not fail even if it reduces the RLIMIT_AS limit
++   below what is currently needed by the process.  */
++static bool
++mmap_works (void)
++{
++  void *ptr =  mmap (NULL, 1, PROT_READ | PROT_WRITE,
++                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
++  if (ptr == MAP_FAILED)
++    return false;
++  xmunmap (ptr, 1);
++  return true;
++}
++
++/* Set the RLIMIT_AS limit to the value in *LIMIT.  */
++static void
++xsetrlimit_as (const struct rlimit *limit)
++{
++  if (setrlimit (RLIMIT_AS, limit) != 0)
++    FAIL_EXIT1 ("setrlimit (RLIMIT_AS, %lu): %m",
++                (unsigned long) limit->rlim_cur);
++}
++
++/* Approximately this many bytes can be allocated after
++   reduce_rlimit_as has run.  */
++enum { as_limit_reserve = 2 * 1024 * 1024 };
++
++/* Limit the size of the process, so that memory allocation in
++   allocate_thread will eventually fail, without impacting the entire
++   system.  By default, a dynamic limit which leaves room for 2 MiB is
++   activated.  The TEST_RLIMIT_AS environment variable overrides
++   it.  */
++static void
++reduce_rlimit_as (void)
++{
++  struct rlimit limit;
++  if (getrlimit (RLIMIT_AS, &limit) != 0)
++    FAIL_EXIT1 ("getrlimit (RLIMIT_AS) failed: %m");
++
++  /* Use the TEST_RLIMIT_AS setting if available.  */
++  {
++    long target = 0;
++    const char *variable = "TEST_RLIMIT_AS";
++    const char *target_str = getenv (variable);
++    if (target_str != NULL)
++      {
++        target = atoi (target_str);
++        if (target <= 0)
++          FAIL_EXIT1 ("invalid %s value: \"%s\"", variable, target_str);
++        printf ("info: setting RLIMIT_AS to %ld MiB\n", target);
++        target *= 1024 * 1024;      /* Convert to megabytes.  */
++        limit.rlim_cur = target;
++        xsetrlimit_as (&limit);
++        return;
++      }
++  }
++
++  /* Otherwise, try to find the limit with a binary search.  */
++  unsigned long low = 1 << 20;
++  limit.rlim_cur = low;
++  xsetrlimit_as (&limit);
++
++  /* Find working upper limit.  */
++  unsigned long high = 1 << 30;
++  while (true)
++    {
++      limit.rlim_cur = high;
++      xsetrlimit_as (&limit);
++      if (mmap_works ())
++        break;
++      if (2 * high < high)
++        FAIL_EXIT1 ("cannot find upper AS limit");
++      high *= 2;
++    }
++
++  /* Perform binary search.  */
++  while ((high - low) > 128 * 1024)
++    {
++      unsigned long middle = (low + high) / 2;
++      limit.rlim_cur = middle;
++      xsetrlimit_as (&limit);
++      if (mmap_works ())
++        high = middle;
++      else
++        low = middle;
++    }
++
++  unsigned long target = high + as_limit_reserve;
++  limit.rlim_cur = target;
++  xsetrlimit_as (&limit);
++  printf ("info: RLIMIT_AS limit: %lu bytes\n", target);
++}
++
++static int
++do_test (void)
++{
++  mtrace ();
++  reduce_rlimit_as ();
++  test_int_fail ();
++  test_str_fail ();
++  return 0;
++}
++
++#define TIMEOUT 90
++#include <support/test-driver.c>
+diff -purN glibc/malloc.org/tst-dynarray-shared.h glibc/malloc/tst-dynarray-shared.h
+--- glibc/malloc.org/tst-dynarray-shared.h	1970-01-01 00:00:00.000000000 +0000
++++ glibc/malloc/tst-dynarray-shared.h	2017-07-07 14:08:10.307882465 +0000
+@@ -0,0 +1,80 @@
++/* Shared definitions for dynarray tests.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <stddef.h>
++
++struct int_array
++{
++  int *array;
++  size_t length;
++};
++
++#define DYNARRAY_STRUCT dynarray_int
++#define DYNARRAY_ELEMENT int
++#define DYNARRAY_PREFIX dynarray_int_
++#define DYNARRAY_FINAL_TYPE struct int_array
++#include <malloc/dynarray-skeleton.c>
++
++struct str_array
++{
++  char **array;
++  size_t length;
++};
++
++#define DYNARRAY_STRUCT dynarray_str
++#define DYNARRAY_ELEMENT char *
++#define DYNARRAY_ELEMENT_FREE(ptr) free (*ptr)
++#define DYNARRAY_PREFIX dynarray_str_
++#define DYNARRAY_FINAL_TYPE struct str_array
++#include <malloc/dynarray-skeleton.c>
++
++/* Check that *DYN is equivalent to its initial state.  */
++#define CHECK_INIT_STATE(type, dyn)                             \
++  ({                                                            \
++    TEST_VERIFY_EXIT (!dynarray_##type##_has_failed (dyn));     \
++    TEST_VERIFY_EXIT (dynarray_##type##_size (dyn) == 0);       \
++    TEST_VERIFY_EXIT ((dyn)->dynarray_header.array              \
++                      == (dyn)->scratch);                       \
++    TEST_VERIFY_EXIT ((dyn)->dynarray_header.allocated > 0);    \
++    (void) 0;                                                   \
++  })
++
++/* Check that *DYN behaves as if it is in its initial state.  */
++#define CHECK_EMPTY(type, dyn)                                       \
++  ({                                                                 \
++    CHECK_INIT_STATE (type, (dyn));                                  \
++    dynarray_##type##_free (dyn);                                    \
++    CHECK_INIT_STATE (type, (dyn));                                  \
++    dynarray_##type##_clear (dyn);                                   \
++    CHECK_INIT_STATE (type, (dyn));                                  \
++    dynarray_##type##_remove_last (dyn);                             \
++    CHECK_INIT_STATE (type, (dyn));                                  \
++    dynarray_##type##_mark_failed (dyn);                             \
++    TEST_VERIFY_EXIT (dynarray_##type##_has_failed (dyn));           \
++    dynarray_##type##_clear (dyn);                                   \
++    TEST_VERIFY_EXIT (dynarray_##type##_has_failed (dyn));           \
++    dynarray_##type##_remove_last (dyn);                             \
++    TEST_VERIFY_EXIT (dynarray_##type##_has_failed (dyn));           \
++    TEST_VERIFY_EXIT (dynarray_##type##_emplace (dyn) == NULL);      \
++    dynarray_##type##_free (dyn);                                    \
++    CHECK_INIT_STATE (type, (dyn));                                  \
++    /* These functions should not assert.  */                        \
++    dynarray_##type##_begin (dyn);                                   \
++    dynarray_##type##_end (dyn);                                     \
++    (void) 0;                                                        \
++  })
+diff -purN glibc/malloc.org/tst-interpose-aux.c glibc/malloc/tst-interpose-aux.c
+--- glibc/malloc.org/tst-interpose-aux.c	2017-02-05 15:28:43.000000000 +0000
++++ glibc/malloc/tst-interpose-aux.c	2017-07-07 14:08:10.307882465 +0000
+@@ -21,6 +21,7 @@
+ #include <errno.h>
+ #include <stdarg.h>
+ #include <stddef.h>
++#include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -112,11 +113,11 @@ check_for_allocations (void)
+     {
+       /* Make sure that malloc is called at least once from libc.  */
+       void *volatile ptr = strdup ("ptr");
+-      free (ptr);
+       /* Compiler barrier.  The strdup function calls malloc, which
+          updates allocation_index, but strdup is marked __THROW, so
+          the compiler could optimize away the reload.  */
+       __asm__ volatile ("" ::: "memory");
++      free (ptr);
+       /* If the allocation count is still zero, it means we did not
+          interpose malloc successfully.  */
+       if (allocation_index == 0)
+diff -purN glibc/malloc.org/Versions glibc/malloc/Versions
+--- glibc/malloc.org/Versions	2017-02-05 15:28:43.000000000 +0000
++++ glibc/malloc/Versions	2017-07-07 14:08:10.302882549 +0000
+@@ -72,5 +75,22 @@ libc {
+     __libc_scratch_buffer_grow;
+     __libc_scratch_buffer_grow_preserve;
+     __libc_scratch_buffer_set_array_size;
++
++    # Internal name for reallocarray
++
++
++    # dynarray support
++    __libc_dynarray_at_failure;
++    __libc_dynarray_emplace_enlarge;
++    __libc_dynarray_finalize;
++    __libc_dynarray_resize;
++    __libc_dynarray_resize_clear;
++
++    # struct alloc_buffer support
++    __libc_alloc_buffer_alloc_array;
++    __libc_alloc_buffer_allocate;
++    __libc_alloc_buffer_copy_bytes;
++    __libc_alloc_buffer_copy_string;
++    __libc_alloc_buffer_create_failure;
+   }
+ }
+--- /dev/null	2017-06-20 22:44:58.033988373 +0000
++++ glibc/include/alloc_buffer.h	2017-07-07 14:08:10.050886754 +0000
+@@ -0,0 +1,367 @@
++/* Allocation from a fixed-size buffer.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++/* Allocation buffers are used to carve out sub-allocations from a
++   larger allocation.  Their primary application is in writing NSS
++   modules, which receive a caller-allocated buffer in which they are
++   expected to store variable-length results:
++
++     void *buffer = ...;
++     size_t buffer_size = ...;
++
++     struct alloc_buffer buf = alloc_buffer_create (buffer, buffer_size);
++     result->gr_name = alloc_buffer_copy_string (&buf, name);
++
++     // Allocate a list of group_count groups and copy strings into it.
++     char **group_list = alloc_buffer_alloc_array
++       (&buf, char *, group_count  + 1);
++     if (group_list == NULL)
++       return ...; // Request a larger buffer.
++     for (int i = 0; i < group_count; ++i)
++       group_list[i] = alloc_buffer_copy_string (&buf, group_list_src[i]);
++     group_list[group_count] = NULL;
++     ...
++
++     if (alloc_buffer_has_failed (&buf))
++       return ...; // Request a larger buffer.
++     result->gr_mem = group_list;
++     ...
++
++   Note that it is not necessary to check the results of individual
++   allocation operations if the returned pointer is not dereferenced.
++   Allocation failure is sticky, so one check using
++   alloc_buffer_has_failed at the end covers all previous failures.
++
++   A different use case involves combining multiple heap allocations
++   into a single, large one.  In the following example, an array of
++   doubles and an array of ints is allocated:
++
++     size_t double_array_size = ...;
++     size_t int_array_size = ...;
++
++     void *heap_ptr;
++     struct alloc_buffer buf = alloc_buffer_allocate
++       (double_array_size * sizeof (double) + int_array_size * sizeof (int),
++        &heap_ptr);
++     _Static_assert (__alignof__ (double) >= __alignof__ (int),
++                     "no padding after double array");
++     double *double_array = alloc_buffer_alloc_array
++       (&buf, double, double_array_size);
++     int *int_array = alloc_buffer_alloc_array (&buf, int, int_array_size);
++     if (alloc_buffer_has_failed (&buf))
++       return ...; // Report error.
++     ...
++     free (heap_ptr);
++
++   The advantage over manual coding is that the computation of the
++   allocation size does not need an overflow check.  In case of an
++   overflow, one of the subsequent allocations from the buffer will
++   fail.  The initial size computation is checked for consistency at
++   run time, too.  */
++
++#ifndef _ALLOC_BUFFER_H
++#define _ALLOC_BUFFER_H
++
++#include <inttypes.h>
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdlib.h>
++#include <sys/param.h>
++
++/* struct alloc_buffer objects refer to a region of bytes in memory of a
++   fixed size.  The functions below can be used to allocate single
++   objects and arrays from this memory region, or write to its end.
++   On allocation failure (or if an attempt to write beyond the end of
++   the buffer with one of the copy functions), the buffer enters a
++   failed state.
++
++   struct alloc_buffer objects can be copied.  The backing buffer will
++   be shared, but the current write position will be independent.
++
++   Conceptually, the memory region consists of a current write pointer
++   and a limit, beyond which the write pointer cannot move.  */
++struct alloc_buffer
++{
++  /* uintptr_t is used here to simplify the alignment code, and to
++     avoid issues undefined subtractions if the buffer covers more
++     than half of the address space (which would result in differences
++     which could not be represented as a ptrdiff_t value).  */
++  uintptr_t __alloc_buffer_current;
++  uintptr_t __alloc_buffer_end;
++};
++
++enum
++  {
++    /* The value for the __alloc_buffer_current member which marks the
++       buffer as invalid (together with a zero-length buffer).  */
++    __ALLOC_BUFFER_INVALID_POINTER = 0,
++  };
++
++/* Internal function.  Terminate the process using __libc_fatal.  */
++void __libc_alloc_buffer_create_failure (void *start, size_t size);
++
++/* Create a new allocation buffer.  The byte range from START to START
++   + SIZE - 1 must be valid, and the allocation buffer allocates
++   objects from that range.  If START is NULL (so that SIZE must be
++   0), the buffer is marked as failed immediately.  */
++static inline struct alloc_buffer
++alloc_buffer_create (void *start, size_t size)
++{
++  uintptr_t current = (uintptr_t) start;
++  uintptr_t end = (uintptr_t) start + size;
++  if (end < current)
++    __libc_alloc_buffer_create_failure (start, size);
++  return (struct alloc_buffer) { current, end };
++}
++
++/* Internal function.  See alloc_buffer_allocate below.  */
++struct alloc_buffer __libc_alloc_buffer_allocate (size_t size, void **pptr)
++  __attribute__ ((nonnull (2)));
++
++/* Allocate a buffer of SIZE bytes using malloc.  The returned buffer
++   is in a failed state if malloc fails.  *PPTR points to the start of
++   the buffer and can be used to free it later, after the returned
++   buffer has been freed.  */
++static __always_inline __attribute__ ((nonnull (2)))
++struct alloc_buffer alloc_buffer_allocate (size_t size, void **pptr)
++{
++  return __libc_alloc_buffer_allocate (size, pptr);
++}
++
++/* Mark the buffer as failed.  */
++static inline void __attribute__ ((nonnull (1)))
++alloc_buffer_mark_failed (struct alloc_buffer *buf)
++{
++  buf->__alloc_buffer_current = __ALLOC_BUFFER_INVALID_POINTER;
++  buf->__alloc_buffer_end = __ALLOC_BUFFER_INVALID_POINTER;
++}
++
++/* Return the remaining number of bytes in the buffer.  */
++static __always_inline __attribute__ ((nonnull (1))) size_t
++alloc_buffer_size (const struct alloc_buffer *buf)
++{
++  return buf->__alloc_buffer_end - buf->__alloc_buffer_current;
++}
++
++/* Return true if the buffer has been marked as failed.  */
++static inline bool __attribute__ ((nonnull (1)))
++alloc_buffer_has_failed (const struct alloc_buffer *buf)
++{
++  return buf->__alloc_buffer_current == __ALLOC_BUFFER_INVALID_POINTER;
++}
++
++/* Add a single byte to the buffer (consuming the space for this
++   byte).  Mark the buffer as failed if there is not enough room.  */
++static inline void __attribute__ ((nonnull (1)))
++alloc_buffer_add_byte (struct alloc_buffer *buf, unsigned char b)
++{
++  if (__glibc_likely (buf->__alloc_buffer_current < buf->__alloc_buffer_end))
++    {
++      *(unsigned char *) buf->__alloc_buffer_current = b;
++      ++buf->__alloc_buffer_current;
++    }
++  else
++    alloc_buffer_mark_failed (buf);
++}
++
++/* Obtain a pointer to LENGTH bytes in BUF, and consume these bytes.
++   NULL is returned if there is not enough room, and the buffer is
++   marked as failed, or if the buffer has already failed.
++   (Zero-length allocations from an empty buffer which has not yet
++   failed succeed.)  */
++static inline __attribute__ ((nonnull (1))) void *
++alloc_buffer_alloc_bytes (struct alloc_buffer *buf, size_t length)
++{
++  if (length <= alloc_buffer_size (buf))
++    {
++      void *result = (void *) buf->__alloc_buffer_current;
++      buf->__alloc_buffer_current += length;
++      return result;
++    }
++  else
++    {
++      alloc_buffer_mark_failed (buf);
++      return NULL;
++    }
++}
++
++/* Internal function.  Statically assert that the type size is
++   constant and valid.  */
++static __always_inline size_t
++__alloc_buffer_assert_size (size_t size)
++{
++  if (!__builtin_constant_p (size))
++    {
++      __errordecl (error, "type size is not constant");
++      error ();
++    }
++  else if (size == 0)
++    {
++      __errordecl (error, "type size is zero");
++      error ();
++    }
++  return size;
++}
++
++/* Internal function.  Statically assert that the type alignment is
++   constant and valid.  */
++static __always_inline size_t
++__alloc_buffer_assert_align (size_t align)
++{
++  if (!__builtin_constant_p (align))
++    {
++      __errordecl (error, "type alignment is not constant");
++      error ();
++    }
++  else if (align == 0)
++    {
++      __errordecl (error, "type alignment is zero");
++      error ();
++    }
++  else if (!powerof2 (align))
++    {
++      __errordecl (error, "type alignment is not a power of two");
++      error ();
++    }
++  return align;
++}
++
++/* Internal function.  Obtain a pointer to an object.  */
++static inline __attribute__ ((nonnull (1))) void *
++__alloc_buffer_alloc (struct alloc_buffer *buf, size_t size, size_t align)
++{
++  if (size == 1 && align == 1)
++    return alloc_buffer_alloc_bytes (buf, size);
++
++  size_t current = buf->__alloc_buffer_current;
++  size_t aligned = roundup (current, align);
++  size_t new_current = aligned + size;
++  if (aligned >= current        /* No overflow in align step.  */
++      && new_current >= size    /* No overflow in size computation.  */
++      && new_current <= buf->__alloc_buffer_end) /* Room in buffer.  */
++    {
++      buf->__alloc_buffer_current = new_current;
++      return (void *) aligned;
++    }
++  else
++    {
++      alloc_buffer_mark_failed (buf);
++      return NULL;
++    }
++}
++
++/* Obtain a TYPE * pointer to an object in BUF of TYPE.  Consume these
++   bytes from the buffer.  Return NULL and mark the buffer as failed
++   if if there is not enough room in the buffer, or if the buffer has
++   failed before.  */
++#define alloc_buffer_alloc(buf, type)				\
++  ((type *) __alloc_buffer_alloc				\
++   (buf, __alloc_buffer_assert_size (sizeof (type)),		\
++    __alloc_buffer_assert_align (__alignof__ (type))))
++
++/* Internal function.  Obtain a pointer to an object which is
++   subsequently added.  */
++static inline const __attribute__ ((nonnull (1))) void *
++__alloc_buffer_next (struct alloc_buffer *buf, size_t align)
++{
++  if (align == 1)
++    return (const void *) buf->__alloc_buffer_current;
++
++  size_t current = buf->__alloc_buffer_current;
++  size_t aligned = roundup (current, align);
++  if (aligned >= current        /* No overflow in align step.  */
++      && aligned <= buf->__alloc_buffer_end) /* Room in buffer.  */
++    {
++      buf->__alloc_buffer_current = aligned;
++      return (const void *) aligned;
++    }
++  else
++    {
++      alloc_buffer_mark_failed (buf);
++      return NULL;
++    }
++}
++
++/* Like alloc_buffer_alloc, but do not advance the pointer beyond the
++   object (so a subseqent call to alloc_buffer_next or
++   alloc_buffer_alloc returns the same pointer).  Note that the buffer
++   is still aligned according to the requirements of TYPE.  The effect
++   of this function is similar to allocating a zero-length array from
++   the buffer.  */
++#define alloc_buffer_next(buf, type)				\
++  ((const type *) __alloc_buffer_next				\
++   (buf, __alloc_buffer_assert_align (__alignof__ (type))))
++
++/* Internal function.  Allocate an array.  */
++void * __libc_alloc_buffer_alloc_array (struct alloc_buffer *buf,
++					size_t size, size_t align,
++					size_t count)
++  __attribute__ ((nonnull (1)));
++
++/* Obtain a TYPE * pointer to an array of COUNT objects in BUF of
++   TYPE.  Consume these bytes from the buffer.  Return NULL and mark
++   the buffer as failed if if there is not enough room in the buffer,
++   or if the buffer has failed before.  (Zero-length allocations from
++   an empty buffer which has not yet failed succeed.)  */
++#define alloc_buffer_alloc_array(buf, type, count)       \
++  ((type *) __libc_alloc_buffer_alloc_array		 \
++   (buf, __alloc_buffer_assert_size (sizeof (type)),	 \
++    __alloc_buffer_assert_align (__alignof__ (type)),	 \
++    count))
++
++/* Internal function.  See alloc_buffer_copy_bytes below.  */
++struct alloc_buffer __libc_alloc_buffer_copy_bytes (struct alloc_buffer,
++						    const void *, size_t)
++  __attribute__ ((nonnull (2)));
++
++/* Copy SIZE bytes starting at SRC into the buffer.  If there is not
++   enough room in the buffer, the buffer is marked as failed.  No
++   alignment of the buffer is performed.  */
++static inline __attribute__ ((nonnull (1, 2))) void
++alloc_buffer_copy_bytes (struct alloc_buffer *buf, const void *src, size_t size)
++{
++  *buf = __libc_alloc_buffer_copy_bytes (*buf, src, size);
++}
++
++/* Internal function.  See alloc_buffer_copy_string below.  */
++struct alloc_buffer __libc_alloc_buffer_copy_string (struct alloc_buffer,
++						     const char *)
++  __attribute__ ((nonnull (2)));
++
++/* Copy the string at SRC into the buffer, including its null
++   terminator.  If there is not enough room in the buffer, the buffer
++   is marked as failed.  Return a pointer to the string.  */
++static inline __attribute__ ((nonnull (1, 2))) char *
++alloc_buffer_copy_string (struct alloc_buffer *buf, const char *src)
++{
++  char *result = (char *) buf->__alloc_buffer_current;
++  *buf = __libc_alloc_buffer_copy_string (*buf, src);
++  if (alloc_buffer_has_failed (buf))
++    result = NULL;
++  return result;
++}
++
++#ifndef _ISOMAC
++libc_hidden_proto (__libc_alloc_buffer_alloc_array)
++libc_hidden_proto (__libc_alloc_buffer_allocate)
++libc_hidden_proto (__libc_alloc_buffer_copy_bytes)
++libc_hidden_proto (__libc_alloc_buffer_copy_string)
++libc_hidden_proto (__libc_alloc_buffer_create_failure)
++#endif
++
++#endif /* _ALLOC_BUFFER_H */

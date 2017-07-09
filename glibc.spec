@@ -3,12 +3,14 @@
 
 Name:           glibc
 Version:        2.25
-Release:        126
+Release:        127
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
 Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.25.tar.gz
+
+
 Patch1:         0001-Check-if-SSE-is-available-with-HAS_CPU_FEATURE.patch
 Patch2:         0002-Add-sysdeps-x86-dl-procinfo.c.patch
 Patch3:         0003-x86-Set-dl_platform-and-dl_hwcap-from-CPU-features.patch
@@ -18,17 +20,16 @@ Patch7:         ldconfig-format-new.patch
 Patch8:         0001-sysdeps-unix-Add-support-for-usr-lib32-as-a-system-l.patch
 Patch9:         nsswitch-altfiles.patch
 Patch10:        ld-so-cache-in-var.patch
-Patch11:	    fewerlocales.patch
+Patch11:	fewerlocales.patch
 Patch12:        mkdir-ldconfig.patch
 Patch13:        locale-var-cache.patch
-Patch14:	    nonscd.patch
-Patch15:	    fix_cpp_building.patch
-Patch16:	    alternate_trim.patch
-Patch17:	    madvise-bss.patch
-Patch19:	    spinaphore.patch
-Patch20:	    tzselect-proper-zone-file.patch
-Patch21:	    large-page-huge-page.patch
-Patch22:	    cve-2016-6323.nopatch
+Patch14:	nonscd.patch
+Patch16:	newmalloc.patch
+Patch17:	alternate_trim.patch
+Patch18:	madvise-bss.patch
+Patch19:	spinaphore.patch
+Patch20:	tzselect-proper-zone-file.patch
+Patch21:	large-page-huge-page.patch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
 Patch25:	prefer_erms.patch
@@ -171,9 +172,9 @@ GNU C library extra components.
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
-#%patch15 -p1
 %patch16 -p1
 %patch17 -p1
+%patch18 -p1
 %patch19 -p1
 %patch20 -p1
 %patch21 -p1
