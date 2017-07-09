@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        129
+Release:        130
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -237,6 +237,53 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 make %{?_smp_mflags}
 popd
 
+
+mkdir ../glibc-buildroot-avx2
+pushd ../glibc-buildroot-avx2
+
+export CFLAGS="-O3 -march=haswell -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000"
+unset LDFLAGS
+export LDFLAGS="-Wl,-z,max-page-size=0x1000"
+
+../glibc-2.25/configure \
+    --prefix=/usr \
+    --exec_prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/bin \
+    --libexecdir=/usr/lib64/glibc \
+    --datadir=/usr/share \
+    --sysconfdir=%{_sysconfdir} \
+    --sharedstatedir=%{_localstatedir}/lib \
+    --localstatedir=%{_localstatedir} \
+    --libdir=/usr/lib64 \
+    --localedir=/usr/lib/locale \
+    --infodir=/usr/share/info \
+    --mandir=/usr/share/man \
+    --disable-silent-rules \
+    --disable-dependency-tracking \
+    --enable-kernel=3.10 \
+    --without-cvs \
+    --disable-profile \
+    --disable-debug \
+    --without-gd  \
+    --enable-clocale=gnu \
+    --enable-add-ons \
+    --without-selinux \
+    --enable-obsolete-rpc \
+    --build=%{glibc_target} \
+    --host=%{glibc_target} \
+    --with-pkgversion='Clear Linux Software for Intel Architecture' \
+    --enable-lock-elision=yes \
+    --enable-bind-now  \
+    --enable-tunables \
+    --enable-stack-protector=strong \
+    libc_cv_slibdir=/usr/lib64 \
+    libc_cv_complocaledir=/usr/lib/locale
+
+make %{?_smp_mflags}
+popd
+
+
 mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
 
@@ -298,6 +345,14 @@ pushd ../glibc-buildroot32
 
 make install DESTDIR=%{buildroot} install_root=%{buildroot}
 popd
+
+pushd ../glibc-buildroot-avx2
+mkdir -p %{buildroot}/usr/lib64/haswell
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.25.so
+ln -s libm-2.25.so %{buildroot}/usr/lib64/haswell/libm.so.6
+popd
+
+
 
 pushd ../glibc-buildroot
 
@@ -538,6 +593,8 @@ popd
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
+
+/usr/lib64/haswell/libm*
 
 /sbin/ldconfig
 %exclude /var/cache/ldconfig
