@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        130
+Release:        131
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -40,6 +40,7 @@ Patch29:        nsswitch-altfiles-bugfix.patch
 Patch30:	e_log-fma3.patch
 
 Patch100:       CVE-2016-10228.nopatch
+Patch101:	CVE-2017-8804.nopatch
 
 BuildRequires:  grep
 BuildRequires:  texinfo
