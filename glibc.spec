@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        133
+Release:        134
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -250,6 +250,7 @@ mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
 export CFLAGS="-O3 -march=haswell -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000"
+export AFLAGS="-D__AVX__=1 -D__AVX2__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
