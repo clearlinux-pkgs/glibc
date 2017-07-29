@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        131
+Release:        132
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -39,6 +39,9 @@ Patch28:	stateless.patch
 Patch29:        nsswitch-altfiles-bugfix.patch
 Patch30:	e_log-fma3.patch
 Patch31:	common.patch	
+Patch32:	mathlto.patch
+
+
 Patch100:       CVE-2016-10228.nopatch
 Patch101:	CVE-2017-8804.nopatch
 
@@ -189,6 +192,8 @@ GNU C library extra components.
 %patch30 -p1
 # backport from upstream maintenance branch
 %patch31 -p1
+
+%patch32 -p1
 
 
 
@@ -352,7 +357,9 @@ popd
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
 cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.25.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.25.so
 ln -s libm-2.25.so %{buildroot}/usr/lib64/haswell/libm.so.6
+ln -s libmvec-2.25.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
 popd
 
 
