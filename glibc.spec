@@ -38,7 +38,7 @@ Patch27:	ldconfig-Os.patch
 Patch28:	stateless.patch
 Patch29:        nsswitch-altfiles-bugfix.patch
 Patch30:	e_log-fma3.patch
-
+Patch31:	common.patch	
 Patch100:       CVE-2016-10228.nopatch
 Patch101:	CVE-2017-8804.nopatch
 
@@ -187,6 +187,8 @@ GNU C library extra components.
 %patch28 -p1
 %patch29 -p1
 %patch30 -p1
+# backport from upstream maintenance branch
+%patch31 -p1
 
 
 
