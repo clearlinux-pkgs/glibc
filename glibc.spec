@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        135
+Release:        136
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -608,7 +608,7 @@ popd
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm*
+/usr/lib64/haswell/lib*
 
 /sbin/ldconfig
 %exclude /var/cache/ldconfig
