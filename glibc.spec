@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.25
-Release:        134
+Release:        135
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -203,9 +203,9 @@ export SOURCE_DATE_EPOCH=1484361909
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000"
+export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000 "
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000"
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
 ../glibc-2.25/configure \
     --prefix=/usr \
@@ -249,10 +249,10 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000"
+export CFLAGS="-O3 -march=haswell -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000 "
 export AFLAGS="-D__AVX__=1 -D__AVX2__=1"
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000"
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
 ../glibc-2.25/configure \
     --prefix=/usr \
@@ -296,6 +296,7 @@ popd
 mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
 
+unset AFLAGS
 export CFLAGS="-O3 -m32 -march=westmere -mtune=haswell -g2  -Wl,-z,max-page-size=0x1000 -m32"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
@@ -359,8 +360,10 @@ pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
 cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.25.so
 cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.25.so
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.25.so
 ln -s libm-2.25.so %{buildroot}/usr/lib64/haswell/libm.so.6
 ln -s libmvec-2.25.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+ln -s libcrypt-2.25.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
 popd
 
 
