@@ -44,6 +44,7 @@ Patch32:	mathlto.patch
 
 Patch100:       CVE-2016-10228.nopatch
 Patch101:	CVE-2017-8804.nopatch
+Patch102:   CVE-2017-1000366.patch
 
 BuildRequires:  grep
 BuildRequires:  texinfo
@@ -194,8 +195,7 @@ GNU C library extra components.
 %patch31 -p1
 
 %patch32 -p1
-
-
+%patch102 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
