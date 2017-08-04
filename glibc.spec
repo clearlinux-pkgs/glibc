@@ -2,18 +2,15 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.25
-Release:        140
+Version:        2.26
+Release:        141
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.25.tar.gz
+Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.26.tar.gz
 
 
-Patch1:         0001-Check-if-SSE-is-available-with-HAS_CPU_FEATURE.patch
-Patch2:         0002-Add-sysdeps-x86-dl-procinfo.c.patch
-Patch3:         0003-x86-Set-dl_platform-and-dl_hwcap-from-CPU-features.patch
 Patch4:         0001-Set-host.conf-multi-to-on-by-default.patch
 Patch6:         skip-error-msg-ld.so.conf.patch
 Patch7:         ldconfig-format-new.patch
@@ -24,7 +21,6 @@ Patch11:	fewerlocales.patch
 Patch12:        mkdir-ldconfig.patch
 Patch13:        locale-var-cache.patch
 Patch14:	nonscd.patch
-Patch16:	newmalloc.patch
 Patch17:	alternate_trim.patch
 Patch18:	madvise-bss.patch
 Patch19:	spinaphore.patch
@@ -32,19 +28,17 @@ Patch20:	tzselect-proper-zone-file.patch
 Patch21:	large-page-huge-page.patch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
-Patch25:	prefer_erms.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch27:	ldconfig-Os.patch
 Patch28:	stateless.patch
 Patch29:        nsswitch-altfiles-bugfix.patch
 Patch30:	e_log-fma3.patch
-Patch31:	common.patch	
 Patch32:	mathlto.patch
 
 
 Patch100:       CVE-2016-10228.nopatch
 Patch101:	CVE-2017-8804.nopatch
-Patch102:   CVE-2017-1000366.patch
+Patch102:   malloc-assert-3.patch
 
 BuildRequires:  grep
 BuildRequires:  texinfo
@@ -164,9 +158,6 @@ GNU C library extra components.
 
 %prep
 %setup -q
-%patch1 -p1
-%patch2 -p1
-%patch3 -p1
 %patch4 -p1
 %patch6 -p1
 %patch7 -p1
@@ -177,7 +168,6 @@ GNU C library extra components.
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
-%patch16 -p1
 %patch17 -p1
 %patch18 -p1
 %patch19 -p1
@@ -185,14 +175,11 @@ GNU C library extra components.
 %patch21 -p1
 #%patch23 -p1
 %patch24 -p1
-%patch25 -p1
 %patch26 -p1
 %patch27 -p1
 %patch28 -p1
 %patch29 -p1
 %patch30 -p1
-# backport from upstream maintenance branch
-%patch31 -p1
 
 %patch32 -p1
 %patch102 -p1
@@ -207,7 +194,7 @@ export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.25/configure \
+../glibc-2.26/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -254,7 +241,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.25/configure \
+../glibc-2.26/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -301,7 +288,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=haswell -g2  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.25/configure \
+../glibc-2.26/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -358,12 +345,12 @@ popd
 
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.25.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.25.so
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.25.so
-ln -s libm-2.25.so %{buildroot}/usr/lib64/haswell/libm.so.6
-ln -s libmvec-2.25.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-ln -s libcrypt-2.25.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.26.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.26.so
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.26.so
+ln -s libm-2.26.so %{buildroot}/usr/lib64/haswell/libm.so.6
+ln -s libmvec-2.26.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+ln -s libcrypt-2.26.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
 popd
 
 
@@ -560,50 +547,44 @@ popd
 /usr/lib64/gconv/UTF-7.so
 /usr/lib64/gconv/VISCII.so
 /usr/lib64/glibc/getconf
-/usr/lib64/ld-2.25.so
+/usr/lib64/ld-2.26.so
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/libBrokenLocale-2.25.so
+/usr/lib64/libBrokenLocale-2.26.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
-/usr/lib64/libanl-2.25.so
+/usr/lib64/libanl-2.26.so
 /usr/lib64/libanl.so.1
-/usr/lib64/libc-2.25.so
+/usr/lib64/libc-2.26.so
 /usr/lib64/libc.so.6
-/usr/lib64/libcidn-2.25.so
+/usr/lib64/libcidn-2.26.so
 /usr/lib64/libcidn.so.1
-/usr/lib64/libcrypt-2.25.so
+/usr/lib64/libcrypt-2.26.so
 /usr/lib64/libcrypt.so.1
-/usr/lib64/libdl-2.25.so
+/usr/lib64/libdl-2.26.so
 /usr/lib64/libdl.so.2
-/usr/lib64/libm-2.25.so
+/usr/lib64/libm-2.26.so
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
-/usr/lib64/libnsl-2.25.so
+/usr/lib64/libnsl-2.26.so
 /usr/lib64/libnsl.so.1
-/usr/lib64/libnss_compat-2.25.so
-/usr/lib64/libnss_compat.so.2
-/usr/lib64/libnss_dns-2.25.so
+/usr/lib64/libnss_dns-2.26.so
 /usr/lib64/libnss_dns.so.2
-/usr/lib64/libnss_files-2.25.so
+/usr/lib64/libnss_files-2.26.so
 /usr/lib64/libnss_files.so.2
-/usr/lib64/libnss_hesiod-2.25.so
+/usr/lib64/libnss_hesiod-2.26.so
 /usr/lib64/libnss_hesiod.so.2
-/usr/lib64/libnss_nis-2.25.so
-/usr/lib64/libnss_nis.so.2
-/usr/lib64/libnss_nisplus-2.25.so
-/usr/lib64/libnss_nisplus.so.2
 /usr/lib64/libpcprofile.so
-/usr/lib64/libpthread-2.25.so
+/usr/lib64/libpthread-2.26.so
 /usr/lib64/libpthread.so.0
-/usr/lib64/libresolv-2.25.so
+/usr/lib64/libresolv-2.26.so
 /usr/lib64/libresolv.so.2
-/usr/lib64/librt-2.25.so
+/usr/lib64/librt-2.26.so
 /usr/lib64/librt.so.1
 /usr/lib64/libthread_db-1.0.so
 /usr/lib64/libthread_db.so.1
-/usr/lib64/libutil-2.25.so
+/usr/lib64/libutil-2.26.so
 /usr/lib64/libutil.so.1
-/usr/lib64/libmvec-2.25.so
+/usr/lib64/libmvec-2.26.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
@@ -793,12 +774,9 @@ popd
 /usr/lib64/libm.so
 /usr/lib64/libmvec_nonshared.a
 /usr/lib64/libnsl.so
-/usr/lib64/libnss_compat.so
 /usr/lib64/libnss_dns.so
 /usr/lib64/libnss_files.so
 /usr/lib64/libnss_hesiod.so
-/usr/lib64/libnss_nis.so
-/usr/lib64/libnss_nisplus.so
 /usr/lib64/libpthread.so
 /usr/lib64/libpthread_nonshared.a
 /usr/lib64/libresolv.so
@@ -827,13 +805,11 @@ popd
 /usr/lib32/libdl.so.2
 /usr/lib32/libm.so.6
 /usr/lib32/libnsl.so.1
-/usr/lib32/libnss_compat.so.2
 /usr/lib32/libnss_db.so.2
 /usr/lib32/libnss_dns.so.2
 /usr/lib32/libnss_files.so.2
 /usr/lib32/libnss_hesiod.so.2
-/usr/lib32/libnss_nis.so.2
-/usr/lib32/libnss_nisplus.so.2
+/usr/lib32/libnss_hesiod.so.2
 /usr/lib32/libpthread.so.0
 /usr/lib32/libresolv.so.2
 /usr/lib32/librt.so.1
@@ -857,7 +833,7 @@ popd
 /usr/lib64/librpcsvc.a
 /usr/lib64/librt.a
 /usr/lib64/libutil.a
-/usr/lib64/libm-2.25.a
+/usr/lib64/libm-2.26.a
 /usr/lib64/libmvec.a
 
 
@@ -866,7 +842,7 @@ popd
 
 %files extras
 /usr/bin/makedb
-/usr/lib64/libnss_db-2.25.so
+/usr/lib64/libnss_db-2.26.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
 %exclude %{_localstatedir}/db/Makefile
