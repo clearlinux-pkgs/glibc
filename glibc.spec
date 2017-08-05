@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        141
+Release:        142
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -59,31 +59,34 @@ Group:          doc
 %description doc
 GNU C library.
 
-%package -n libc-bin
+%package bin
 License:        GPL-2.0 and LGPL-2.1
 Summary:        GNU C library
 Group:          libs
 Provides:       catchsegv
 Provides:       sln
 Provides:       ldd
+Provides:	libc-bin
 
-%description -n libc-bin
+%description bin
 GNU C library.
 
-%package -n libc6-locale
+%package locale
 License:        GPL-2.0 and LGPL-2.1
 Summary:        GNU C library
 Group:          libs
+Provides:	libc6-locale
 
-%description -n libc6-locale
+%description locale
 GNU C library.
 
-%package -n nscd
+%package nscd
 License:        GPL-2.0
 Summary:        GNU C library
 Group:          libs
+Provides:	nscd
 
-%description -n nscd
+%description nscd
 GNU C library.
 
 %package utils
@@ -108,18 +111,20 @@ Provides:       libsegfault
 Provides:       libthread-db1
 Provides:       rtld(GNU_HASH)
 Requires:       nss-altfiles-lib
+Provides:	libc6
 # to provide nss_altfiles for passwd aka root account
 Requires:       clr-systemd-config-data
 
 %description -n libc6
 GNU C library.
 
-%package -n libc6-dev
+%package dev
 License:        GPL-2.0
 Summary:        GNU C library
 Group:          devel
+Provides:	libc6-dev
 
-%description -n libc6-dev
+%description dev
 GNU C library.
 
 %package dev32
@@ -190,7 +195,7 @@ export SOURCE_DATE_EPOCH=1484361909
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000 "
+export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
@@ -236,7 +241,7 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=haswell -g2 -m64  -Wl,-z,max-page-size=0x1000 "
+export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 "
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -284,7 +289,7 @@ mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
 
 unset ASFLAGS
-export CFLAGS="-O3 -m32 -march=westmere -mtune=haswell -g2  -Wl,-z,max-page-size=0x1000 -m32"
+export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -g2  -Wl,-z,max-page-size=0x1000 -m32"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
@@ -396,12 +401,12 @@ pushd ../glibc-buildroot
 make check %{?_smp_mflags} || :
 popd
 
-%files -n libc-bin
+%files bin
 /usr/bin/catchsegv
 /usr/bin/ldd
 /sbin/sln
 
-%files -n nscd
+%files nscd
 /usr/sbin/nscd
 
 %files utils
@@ -595,7 +600,7 @@ popd
 %exclude /var/cache/ldconfig
 
 # TODO: SPLIT!
-%files -n libc6-locale
+%files locale
 /usr/lib/locale
 /usr/lib/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
@@ -736,7 +741,7 @@ popd
 /usr/lib64/gconv/GBGBK.so
 /usr/lib64/gconv/GBK.so
 
-%files -n libc6-dev
+%files dev
 /usr/include/*.h
 /usr/include/arpa/
 /usr/include/bits/
