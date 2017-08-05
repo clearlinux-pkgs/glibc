@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        143
+Release:        144
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -132,10 +132,21 @@ GNU C library.
 License:        GPL-2.0
 Summary:        GNU C library
 Group:          devel
-Provides:	libc6-dev
 
 %description dev
 GNU C library.
+
+%package -n libc6-dev
+License:        GPL-2.0
+Summary:        GNU C library
+Group:          devel
+Provides:	libc6-dev
+Requires: glibc-dev
+
+%description -n libc6-dev
+GNU C library.
+
+
 
 %package dev32
 License:        GPL-2.0
@@ -868,4 +879,6 @@ popd
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
 %exclude %{_localstatedir}/db/Makefile
+
+%files -n libc6-dev
 
