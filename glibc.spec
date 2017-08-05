@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        142
+Release:        143
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -67,6 +67,7 @@ Provides:       catchsegv
 Provides:       sln
 Provides:       ldd
 Provides:	libc-bin
+Obsoletes:	libc-bin
 
 %description bin
 GNU C library.
@@ -76,6 +77,7 @@ License:        GPL-2.0 and LGPL-2.1
 Summary:        GNU C library
 Group:          libs
 Provides:	libc6-locale
+Obsoletes:	libc6-locale
 
 %description locale
 GNU C library.
@@ -116,6 +118,14 @@ Provides:	libc6
 Requires:       clr-systemd-config-data
 
 %description -n libc6
+GNU C library.
+
+
+%package lib-avx2
+License:        GPL-2.0
+Summary:        GNU C library
+
+%description lib-avx2
 GNU C library.
 
 %package dev
@@ -353,9 +363,11 @@ mkdir -p %{buildroot}/usr/lib64/haswell
 cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.26.so
 cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.26.so
 cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.26.so
+cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.26.so
 ln -s libm-2.26.so %{buildroot}/usr/lib64/haswell/libm.so.6
 ln -s libmvec-2.26.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
 ln -s libcrypt-2.26.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+ln -s libc-2.26.so  %{buildroot}/usr/lib64/haswell/libc.so.6
 popd
 
 
@@ -594,10 +606,15 @@ popd
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/lib*
+/usr/lib64/haswell/libm-2.26.so
+/usr/lib64/haswell/libm.so.6
 
 /sbin/ldconfig
 %exclude /var/cache/ldconfig
+
+%files lib-avx2
+/usr/lib64/haswell/libmvec*
+/usr/lib64/haswell/libc*
 
 # TODO: SPLIT!
 %files locale
