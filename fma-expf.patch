@@ -1,0 +1,67 @@
+--- glibc-2.26/sysdeps/x86_64/fpu/e_expf.S~	2017-08-02 12:57:16.000000000 +0000
++++ glibc-2.26/sysdeps/x86_64/fpu/e_expf.S	2017-08-12 22:28:39.280435376 +0000
+@@ -46,6 +46,55 @@
+ 
+ 	.text
+ ENTRY(__ieee754_expf)
++#ifdef __FMA__
++	/* Input: single precision x in %xmm0 */
++	vcvtss2sd	%xmm0, %xmm1, %xmm1	/* Convert x to double precision */
++	vmovd	%xmm0, %ecx			/* Copy x */
++	vmovsd	L(DP_KLN2)(%rip), %xmm2		/* DP K/log(2) */
++	vfmadd213sd L(DP_RS)(%rip), %xmm1, %xmm2 /* DP x*K/log(2)+RS */
++	vmovsd	L(DP_P2)(%rip), %xmm3		/* DP P2 */
++	movl	%ecx, %eax			/* x */
++	andl	$0x7fffffff, %ecx		/* |x| */
++	lea	L(DP_T)(%rip), %rsi		/* address of table T[j] */
++	vmovsd	L(DP_P3)(%rip), %xmm4		/* DP P3 */
++
++	cmpl	$0x42ad496b, %ecx		/* |x|<125*log(2) ? */
++	jae	L(special_paths)
++
++	/* Here if |x|<125*log(2) */
++	cmpl	$0x31800000, %ecx		/* |x|<2^(-28) ? */
++	jb	L(small_arg)
++
++	/* Main path: here if 2^(-28)<=|x|<125*log(2) */
++	vcvtsd2ss %xmm2, %xmm2, %xmm2		/* SP x*K/log(2)+RS */
++	vmovd	  %xmm2, %eax			/* bits of n*K+j with trash */
++	vsubss	  L(SP_RS)(%rip), %xmm2, %xmm2 	/* SP t=round(x*K/log(2)) */
++	movl	  %eax, %edx			/* n*K+j with trash */
++	vcvtss2sd %xmm2, %xmm2, %xmm2	/* DP t */
++	andl	  $0x3f, %eax			/* bits of j */
++	vmovsd	  (%rsi,%rax,8), %xmm5		/* T[j] */
++	andl	  $0xffffffc0, %edx		/* bits of n */
++
++	vfmadd132sd  L(DP_NLN2K)(%rip), %xmm1, %xmm2 /*  DP y=x-t*log(2)/K */
++	vmulsd	    %xmm2, %xmm2, %xmm6		/* DP z=y*y */
++
++
++	vfmadd213sd L(DP_P1)(%rip), %xmm6, %xmm4 /* DP P3*z + P1 */
++	vfmadd213sd L(DP_P0)(%rip), %xmm6, %xmm3 /* DP P2*z+P0 */
++
++	addl	    $0x1fc0, %edx		/* bits of n + SP exponent bias */
++	shll	    $17, %edx			/* SP 2^n */
++	vmovd       %edx, %xmm1			/* SP 2^n */
++
++	vmulsd      %xmm6, %xmm4, %xmm4		/* DP (P3*z+P1)*z */
++
++	vfmadd213sd %xmm4, %xmm3, %xmm2		/* DP P(Y)  (P2*z+P0)*y */
++	vfmadd213sd %xmm5, %xmm5, %xmm2		/* DP T[j]*(P(y)+1) */
++	vcvtsd2ss   %xmm2, %xmm2, %xmm0		/* SP T[j]*(P(y)+1) */
++	vmulss	    %xmm1, %xmm0, %xmm0		/* SP result=2^n*(T[j]*(P(y)+1)) */
++	ret
++
++#else
+ 	/* Input: single precision x in %xmm0 */
+ 	cvtss2sd	%xmm0, %xmm1	/* Convert x to double precision */
+ 	movd	%xmm0, %ecx		/* Copy x */
+@@ -96,7 +145,7 @@
+ 	cvtsd2ss	%xmm0, %xmm0	/* SP T[j]*(P(y)+1) */
+ 	mulss	%xmm1, %xmm0		/* SP result=2^n*(T[j]*(P(y)+1)) */
+ 	ret
+-
++#endif
+ 	.p2align	4
+ L(small_arg):
+ 	/* Here if 0<=|x|<2^(-28) */

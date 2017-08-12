@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        146
+Release:        147
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -34,6 +34,7 @@ Patch28:	stateless.patch
 Patch29:        nsswitch-altfiles-bugfix.patch
 Patch30:	fma.patch
 Patch32:	mathlto.patch
+Patch33: 	fma-expf.patch
 
 
 Patch100:       CVE-2016-10228.nopatch
@@ -208,6 +209,8 @@ GNU C library extra components.
 %patch30 -p1
 
 %patch32 -p1
+%patch33 -p1
+
 %patch102 -p1
 
 %build
@@ -263,7 +266,7 @@ mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
 export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 "
-export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx"
+export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
