@@ -1,5 +1,9 @@
---- glibc-2.26/sysdeps/x86_64/fpu/e_expf.S~	2017-08-02 12:57:16.000000000 +0000
-+++ glibc-2.26/sysdeps/x86_64/fpu/e_expf.S	2017-08-12 22:28:39.280435376 +0000
+Improve expf performance by 57%
+
+Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+
+--- glibc-2.26/sysdeps/x86_64/fpu/e_expf.S.org	2017-08-13 23:59:08.004656899 +0000
++++ glibc-2.26/sysdeps/x86_64/fpu/e_expf.S	2017-08-14 00:01:46.345738621 +0000
 @@ -46,6 +46,55 @@
  
  	.text
@@ -8,8 +12,10 @@
 +	/* Input: single precision x in %xmm0 */
 +	vcvtss2sd	%xmm0, %xmm1, %xmm1	/* Convert x to double precision */
 +	vmovd	%xmm0, %ecx			/* Copy x */
-+	vmovsd	L(DP_KLN2)(%rip), %xmm2		/* DP K/log(2) */
-+	vfmadd213sd L(DP_RS)(%rip), %xmm1, %xmm2 /* DP x*K/log(2)+RS */
++	vmovss	L(SP_KLN2)(%rip), %xmm2		/* DP K/log(2) */
++	vmovsd	L(DP_KLN2)(%rip), %xmm7		/* DP K/log(2) */
++	vfmadd213ss L(SP_RS)(%rip), %xmm0, %xmm2 /* DP x*K/log(2)+RS */
++	vfmadd213sd L(DP_RD)(%rip), %xmm1, %xmm7 /* DP x*K/log(2)+RD */
 +	vmovsd	L(DP_P2)(%rip), %xmm3		/* DP P2 */
 +	movl	%ecx, %eax			/* x */
 +	andl	$0x7fffffff, %ecx		/* |x| */
@@ -24,11 +30,10 @@
 +	jb	L(small_arg)
 +
 +	/* Main path: here if 2^(-28)<=|x|<125*log(2) */
-+	vcvtsd2ss %xmm2, %xmm2, %xmm2		/* SP x*K/log(2)+RS */
++						// %xmm2 = SP x*K/log(2)+RS */
 +	vmovd	  %xmm2, %eax			/* bits of n*K+j with trash */
-+	vsubss	  L(SP_RS)(%rip), %xmm2, %xmm2 	/* SP t=round(x*K/log(2)) */
++	vsubsd	  L(DP_RD)(%rip), %xmm7, %xmm2 	/* DP t=round(x*K/log(2)) */
 +	movl	  %eax, %edx			/* n*K+j with trash */
-+	vcvtss2sd %xmm2, %xmm2, %xmm2	/* DP t */
 +	andl	  $0x3f, %eax			/* bits of j */
 +	vmovsd	  (%rsi,%rax,8), %xmm5		/* T[j] */
 +	andl	  $0xffffffc0, %edx		/* bits of n */
@@ -51,7 +56,6 @@
 +	vcvtsd2ss   %xmm2, %xmm2, %xmm0		/* SP T[j]*(P(y)+1) */
 +	vmulss	    %xmm1, %xmm0, %xmm0		/* SP result=2^n*(T[j]*(P(y)+1)) */
 +	ret
-+
 +#else
  	/* Input: single precision x in %xmm0 */
  	cvtss2sd	%xmm0, %xmm1	/* Convert x to double precision */
@@ -65,3 +69,38 @@
  	.p2align	4
  L(small_arg):
  	/* Here if 0<=|x|<2^(-28) */
+@@ -151,7 +200,9 @@
+ 	.p2align	4
+ L(near_under_or_overflow):
+ 	/* Here if 125*log(2)<=|x|<under/overflow bound */
++#ifndef __FMA__
+ 	cvtsd2ss	%xmm2, %xmm2	/* SP x*K/log(2)+RS */
++#endif
+ 	movd	%xmm2, %eax		/* bits of n*K+j with trash */
+ 	subss	L(SP_RS)(%rip), %xmm2	/* SP t=round(x*K/log(2)) */
+ 	movl	%eax, %edx		/* n*K+j with trash */
+@@ -272,6 +323,11 @@
+ 	.long	0x00000000, 0x41680000
+ 	.type L(DP_RS), @object
+ 	ASM_SIZE_DIRECTIVE(L(DP_RS))
++	.p2align 3
++L(DP_RD): /* double precision 2^52+2^51 */
++	.long	0x00000000, 0x43380000
++	.type L(DP_RD), @object
++	ASM_SIZE_DIRECTIVE(L(DP_RD))
+ 
+ 	.p2align 3
+ L(DP_P3): /* double precision polynomial coefficient P3 */
+@@ -298,6 +354,12 @@
+ 	ASM_SIZE_DIRECTIVE(L(DP_P0))
+ 
+ 	.p2align 2
++L(SP_KLN2): /* single precision K/log(2) */
++	.long	0x42b8aa3b
++	.type L(SP_KLN2), @object
++	ASM_SIZE_DIRECTIVE(L(SP_KLN2))
++
++	.p2align 2
+ L(SP_RANGE): /* single precision overflow/underflow bounds */
+ 	.long	0x42b17217	/* if x>this bound, then result overflows */
+ 	.long	0x42cff1b4	/* if x<this bound, then result underflows */
