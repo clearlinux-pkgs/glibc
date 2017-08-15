@@ -1,38 +1,115 @@
-Improve expf performance by 57%
+From 02e4202afc6f9d7a2e68e916b231ae7295c75263 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 15 Aug 2017 08:45:34 -0700
+Subject: [PATCH] x86-64: Optimize e_expf with FMA [BZ #21912]
 
-Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+	[BZ #21912]
+	* sysdeps/x86_64/fpu/multiarch/e_expf-fma.S: New file.
+	* sysdeps/x86_64/fpu/multiarch/e_expf-sse2.S: Likewise.
+	* sysdeps/x86_64/fpu/multiarch/e_expf.c: Likewise.
+	* sysdeps/x86_64/fpu/multiarch/ifunc-fma.h: Likewise.
+---
+ sysdeps/x86_64/fpu/multiarch/Makefile      |   4 +
+ sysdeps/x86_64/fpu/multiarch/e_expf-fma.S  | 325 +++++++++++++++++++++++++++++
+ sysdeps/x86_64/fpu/multiarch/e_expf-sse2.S |  24 +++
+ sysdeps/x86_64/fpu/multiarch/e_expf.c      |  26 +++
+ sysdeps/x86_64/fpu/multiarch/ifunc-fma.h   |  34 +++
+ 5 files changed, 413 insertions(+)
+ create mode 100644 sysdeps/x86_64/fpu/multiarch/e_expf-fma.S
+ create mode 100644 sysdeps/x86_64/fpu/multiarch/e_expf-sse2.S
+ create mode 100644 sysdeps/x86_64/fpu/multiarch/e_expf.c
+ create mode 100644 sysdeps/x86_64/fpu/multiarch/ifunc-fma.h
 
---- glibc-2.26/sysdeps/x86_64/fpu/e_expf.S.org	2017-08-13 23:59:08.004656899 +0000
-+++ glibc-2.26/sysdeps/x86_64/fpu/e_expf.S	2017-08-14 00:01:46.345738621 +0000
-@@ -46,6 +46,55 @@
+diff --git a/sysdeps/x86_64/fpu/multiarch/Makefile b/sysdeps/x86_64/fpu/multiarch/Makefile
+index e9e4f7c745..379215efa1 100644
+--- a/sysdeps/x86_64/fpu/multiarch/Makefile
++++ b/sysdeps/x86_64/fpu/multiarch/Makefile
+@@ -31,6 +31,10 @@ CFLAGS-slowpow-fma.c = -mfma -mavx2
+ CFLAGS-s_sin-fma.c = -mfma -mavx2
+ CFLAGS-s_tan-fma.c = -mfma -mavx2
  
- 	.text
- ENTRY(__ieee754_expf)
-+#ifdef __FMA__
-+	/* Input: single precision x in %xmm0 */
-+	vcvtss2sd	%xmm0, %xmm1, %xmm1	/* Convert x to double precision */
-+	vmovd	%xmm0, %ecx			/* Copy x */
-+	vmovss	L(SP_KLN2)(%rip), %xmm2		/* DP K/log(2) */
-+	vmovsd	L(DP_KLN2)(%rip), %xmm7		/* DP K/log(2) */
-+	vfmadd213ss L(SP_RS)(%rip), %xmm0, %xmm2 /* DP x*K/log(2)+RS */
-+	vfmadd213sd L(DP_RD)(%rip), %xmm1, %xmm7 /* DP x*K/log(2)+RD */
-+	vmovsd	L(DP_P2)(%rip), %xmm3		/* DP P2 */
-+	movl	%ecx, %eax			/* x */
-+	andl	$0x7fffffff, %ecx		/* |x| */
-+	lea	L(DP_T)(%rip), %rsi		/* address of table T[j] */
-+	vmovsd	L(DP_P3)(%rip), %xmm4		/* DP P3 */
++libm-sysdep_routines += e_expf-sse2 e_expf-fma
 +
-+	cmpl	$0x42ad496b, %ecx		/* |x|<125*log(2) ? */
++CFLAGS-e_expf-fma.c = -mfma -mavx2
++
+ libm-sysdep_routines += e_exp-fma4 e_log-fma4 e_pow-fma4 s_atan-fma4 \
+ 			e_asin-fma4 e_atan2-fma4 s_sin-fma4 s_tan-fma4 \
+ 			mplog-fma4 mpa-fma4 slowexp-fma4 slowpow-fma4 \
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_expf-fma.S b/sysdeps/x86_64/fpu/multiarch/e_expf-fma.S
+new file mode 100644
+index 0000000000..b27287c419
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/e_expf-fma.S
+@@ -0,0 +1,325 @@
++/* FMA/AVX2 version of IEEE 754 expf.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++
++/* Short algorithm description:
++ *
++ *  Let K = 64 (table size).
++ *       e^x  = 2^(x/log(2)) = 2^n * T[j] * (1 + P(y))
++ *  where
++ *       x = m*log(2)/K + y,    y in [0.0..log(2)/K]
++ *       m = n*K + j,           m,n,j - signed integer, j in [0..K-1]
++ *       values of 2^(j/K) are tabulated as T[j].
++ *
++ *       P(y) is a minimax polynomial approximation of expf(x)-1
++ *       on small interval [0.0..log(2)/K].
++ *
++ *       P(y) = P3*y*y*y*y + P2*y*y*y + P1*y*y + P0*y, calculated as
++ *       z = y*y;    P(y) = (P3*z + P1)*z + (P2*z + P0)*y
++ *
++ * Special cases:
++ *  expf(NaN) = NaN
++ *  expf(+INF) = +INF
++ *  expf(-INF) = 0
++ *  expf(x) = 1 for subnormals
++ *  for finite argument, only expf(0)=1 is exact
++ *  expf(x) overflows if x>88.7228317260742190
++ *  expf(x) underflows if x<-103.972076416015620
++ */
++
++	.section .text.fma,"ax",@progbits
++ENTRY(__ieee754_expf_fma)
++	/* Input: single precision x in %xmm0 */
++	vcvtss2sd %xmm0, %xmm0, %xmm1	/* Convert x to double precision */
++	vmovd	%xmm0, %ecx		/* Copy x */
++	vmovsd	L(DP_KLN2)(%rip), %xmm2	/* DP K/log(2) */
++	vfmadd213sd L(DP_RD)(%rip), %xmm1, %xmm2 /* DP x*K/log(2)+RD */
++	vmovsd	L(DP_P2)(%rip), %xmm3	/* DP P2 */
++	movl	%ecx, %eax		/* x */
++	andl	$0x7fffffff, %ecx	/* |x| */
++	lea	L(DP_T)(%rip), %rsi	/* address of table T[j] */
++	vmovsd	L(DP_P3)(%rip), %xmm4	/* DP P3 */
++
++	cmpl	$0x42ad496b, %ecx	/* |x|<125*log(2) ? */
 +	jae	L(special_paths)
 +
 +	/* Here if |x|<125*log(2) */
-+	cmpl	$0x31800000, %ecx		/* |x|<2^(-28) ? */
++	cmpl	$0x31800000, %ecx	/* |x|<2^(-28) ? */
 +	jb	L(small_arg)
 +
 +	/* Main path: here if 2^(-28)<=|x|<125*log(2) */
-+						// %xmm2 = SP x*K/log(2)+RS */
-+	vmovd	  %xmm2, %eax			/* bits of n*K+j with trash */
-+	vsubsd	  L(DP_RD)(%rip), %xmm7, %xmm2 	/* DP t=round(x*K/log(2)) */
++						/* %xmm2 = SP x*K/log(2)+RS */
++	vmovd	  %xmm2, %eax
++	vsubsd	  L(DP_RD)(%rip), %xmm2, %xmm2 	/* DP t=round(x*K/log(2)) */
 +	movl	  %eax, %edx			/* n*K+j with trash */
 +	andl	  $0x3f, %eax			/* bits of j */
 +	vmovsd	  (%rsi,%rax,8), %xmm5		/* T[j] */
@@ -56,51 +133,341 @@ Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
 +	vcvtsd2ss   %xmm2, %xmm2, %xmm0		/* SP T[j]*(P(y)+1) */
 +	vmulss	    %xmm1, %xmm0, %xmm0		/* SP result=2^n*(T[j]*(P(y)+1)) */
 +	ret
-+#else
- 	/* Input: single precision x in %xmm0 */
- 	cvtss2sd	%xmm0, %xmm1	/* Convert x to double precision */
- 	movd	%xmm0, %ecx		/* Copy x */
-@@ -96,7 +145,7 @@
- 	cvtsd2ss	%xmm0, %xmm0	/* SP T[j]*(P(y)+1) */
- 	mulss	%xmm1, %xmm0		/* SP result=2^n*(T[j]*(P(y)+1)) */
- 	ret
--
-+#endif
- 	.p2align	4
- L(small_arg):
- 	/* Here if 0<=|x|<2^(-28) */
-@@ -151,7 +200,9 @@
- 	.p2align	4
- L(near_under_or_overflow):
- 	/* Here if 125*log(2)<=|x|<under/overflow bound */
-+#ifndef __FMA__
- 	cvtsd2ss	%xmm2, %xmm2	/* SP x*K/log(2)+RS */
-+#endif
- 	movd	%xmm2, %eax		/* bits of n*K+j with trash */
- 	subss	L(SP_RS)(%rip), %xmm2	/* SP t=round(x*K/log(2)) */
- 	movl	%eax, %edx		/* n*K+j with trash */
-@@ -272,6 +323,11 @@
- 	.long	0x00000000, 0x41680000
- 	.type L(DP_RS), @object
- 	ASM_SIZE_DIRECTIVE(L(DP_RS))
++
++	.p2align	4
++L(small_arg):
++	/* Here if 0<=|x|<2^(-28) */
++	vaddss	L(SP_ONE)(%rip), %xmm0, %xmm0	/* 1.0 + x */
++	/* Return 1.0 with inexact raised, except for x==0 */
++	ret
++
++	.p2align	4
++L(special_paths):
++	/* Here if 125*log(2)<=|x| */
++	shrl	$31, %eax		/* Get sign bit of x, and depending on it: */
++	lea	L(SP_RANGE)(%rip), %rdx	/* load over/underflow bound */
++	cmpl	(%rdx,%rax,4), %ecx	/* |x|<under/overflow bound ? */
++	jbe	L(near_under_or_overflow)
++
++	/* Here if |x|>under/overflow bound */
++	cmpl	$0x7f800000, %ecx	/* |x| is finite ? */
++	jae	L(arg_inf_or_nan)
++
++	/* Here if |x|>under/overflow bound, and x is finite */
++	testl	%eax, %eax		/* sign of x nonzero ? */
++	je	L(res_overflow)
++
++	/* Here if -inf<x<underflow bound (x<0) */
++	vmovss	L(SP_SMALL)(%rip), %xmm0/* load small value 2^(-100) */
++	vmulss	%xmm0, %xmm0, %xmm0	/* Return underflowed result (zero or subnormal) */
++	ret
++
++	.p2align	4
++L(res_overflow):
++	/* Here if overflow bound<x<inf (x>0) */
++	vmovss	L(SP_LARGE)(%rip), %xmm0/* load large value 2^100 */
++	vmulss	%xmm0, %xmm0, %xmm0	/* Return overflowed result (Inf or max normal) */
++	ret
++
++	.p2align	4
++L(arg_inf_or_nan):
++	/* Here if |x| is Inf or NAN */
++	jne	L(arg_nan)	/* |x| is Inf ? */
++
++	/* Here if |x| is Inf */
++	lea	L(SP_INF_0)(%rip), %rdx	/* depending on sign of x: */
++	vmovss	(%rdx,%rax,4), %xmm0	/* return zero or Inf */
++	ret
++
++	.p2align	4
++L(arg_nan):
++	/* Here if |x| is NaN */
++	vaddss	%xmm0, %xmm0, %xmm0	/* Return x+x (raise invalid) */
++	ret
++
++	.p2align	4
++L(near_under_or_overflow):
++	/* Here if 125*log(2)<=|x|<under/overflow bound */
++	vmovd	%xmm2, %eax		/* bits of n*K+j with trash */
++	vsubsd	L(DP_RD)(%rip), %xmm2, %xmm2 	/* DP t=round(x*K/log(2)) */
++	movl	%eax, %edx		/* n*K+j with trash */
++	andl	$0x3f, %eax		/* bits of j */
++	vmulsd	L(DP_NLN2K)(%rip),%xmm2, %xmm2/* DP -t*log(2)/K */
++	andl	$0xffffffc0, %edx	/* bits of n */
++	vaddsd	%xmm1, %xmm2, %xmm0	/* DP y=x-t*log(2)/K */
++	vmulsd	%xmm0, %xmm0, %xmm2	/* DP z=y*y */
++	addl	$0xffc0, %edx		/* bits of n + DP exponent bias */
++	vfmadd213sd L(DP_P0)(%rip), %xmm2, %xmm3/* DP P2*z+P0 */
++	shlq	$46, %rdx		/* DP 2^n */
++	vfmadd213sd L(DP_P1)(%rip), %xmm2, %xmm4/* DP P3*z+P1 */
++	vmovq	%rdx, %xmm1		/* DP 2^n */
++	vmulsd	%xmm2, %xmm4, %xmm4	/* DP (P3*z+P1)*z */
++	vfmadd213sd %xmm4, %xmm3, %xmm0	/* DP (P2*z+P0)*y */
++	vmovsd	(%rsi,%rax,8), %xmm2
++	vfmadd213sd %xmm2, %xmm2, %xmm0 /* DP T[j]*(P(y)+1) */
++	vmulsd	%xmm1, %xmm0, %xmm0	/* DP result=2^n*(T[j]*(P(y)+1)) */
++	vcvtsd2ss %xmm0, %xmm0, %xmm0	/* convert result to single precision */
++	ret
++END(__ieee754_expf_fma)
++
++	.section .rodata, "a"
++	.p2align 3
++L(DP_T): /* table of double precision values 2^(j/K) for j=[0..K-1] */
++	.long	0x00000000, 0x3ff00000
++	.long	0x3e778061, 0x3ff02c9a
++	.long	0xd3158574, 0x3ff059b0
++	.long	0x18759bc8, 0x3ff08745
++	.long	0x6cf9890f, 0x3ff0b558
++	.long	0x32d3d1a2, 0x3ff0e3ec
++	.long	0xd0125b51, 0x3ff11301
++	.long	0xaea92de0, 0x3ff1429a
++	.long	0x3c7d517b, 0x3ff172b8
++	.long	0xeb6fcb75, 0x3ff1a35b
++	.long	0x3168b9aa, 0x3ff1d487
++	.long	0x88628cd6, 0x3ff2063b
++	.long	0x6e756238, 0x3ff2387a
++	.long	0x65e27cdd, 0x3ff26b45
++	.long	0xf51fdee1, 0x3ff29e9d
++	.long	0xa6e4030b, 0x3ff2d285
++	.long	0x0a31b715, 0x3ff306fe
++	.long	0xb26416ff, 0x3ff33c08
++	.long	0x373aa9cb, 0x3ff371a7
++	.long	0x34e59ff7, 0x3ff3a7db
++	.long	0x4c123422, 0x3ff3dea6
++	.long	0x21f72e2a, 0x3ff4160a
++	.long	0x6061892d, 0x3ff44e08
++	.long	0xb5c13cd0, 0x3ff486a2
++	.long	0xd5362a27, 0x3ff4bfda
++	.long	0x769d2ca7, 0x3ff4f9b2
++	.long	0x569d4f82, 0x3ff5342b
++	.long	0x36b527da, 0x3ff56f47
++	.long	0xdd485429, 0x3ff5ab07
++	.long	0x15ad2148, 0x3ff5e76f
++	.long	0xb03a5585, 0x3ff6247e
++	.long	0x82552225, 0x3ff66238
++	.long	0x667f3bcd, 0x3ff6a09e
++	.long	0x3c651a2f, 0x3ff6dfb2
++	.long	0xe8ec5f74, 0x3ff71f75
++	.long	0x564267c9, 0x3ff75feb
++	.long	0x73eb0187, 0x3ff7a114
++	.long	0x36cf4e62, 0x3ff7e2f3
++	.long	0x994cce13, 0x3ff82589
++	.long	0x9b4492ed, 0x3ff868d9
++	.long	0x422aa0db, 0x3ff8ace5
++	.long	0x99157736, 0x3ff8f1ae
++	.long	0xb0cdc5e5, 0x3ff93737
++	.long	0x9fde4e50, 0x3ff97d82
++	.long	0x82a3f090, 0x3ff9c491
++	.long	0x7b5de565, 0x3ffa0c66
++	.long	0xb23e255d, 0x3ffa5503
++	.long	0x5579fdbf, 0x3ffa9e6b
++	.long	0x995ad3ad, 0x3ffae89f
++	.long	0xb84f15fb, 0x3ffb33a2
++	.long	0xf2fb5e47, 0x3ffb7f76
++	.long	0x904bc1d2, 0x3ffbcc1e
++	.long	0xdd85529c, 0x3ffc199b
++	.long	0x2e57d14b, 0x3ffc67f1
++	.long	0xdcef9069, 0x3ffcb720
++	.long	0x4a07897c, 0x3ffd072d
++	.long	0xdcfba487, 0x3ffd5818
++	.long	0x03db3285, 0x3ffda9e6
++	.long	0x337b9b5f, 0x3ffdfc97
++	.long	0xe78b3ff6, 0x3ffe502e
++	.long	0xa2a490da, 0x3ffea4af
++	.long	0xee615a27, 0x3ffefa1b
++	.long	0x5b6e4540, 0x3fff5076
++	.long	0x819e90d8, 0x3fffa7c1
++	.type L(DP_T), @object
++	ASM_SIZE_DIRECTIVE(L(DP_T))
++
++	.section .rodata.cst8,"aM",@progbits,8
++	.p2align 3
++L(DP_KLN2): /* double precision K/log(2) */
++	.long	0x652b82fe, 0x40571547
++	.type L(DP_KLN2), @object
++	ASM_SIZE_DIRECTIVE(L(DP_KLN2))
++
++	.p2align 3
++L(DP_NLN2K): /* double precision -log(2)/K */
++	.long	0xfefa39ef, 0xbf862e42
++	.type L(DP_NLN2K), @object
++	ASM_SIZE_DIRECTIVE(L(DP_NLN2K))
++
++	.p2align 3
++L(DP_RS): /* double precision 2^23+2^22 */
++	.long	0x00000000, 0x41680000
++	.type L(DP_RS), @object
++	ASM_SIZE_DIRECTIVE(L(DP_RS))
 +	.p2align 3
 +L(DP_RD): /* double precision 2^52+2^51 */
 +	.long	0x00000000, 0x43380000
 +	.type L(DP_RD), @object
 +	ASM_SIZE_DIRECTIVE(L(DP_RD))
- 
- 	.p2align 3
- L(DP_P3): /* double precision polynomial coefficient P3 */
-@@ -298,6 +354,12 @@
- 	ASM_SIZE_DIRECTIVE(L(DP_P0))
- 
- 	.p2align 2
-+L(SP_KLN2): /* single precision K/log(2) */
-+	.long	0x42b8aa3b
-+	.type L(SP_KLN2), @object
-+	ASM_SIZE_DIRECTIVE(L(SP_KLN2))
++
++	.p2align 3
++L(DP_P3): /* double precision polynomial coefficient P3 */
++	.long	0xeb78fa85, 0x3fa56420
++	.type L(DP_P3), @object
++	ASM_SIZE_DIRECTIVE(L(DP_P3))
++
++	.p2align 3
++L(DP_P1): /* double precision polynomial coefficient P1 */
++	.long	0x008d6118, 0x3fe00000
++	.type L(DP_P1), @object
++	ASM_SIZE_DIRECTIVE(L(DP_P1))
++
++	.p2align 3
++L(DP_P2): /* double precision polynomial coefficient P2 */
++	.long	0xda752d4f, 0x3fc55550
++	.type L(DP_P2), @object
++	ASM_SIZE_DIRECTIVE(L(DP_P2))
++
++	.p2align 3
++L(DP_P0): /* double precision polynomial coefficient P0 */
++	.long	0xffffe7c6, 0x3fefffff
++	.type L(DP_P0), @object
++	ASM_SIZE_DIRECTIVE(L(DP_P0))
++
++	.p2align 3
++L(SP_RANGE): /* single precision overflow/underflow bounds */
++	.long	0x42b17217	/* if x>this bound, then result overflows */
++	.long	0x42cff1b4	/* if x<this bound, then result underflows */
++	.type L(SP_RANGE), @object
++	ASM_SIZE_DIRECTIVE(L(SP_RANGE))
++
++	.p2align 3
++L(SP_INF_0):
++	.long	0x7f800000	/* single precision Inf */
++	.long	0		/* single precision zero */
++	.type L(SP_INF_0), @object
++	ASM_SIZE_DIRECTIVE(L(SP_INF_0))
++
++	.section .rodata.cst4,"aM",@progbits,4
++	.p2align 2
++L(SP_RS): /* single precision 2^23+2^22 */
++	.long	0x4b400000
++	.type L(SP_RS), @object
++	ASM_SIZE_DIRECTIVE(L(SP_RS))
 +
 +	.p2align 2
- L(SP_RANGE): /* single precision overflow/underflow bounds */
- 	.long	0x42b17217	/* if x>this bound, then result overflows */
- 	.long	0x42cff1b4	/* if x<this bound, then result underflows */
++L(SP_SMALL): /* single precision small value 2^(-100) */
++	.long	0x0d800000
++	.type L(SP_SMALL), @object
++	ASM_SIZE_DIRECTIVE(L(SP_SMALL))
++
++	.p2align 2
++L(SP_LARGE): /* single precision large value 2^100 */
++	.long	0x71800000
++	.type L(SP_LARGE), @object
++	ASM_SIZE_DIRECTIVE(L(SP_LARGE))
++
++	.p2align 2
++L(SP_ONE): /* single precision 1.0 */
++	.long	0x3f800000
++	.type L(SP_ONE), @object
++	ASM_SIZE_DIRECTIVE(L(SP_ONE))
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_expf-sse2.S b/sysdeps/x86_64/fpu/multiarch/e_expf-sse2.S
+new file mode 100644
+index 0000000000..8af10e3eb4
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/e_expf-sse2.S
+@@ -0,0 +1,24 @@
++/* SSE2 version of IEEE 754 expf.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define __ieee754_expf __ieee754_expf_sse2
++
++#undef strong_alias
++#define strong_alias(ignored1, ignored2)
++
++#include <sysdeps/x86_64/fpu/e_expf.S>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_expf.c b/sysdeps/x86_64/fpu/multiarch/e_expf.c
+new file mode 100644
+index 0000000000..864d5f9b21
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/e_expf.c
+@@ -0,0 +1,26 @@
++/* Multiple versions of IEEE 754 expf.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++extern double __redirect_ieee754_expf (double);
++
++#define SYMBOL_NAME ieee754_expf
++#include "ifunc-fma.h"
++
++libc_ifunc_redirected (__redirect_ieee754_expf, __ieee754_expf,
++		       IFUNC_SELECTOR ());
++strong_alias (__ieee754_expf, __expf_finite)
+diff --git a/sysdeps/x86_64/fpu/multiarch/ifunc-fma.h b/sysdeps/x86_64/fpu/multiarch/ifunc-fma.h
+new file mode 100644
+index 0000000000..383c41ffb1
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/ifunc-fma.h
+@@ -0,0 +1,34 @@
++/* Common definition for ifunc selections optimized with AVX2/FMA.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <init-arch.h>
++
++extern __typeof (REDIRECT_NAME) OPTIMIZE (sse2) attribute_hidden;
++extern __typeof (REDIRECT_NAME) OPTIMIZE (fma) attribute_hidden;
++
++static inline void *
++IFUNC_SELECTOR (void)
++{
++  const struct cpu_features* cpu_features = __get_cpu_features ();
++
++  if (CPU_FEATURES_ARCH_P (cpu_features, FMA_Usable)
++      && CPU_FEATURES_ARCH_P (cpu_features, AVX2_Usable))
++    return OPTIMIZE (fma);
++
++  return OPTIMIZE (sse2);
++}
+-- 
+2.13.4
+

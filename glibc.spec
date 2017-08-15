@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        148
+Release:        149
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -34,7 +34,8 @@ Patch28:	stateless.patch
 Patch29:        nsswitch-altfiles-bugfix.patch
 Patch30:	fma.patch
 Patch32:	mathlto.patch
-Patch33: 	fma-expf.patch
+Patch33:	fma-expf-fix.patch
+Patch34: 	fma-expf.patch
 
 
 Patch100:       CVE-2016-10228.nopatch
@@ -210,6 +211,7 @@ GNU C library extra components.
 
 %patch32 -p1
 %patch33 -p1
+%patch34 -p1
 
 %patch102 -p1
 

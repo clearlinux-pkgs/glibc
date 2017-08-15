@@ -1,0 +1,67 @@
+From ce3e7f4136a9f5943328c74511542834ca05811b Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 15 Aug 2017 14:04:59 -0700
+Subject: [PATCH] x86-64: Align L(SP_RANGE)/L(SP_INF_0) to 8 bytes [BZ #21955]
+
+sysdeps/x86_64/fpu/e_expf.S has
+
+        lea     L(SP_RANGE)(%rip), %rdx /* load over/underflow bound */
+        cmpl    (%rdx,%rax,4), %ecx     /* |x|<under/overflow bound ? */
+...
+        /* Here if |x| is Inf */
+        lea     L(SP_INF_0)(%rip), %rdx /* depending on sign of x: */
+        movss   (%rdx,%rax,4), %xmm0    /* return zero or Inf */
+        ret
+...
+         .section .rodata.cst8,"aM",@progbits,8
+...
+        .p2align 2
+L(SP_RANGE): /* single precision overflow/underflow bounds */
+        .long   0x42b17217      /* if x>this bound, then result overflows */
+        .long   0x42cff1b4      /* if x<this bound, then result underflows */
+        .type L(SP_RANGE), @object
+        ASM_SIZE_DIRECTIVE(L(SP_RANGE))
+
+        .p2align 2
+L(SP_INF_0):
+        .long   0x7f800000      /* single precision Inf */
+        .long   0               /* single precision zero */
+        .type L(SP_INF_0), @object
+        ASM_SIZE_DIRECTIVE(L(SP_INF_0))
+
+Since L(SP_RANGE) and L(SP_INF_0) are in .rodata.cst8 section, they must
+be aligned to 8 bytes.
+
+	[BZ #21955]
+	* sysdeps/x86_64/fpu/e_expf.S (L(SP_RANGE)): Aligned to 8 bytes.
+	(L(SP_INF_0)): Likewise.
+
+(cherry picked from commit f59f7adb4a00b7784cab1becdf257366104587b7)
+---
+ sysdeps/x86_64/fpu/e_expf.S | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/sysdeps/x86_64/fpu/e_expf.S b/sysdeps/x86_64/fpu/e_expf.S
+index 4fd2bb1fb5..c3bf312c44 100644
+--- a/sysdeps/x86_64/fpu/e_expf.S
++++ b/sysdeps/x86_64/fpu/e_expf.S
+@@ -297,14 +297,14 @@ L(DP_P0): /* double precision polynomial coefficient P0 */
+ 	.type L(DP_P0), @object
+ 	ASM_SIZE_DIRECTIVE(L(DP_P0))
+ 
+-	.p2align 2
++	.p2align 3
+ L(SP_RANGE): /* single precision overflow/underflow bounds */
+ 	.long	0x42b17217	/* if x>this bound, then result overflows */
+ 	.long	0x42cff1b4	/* if x<this bound, then result underflows */
+ 	.type L(SP_RANGE), @object
+ 	ASM_SIZE_DIRECTIVE(L(SP_RANGE))
+ 
+-	.p2align 2
++	.p2align 3
+ L(SP_INF_0):
+ 	.long	0x7f800000	/* single precision Inf */
+ 	.long	0		/* single precision zero */
+-- 
+2.13.4
+

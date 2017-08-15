@@ -1,10 +1,10 @@
-From 506b099e5ce5d9dec6e94062f9f069dd8a8eaa99 Mon Sep 17 00:00:00 2001
+From 7e7b5de8ffc9ac8fda45b988cde5650004bdbca7 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
-Date: Sat, 5 Aug 2017 19:52:18 -0700
+Date: Mon, 7 Aug 2017 08:19:59 -0700
 Subject: [PATCH] x86-64: Add FMA multiarch functions to libm
 
 This patch adds multiarch functions optimized with -mfma -mavx2 to libm.
-e_pow-fma.c is compiled with -mno-fma -mavx2 due to PR 19003.
+e_pow-fma.c is compiled with $(config-cflags-nofma) due to PR 19003.
 
 	* sysdeps/x86_64/fpu/multiarch/Makefile (libm-sysdep_routines):
 	Add e_exp-fma, e_log-fma, e_pow-fma, s_atan-fma, e_asin-fma,
@@ -64,8 +64,10 @@ e_pow-fma.c is compiled with -mno-fma -mavx2 due to PR 19003.
 	* sysdeps/x86_64/fpu/multiarch/s_atan.c: Likewise.
 	* sysdeps/x86_64/fpu/multiarch/s_sin.c: Likewise.
 	* sysdeps/x86_64/fpu/multiarch/s_tan.c: Likewise.
+
+(cherry picked from commit 57a72fa3502673754d14707da02c7c44e83b8d20)
 ---
- sysdeps/x86_64/fpu/multiarch/Makefile         | 30 +++++++++++++++
+ sysdeps/x86_64/fpu/multiarch/Makefile         | 29 ++++++++++++++
  sysdeps/x86_64/fpu/multiarch/doasin-fma.c     |  4 ++
  sysdeps/x86_64/fpu/multiarch/dosincos-fma.c   |  6 +++
  sysdeps/x86_64/fpu/multiarch/e_asin-fma.c     | 11 ++++++
@@ -97,7 +99,7 @@ e_pow-fma.c is compiled with -mno-fma -mavx2 due to PR 19003.
  sysdeps/x86_64/fpu/multiarch/sincos32-fma.c   | 15 ++++++++
  sysdeps/x86_64/fpu/multiarch/slowexp-fma.c    |  9 +++++
  sysdeps/x86_64/fpu/multiarch/slowpow-fma.c    | 11 ++++++
- 32 files changed, 494 insertions(+), 105 deletions(-)
+ 32 files changed, 493 insertions(+), 105 deletions(-)
  create mode 100644 sysdeps/x86_64/fpu/multiarch/doasin-fma.c
  create mode 100644 sysdeps/x86_64/fpu/multiarch/dosincos-fma.c
  create mode 100644 sysdeps/x86_64/fpu/multiarch/e_asin-fma.c
@@ -123,12 +125,12 @@ e_pow-fma.c is compiled with -mno-fma -mavx2 due to PR 19003.
  create mode 100644 sysdeps/x86_64/fpu/multiarch/slowpow-fma.c
 
 diff --git a/sysdeps/x86_64/fpu/multiarch/Makefile b/sysdeps/x86_64/fpu/multiarch/Makefile
-index f9ceb09..3096249 100644
+index 34542155aa..e9e4f7c745 100644
 --- a/sysdeps/x86_64/fpu/multiarch/Makefile
 +++ b/sysdeps/x86_64/fpu/multiarch/Makefile
-@@ -6,6 +6,36 @@ libm-sysdep_routines += s_ceil-sse4_1 s_ceilf-sse4_1 s_floor-sse4_1 \
- 			s_floorf-sse4_1 s_nearbyint-sse4_1 \
- 			s_nearbyintf-sse4_1 s_rint-sse4_1 s_rintf-sse4_1
+@@ -2,6 +2,35 @@ ifeq ($(subdir),math)
+ libm-sysdep_routines += s_floor-c s_ceil-c s_floorf-c s_ceilf-c \
+ 			s_rint-c s_rintf-c s_nearbyint-c s_nearbyintf-c
  
 +libm-sysdep_routines += e_exp-fma e_log-fma e_pow-fma s_atan-fma \
 +			e_asin-fma e_atan2-fma s_sin-fma s_tan-fma \
@@ -143,8 +145,7 @@ index f9ceb09..3096249 100644
 +CFLAGS-e_atan2-fma.c = -mfma -mavx2
 +CFLAGS-e_exp-fma.c = -mfma -mavx2
 +CFLAGS-e_log-fma.c = -mfma -mavx2
-+# FMA is disabled due to [BZ #19003].
-+CFLAGS-e_pow-fma.c = -mno-fma -mavx2
++CFLAGS-e_pow-fma.c = -mfma -mavx2 $(config-cflags-nofma)
 +CFLAGS-halfulp-fma.c = -mfma -mavx2
 +CFLAGS-mpa-fma.c = -mfma -mavx2
 +CFLAGS-mpatan-fma.c = -mfma -mavx2
@@ -165,7 +166,7 @@ index f9ceb09..3096249 100644
  			mplog-fma4 mpa-fma4 slowexp-fma4 slowpow-fma4 \
 diff --git a/sysdeps/x86_64/fpu/multiarch/doasin-fma.c b/sysdeps/x86_64/fpu/multiarch/doasin-fma.c
 new file mode 100644
-index 0000000..7a09865
+index 0000000000..7a09865fca
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/doasin-fma.c
 @@ -0,0 +1,4 @@
@@ -175,7 +176,7 @@ index 0000000..7a09865
 +#include <sysdeps/ieee754/dbl-64/doasin.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/dosincos-fma.c b/sysdeps/x86_64/fpu/multiarch/dosincos-fma.c
 new file mode 100644
-index 0000000..5744586
+index 0000000000..5744586bdb
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/dosincos-fma.c
 @@ -0,0 +1,6 @@
@@ -187,7 +188,7 @@ index 0000000..5744586
 +#include <sysdeps/ieee754/dbl-64/dosincos.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_asin-fma.c b/sysdeps/x86_64/fpu/multiarch/e_asin-fma.c
 new file mode 100644
-index 0000000..50e9c64
+index 0000000000..50e9c64247
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/e_asin-fma.c
 @@ -0,0 +1,11 @@
@@ -203,7 +204,7 @@ index 0000000..50e9c64
 +
 +#include <sysdeps/ieee754/dbl-64/e_asin.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_asin.c b/sysdeps/x86_64/fpu/multiarch/e_asin.c
-index 111a5b9..37a44b2 100644
+index 111a5b99bd..37a44b2388 100644
 --- a/sysdeps/x86_64/fpu/multiarch/e_asin.c
 +++ b/sysdeps/x86_64/fpu/multiarch/e_asin.c
 @@ -1,26 +1,40 @@
@@ -269,7 +270,7 @@ index 111a5b9..37a44b2 100644
  #include <sysdeps/ieee754/dbl-64/e_asin.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_atan2-fma.c b/sysdeps/x86_64/fpu/multiarch/e_atan2-fma.c
 new file mode 100644
-index 0000000..caba686
+index 0000000000..caba686496
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/e_atan2-fma.c
 @@ -0,0 +1,10 @@
@@ -284,7 +285,7 @@ index 0000000..caba686
 +
 +#include <sysdeps/ieee754/dbl-64/e_atan2.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_atan2.c b/sysdeps/x86_64/fpu/multiarch/e_atan2.c
-index 9ca3c02..a2c8cfc 100644
+index 9ca3c02a44..a2c8cfc159 100644
 --- a/sysdeps/x86_64/fpu/multiarch/e_atan2.c
 +++ b/sysdeps/x86_64/fpu/multiarch/e_atan2.c
 @@ -1,18 +1,29 @@
@@ -331,7 +332,7 @@ index 9ca3c02..a2c8cfc 100644
  #include <sysdeps/ieee754/dbl-64/e_atan2.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_exp-fma.c b/sysdeps/x86_64/fpu/multiarch/e_exp-fma.c
 new file mode 100644
-index 0000000..6e0fdb7
+index 0000000000..6e0fdb7941
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/e_exp-fma.c
 @@ -0,0 +1,6 @@
@@ -342,7 +343,7 @@ index 0000000..6e0fdb7
 +
 +#include <sysdeps/ieee754/dbl-64/e_exp.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_exp.c b/sysdeps/x86_64/fpu/multiarch/e_exp.c
-index b7d7b5f..81211f4 100644
+index b7d7b5ff27..81211f4ace 100644
 --- a/sysdeps/x86_64/fpu/multiarch/e_exp.c
 +++ b/sysdeps/x86_64/fpu/multiarch/e_exp.c
 @@ -1,18 +1,29 @@
@@ -389,7 +390,7 @@ index b7d7b5f..81211f4 100644
  #include <sysdeps/ieee754/dbl-64/e_exp.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_log-fma.c b/sysdeps/x86_64/fpu/multiarch/e_log-fma.c
 new file mode 100644
-index 0000000..a7123b1
+index 0000000000..a7123b1a06
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/e_log-fma.c
 @@ -0,0 +1,8 @@
@@ -402,7 +403,7 @@ index 0000000..a7123b1
 +
 +#include <sysdeps/ieee754/dbl-64/e_log.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_log.c b/sysdeps/x86_64/fpu/multiarch/e_log.c
-index cf9533d..de1fbf1 100644
+index cf9533d6c0..de1fbf1696 100644
 --- a/sysdeps/x86_64/fpu/multiarch/e_log.c
 +++ b/sysdeps/x86_64/fpu/multiarch/e_log.c
 @@ -1,18 +1,29 @@
@@ -449,7 +450,7 @@ index cf9533d..de1fbf1 100644
  #include <sysdeps/ieee754/dbl-64/e_log.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_pow-fma.c b/sysdeps/x86_64/fpu/multiarch/e_pow-fma.c
 new file mode 100644
-index 0000000..6fd4083
+index 0000000000..6fd408342e
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/e_pow-fma.c
 @@ -0,0 +1,6 @@
@@ -460,7 +461,7 @@ index 0000000..6fd4083
 +
 +#include <sysdeps/ieee754/dbl-64/e_pow.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/e_pow.c b/sysdeps/x86_64/fpu/multiarch/e_pow.c
-index a5c5d89..07a7929 100644
+index a5c5d89c3e..07a7929d32 100644
 --- a/sysdeps/x86_64/fpu/multiarch/e_pow.c
 +++ b/sysdeps/x86_64/fpu/multiarch/e_pow.c
 @@ -1,17 +1,29 @@
@@ -506,7 +507,7 @@ index a5c5d89..07a7929 100644
  #include <sysdeps/ieee754/dbl-64/e_pow.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/halfulp-fma.c b/sysdeps/x86_64/fpu/multiarch/halfulp-fma.c
 new file mode 100644
-index 0000000..6ca7046
+index 0000000000..6ca70462ca
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/halfulp-fma.c
 @@ -0,0 +1,4 @@
@@ -516,7 +517,7 @@ index 0000000..6ca7046
 +#include <sysdeps/ieee754/dbl-64/halfulp.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/ifunc-avx-fma4.h b/sysdeps/x86_64/fpu/multiarch/ifunc-avx-fma4.h
 new file mode 100644
-index 0000000..2277c0a
+index 0000000000..2277c0a725
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/ifunc-avx-fma4.h
 @@ -0,0 +1,43 @@
@@ -565,7 +566,7 @@ index 0000000..2277c0a
 +}
 diff --git a/sysdeps/x86_64/fpu/multiarch/ifunc-fma4.h b/sysdeps/x86_64/fpu/multiarch/ifunc-fma4.h
 new file mode 100644
-index 0000000..5928984
+index 0000000000..5928984e54
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/ifunc-fma4.h
 @@ -0,0 +1,39 @@
@@ -610,7 +611,7 @@ index 0000000..5928984
 +}
 diff --git a/sysdeps/x86_64/fpu/multiarch/mpa-fma.c b/sysdeps/x86_64/fpu/multiarch/mpa-fma.c
 new file mode 100644
-index 0000000..177cc25
+index 0000000000..177cc2517f
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/mpa-fma.c
 @@ -0,0 +1,14 @@
@@ -630,7 +631,7 @@ index 0000000..177cc25
 +#include <sysdeps/ieee754/dbl-64/mpa.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/mpatan-fma.c b/sysdeps/x86_64/fpu/multiarch/mpatan-fma.c
 new file mode 100644
-index 0000000..d216f91
+index 0000000000..d216f9142d
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/mpatan-fma.c
 @@ -0,0 +1,10 @@
@@ -646,7 +647,7 @@ index 0000000..d216f91
 +#include <sysdeps/ieee754/dbl-64/mpatan.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/mpatan2-fma.c b/sysdeps/x86_64/fpu/multiarch/mpatan2-fma.c
 new file mode 100644
-index 0000000..98df336
+index 0000000000..98df336f79
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/mpatan2-fma.c
 @@ -0,0 +1,9 @@
@@ -661,7 +662,7 @@ index 0000000..98df336
 +#include <sysdeps/ieee754/dbl-64/mpatan2.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/mpexp-fma.c b/sysdeps/x86_64/fpu/multiarch/mpexp-fma.c
 new file mode 100644
-index 0000000..637631b
+index 0000000000..637631ba06
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/mpexp-fma.c
 @@ -0,0 +1,9 @@
@@ -676,7 +677,7 @@ index 0000000..637631b
 +#include <sysdeps/ieee754/dbl-64/mpexp.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/mplog-fma.c b/sysdeps/x86_64/fpu/multiarch/mplog-fma.c
 new file mode 100644
-index 0000000..645b6b7
+index 0000000000..645b6b7c57
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/mplog-fma.c
 @@ -0,0 +1,8 @@
@@ -690,7 +691,7 @@ index 0000000..645b6b7
 +#include <sysdeps/ieee754/dbl-64/mplog.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/mpsqrt-fma.c b/sysdeps/x86_64/fpu/multiarch/mpsqrt-fma.c
 new file mode 100644
-index 0000000..44d7a23
+index 0000000000..44d7a23ae3
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/mpsqrt-fma.c
 @@ -0,0 +1,8 @@
@@ -704,7 +705,7 @@ index 0000000..44d7a23
 +#include <sysdeps/ieee754/dbl-64/mpsqrt.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/mptan-fma.c b/sysdeps/x86_64/fpu/multiarch/mptan-fma.c
 new file mode 100644
-index 0000000..d1a6914
+index 0000000000..d1a691413c
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/mptan-fma.c
 @@ -0,0 +1,7 @@
@@ -717,7 +718,7 @@ index 0000000..d1a6914
 +#include <sysdeps/ieee754/dbl-64/mptan.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/s_atan-fma.c b/sysdeps/x86_64/fpu/multiarch/s_atan-fma.c
 new file mode 100644
-index 0000000..bedb3f2
+index 0000000000..bedb3f2053
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/s_atan-fma.c
 @@ -0,0 +1,9 @@
@@ -731,7 +732,7 @@ index 0000000..bedb3f2
 +
 +#include <sysdeps/ieee754/dbl-64/s_atan.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/s_atan.c b/sysdeps/x86_64/fpu/multiarch/s_atan.c
-index 742e95c..f81919c 100644
+index 742e95cb96..f81919cbbe 100644
 --- a/sysdeps/x86_64/fpu/multiarch/s_atan.c
 +++ b/sysdeps/x86_64/fpu/multiarch/s_atan.c
 @@ -1,15 +1,27 @@
@@ -773,7 +774,7 @@ index 742e95c..f81919c 100644
  #include <sysdeps/ieee754/dbl-64/s_atan.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/s_sin-fma.c b/sysdeps/x86_64/fpu/multiarch/s_sin-fma.c
 new file mode 100644
-index 0000000..15f3c39
+index 0000000000..15f3c394d5
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/s_sin-fma.c
 @@ -0,0 +1,11 @@
@@ -789,7 +790,7 @@ index 0000000..15f3c39
 +
 +#include <sysdeps/ieee754/dbl-64/s_sin.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/s_sin.c b/sysdeps/x86_64/fpu/multiarch/s_sin.c
-index 8ffd3e7..eafc063 100644
+index 8ffd3e7125..eafc06374f 100644
 --- a/sysdeps/x86_64/fpu/multiarch/s_sin.c
 +++ b/sysdeps/x86_64/fpu/multiarch/s_sin.c
 @@ -1,26 +1,37 @@
@@ -852,7 +853,7 @@ index 8ffd3e7..eafc063 100644
  #include <sysdeps/ieee754/dbl-64/s_sin.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/s_tan-fma.c b/sysdeps/x86_64/fpu/multiarch/s_tan-fma.c
 new file mode 100644
-index 0000000..c85f8bc
+index 0000000000..c85f8bceed
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/s_tan-fma.c
 @@ -0,0 +1,8 @@
@@ -865,7 +866,7 @@ index 0000000..c85f8bc
 +
 +#include <sysdeps/ieee754/dbl-64/s_tan.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/s_tan.c b/sysdeps/x86_64/fpu/multiarch/s_tan.c
-index 25f3bca..96a7381 100644
+index 25f3bca07e..96a73811f3 100644
 --- a/sysdeps/x86_64/fpu/multiarch/s_tan.c
 +++ b/sysdeps/x86_64/fpu/multiarch/s_tan.c
 @@ -1,15 +1,27 @@
@@ -907,7 +908,7 @@ index 25f3bca..96a7381 100644
  #include <sysdeps/ieee754/dbl-64/s_tan.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/sincos32-fma.c b/sysdeps/x86_64/fpu/multiarch/sincos32-fma.c
 new file mode 100644
-index 0000000..dcd44bc
+index 0000000000..dcd44bc5e8
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/sincos32-fma.c
 @@ -0,0 +1,15 @@
@@ -928,7 +929,7 @@ index 0000000..dcd44bc
 +#include <sysdeps/ieee754/dbl-64/sincos32.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/slowexp-fma.c b/sysdeps/x86_64/fpu/multiarch/slowexp-fma.c
 new file mode 100644
-index 0000000..6fffca1
+index 0000000000..6fffca1a93
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/slowexp-fma.c
 @@ -0,0 +1,9 @@
@@ -943,7 +944,7 @@ index 0000000..6fffca1
 +#include <sysdeps/ieee754/dbl-64/slowexp.c>
 diff --git a/sysdeps/x86_64/fpu/multiarch/slowpow-fma.c b/sysdeps/x86_64/fpu/multiarch/slowpow-fma.c
 new file mode 100644
-index 0000000..160ed68
+index 0000000000..160ed683ab
 --- /dev/null
 +++ b/sysdeps/x86_64/fpu/multiarch/slowpow-fma.c
 @@ -0,0 +1,11 @@
@@ -959,5 +960,5 @@ index 0000000..160ed68
 +
 +#include <sysdeps/ieee754/dbl-64/slowpow.c>
 -- 
-2.9.3
+2.13.4
 
