@@ -1,0 +1,33 @@
+--- glibc-2.26/sysdeps/unix/sysv/linux/x86_64/sysdep.h~	2017-08-02 12:57:16.000000000 +0000
++++ glibc-2.26/sysdeps/unix/sysv/linux/x86_64/sysdep.h	2017-08-27 19:54:09.415995385 +0000
+@@ -221,16 +221,30 @@
+ /* Registers clobbered by syscall.  */
+ # define REGISTERS_CLOBBERED_BY_SYSCALL "cc", "r11", "cx"
+ 
++#ifdef __AVX2__
+ # define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
+   ({									      \
+     unsigned long int resultvar;					      \
+     LOAD_ARGS_##nr (args)						      \
+     LOAD_REGS_##nr							      \
+     asm volatile (							      \
++    "vzeroall\n\t"							      \
+     "syscall\n\t"							      \
+     : "=a" (resultvar)							      \
+     : "0" (name) ASM_ARGS_##nr : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);   \
+     (long int) resultvar; })
++#else
++# define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
++  ({									      \
++    unsigned long int resultvar;					      \
++    LOAD_ARGS_##nr (args)						      \
++    LOAD_REGS_##nr							      \
++    asm volatile (							      \
++    "syscall\n\t"							      \
++    : "=a" (resultvar)							      \
++    : "0" (name) ASM_ARGS_##nr : "memory", REGISTERS_CLOBBERED_BY_SYSCALL);   \
++    (long int) resultvar; })
++#endif
+ # undef INTERNAL_SYSCALL
+ # define INTERNAL_SYSCALL(name, err, nr, args...) \
+   INTERNAL_SYSCALL_NCS (__NR_##name, err, nr, ##args)
