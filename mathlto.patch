@@ -4,7 +4,7 @@
  
  include ../Makeconfig
  
-+CFLAGS-.o += -flto -ffat-lto-objects 
++CFLAGS-.o += -fno-stack-protector
 +
  # Installed header files.
  headers		:= math.h bits/mathcalls.h bits/mathinline.h bits/huge_val.h \
@@ -15,7 +15,7 @@
  
  include ../Makeconfig
  
-+CFLAGS-.o += -flto -ffat-lto-objects
++CFLAGS-.o += -flto -ffat-lto-objects -fno-stack-protector
 +
  headers := crypt.h
  

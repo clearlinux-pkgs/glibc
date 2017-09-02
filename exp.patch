@@ -1,0 +1,63 @@
+--- glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c.org	2017-09-02 16:43:42.896349422 +0000
++++ glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c	2017-09-02 16:47:24.554729150 +0000
+@@ -50,9 +50,9 @@
+ 
+ /* An ultimate exp routine. Given an IEEE double machine number x it computes
+    the correctly rounded (to nearest) value of e^x.  */
+-double
++static double
+ SECTION
+-__ieee754_exp (double x)
++__ieee754_exp_rounding_set (double x)
+ {
+   double bexp, t, eps, del, base, y, al, bet, res, rem, cor;
+   mynumber junk1, junk2, binexp = {{0, 0}};
+@@ -60,8 +60,6 @@
+   double retval;
+ 
+   {
+-    SET_RESTORE_ROUND (FE_TONEAREST);
+-
+     junk1.x = x;
+     m = junk1.i[HIGH_HALF];
+     n = m & hugeint;
+@@ -229,6 +227,39 @@
+  ret_tiny:
+   return tiny * tiny;
+ }
++
++
++static double
++SECTION
++__ieee754_exp_fix_rounding (double x)
++{
++    SET_RESTORE_ROUND (FE_TONEAREST);
++    return __ieee754_exp_rounding_set(x);
++}
++
++
++static double __glibc_constant_extff = 6755399441055743.0;
++
++double
++SECTION
++__ieee754_exp (double x)
++{
++  double d1 = 1.9, d2 = 2.1;
++  unsigned long *l1,*l2;
++
++
++  d1 += __glibc_constant_extff;
++  d2 += __glibc_constant_extff; 
++
++  l1 = (unsigned long *)&d1; l2 = (unsigned long*)&d2;
++  if (*l1 != *l2)
++	return __ieee754_exp_fix_rounding(x);
++  else
++	return __ieee754_exp_rounding_set(x);
++
++}
++
++
+ #ifndef __ieee754_exp
+ strong_alias (__ieee754_exp, __exp_finite)
+ #endif

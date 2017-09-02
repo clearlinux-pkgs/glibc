@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        150
+Release:        151
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -37,6 +37,7 @@ Patch32:	mathlto.patch
 Patch33:	fma-expf-fix.patch
 Patch34: 	fma-expf.patch
 Patch35:	vzeroupper.patch
+Patch36:	exp.patch
 
 
 Patch100:       CVE-2016-10228.nopatch
@@ -49,6 +50,7 @@ BuildRequires:  linux-libc-headers
 BuildRequires:	gettext-dev
 BuildRequires:	bison
 BuildRequires:  gcc-dev32 gcc-libgcc32 gcc-libstdc++32
+BuildRequires:  python3-dev
 
 
 %description
@@ -214,6 +216,7 @@ GNU C library extra components.
 %patch33 -p1
 %patch34 -p1
 %patch35 -p1
+%patch36 -p1
 
 %patch102 -p1
 
@@ -373,7 +376,7 @@ unset CFLAGS
 # favor of the 64 bit build
 pushd ../glibc-buildroot32
 
-make install DESTDIR=%{buildroot} install_root=%{buildroot}
+make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 popd
 
 pushd ../glibc-buildroot-avx2
@@ -392,7 +395,7 @@ popd
 
 pushd ../glibc-buildroot
 
-make install DESTDIR=%{buildroot} install_root=%{buildroot}
+make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
 for r in bootparam_prot.x nlm_prot.x rstat.x 	  yppasswd.x klm_prot.x rex.x sm_inter.x mount.x 	  rusers.x spray.x nfs_prot.x rquota.x key_prot.x; do
     h=`echo $r|sed -e's,\.x$,.h,'`
@@ -403,7 +406,7 @@ mkdir -p %{buildroot}/var/cache/locale
 
 iconvconfig --prefix=%{buildroot}
 
-make localedata/install-locales  DESTDIR=%{buildroot} install_root=%{buildroot}
+make localedata/install-locales  DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
 # Make ldconfig not fail
 install -d %{buildroot}/var/cache/ldconfig
