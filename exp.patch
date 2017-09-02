@@ -49,7 +49,7 @@
 +  d1 += __glibc_constant_extff;
 +  d2 += __glibc_constant_extff; 
 +
-+  l1 = (unsigned long *)&d1; l2 = (unsigned long*)&d2;
++  l1 = (unsigned long*)&d1; l2 = (unsigned long*)&d2;
 +  if (*l1 != *l2)
 +	return __ieee754_exp_fix_rounding(x);
 +  else
@@ -61,3 +61,84 @@
  #ifndef __ieee754_exp
  strong_alias (__ieee754_exp, __exp_finite)
  #endif
+--- glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c~	2017-09-02 19:32:24.000000000 +0000
++++ glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c	2017-09-02 19:34:21.700406705 +0000
+@@ -95,7 +95,7 @@
+ 	if (res == (res + cor * err_0))
+ 	  {
+ 	    retval = res * binexp.x;
+-	    goto ret;
++	    goto ret_good;
+ 	  }
+ 	else
+ 	  {
+--- glibc-2.26/sysdeps/ieee754/dbl-64/w_exp_compat.c~	2017-08-02 12:57:16.000000000 +0000
++++ glibc-2.26/sysdeps/ieee754/dbl-64/w_exp_compat.c	2017-09-02 19:35:03.754178946 +0000
+@@ -23,12 +23,7 @@
+ double
+ __exp (double x)
+ {
+-  double z = __ieee754_exp (x);
+-  if (__builtin_expect (!isfinite (z) || z == 0, 0)
+-      && isfinite (x) && _LIB_VERSION != _IEEE_)
+-    return __kernel_standard (x, x, 6 + !!signbit (x));
+-
+-  return z;
++  return  __ieee754_exp (x);
+ }
+ hidden_def (__exp)
+ weak_alias (__exp, exp)
+--- glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c~	2017-09-02 19:37:00.000000000 +0000
++++ glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c	2017-09-02 19:38:45.830462443 +0000
+@@ -219,13 +219,24 @@
+       }
+   }
+ ret:
++  if (__builtin_expect (!isfinite (retval) || retval == 0, 0)
++      && isfinite (x))
++    return __kernel_standard (x, x, 6 + !!signbit (x));
+   return retval;
+ 
+  ret_huge:
+-  return hhuge * hhuge;
++  retval = hhuge * hhuge;
++  if (__builtin_expect (!isfinite (retval) || retval == 0, 0)
++      && isfinite (x))
++    return __kernel_standard (x, x, 6 + !!signbit (x));
++  return retval;
+ 
+  ret_tiny:
+-  return tiny * tiny;
++  retval = tiny * tiny;
++  if (__builtin_expect (!isfinite (retval) || retval == 0, 0)
++      && isfinite (x))
++    return __kernel_standard (x, x, 6 + !!signbit (x));
++  return retval;
+ }
+ 
+ 
+--- glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c~	2017-09-02 19:38:45.000000000 +0000
++++ glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c	2017-09-02 19:39:40.636205289 +0000
+@@ -224,6 +224,9 @@
+     return __kernel_standard (x, x, 6 + !!signbit (x));
+   return retval;
+ 
++ret_good:
++  return retval;
++
+  ret_huge:
+   retval = hhuge * hhuge;
+   if (__builtin_expect (!isfinite (retval) || retval == 0, 0)
+--- glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c~	2017-09-02 19:39:40.000000000 +0000
++++ glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c	2017-09-02 22:31:08.917146268 +0000
+@@ -99,6 +99,10 @@
+ 	  }
+ 	else
+ 	  {
++	    if (x > -2E-14 && x < 2E-14) {
++		retval = 1 + x + x*x/2;
++		goto ret;
++	    }
+ 	    retval = __slowexp (x);
+ 	    goto ret;
+ 	  }			/*if error is over bound */
