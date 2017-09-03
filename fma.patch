@@ -145,7 +145,7 @@ index 34542155aa..e9e4f7c745 100644
 +CFLAGS-e_atan2-fma.c = -mfma -mavx2
 +CFLAGS-e_exp-fma.c = -mfma -mavx2
 +CFLAGS-e_log-fma.c = -mfma -mavx2
-+CFLAGS-e_pow-fma.c = -mfma -mavx2 $(config-cflags-nofma)
++CFLAGS-e_pow-fma.c = -mfma -mavx2 
 +CFLAGS-halfulp-fma.c = -mfma -mavx2
 +CFLAGS-mpa-fma.c = -mfma -mavx2
 +CFLAGS-mpatan-fma.c = -mfma -mavx2
