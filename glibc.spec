@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        153
+Release:        154
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -38,6 +38,7 @@ Patch33:	fma-expf-fix.patch
 Patch34: 	fma-expf.patch
 Patch35:	vzeroupper.patch
 Patch36:	exp.patch
+Patch37:	malloc-relaxed.patch
 
 
 Patch100:       CVE-2016-10228.nopatch
@@ -217,6 +218,7 @@ GNU C library extra components.
 %patch34 -p1
 %patch35 -p1
 %patch36 -p1
+%patch37 -p1
 
 %patch102 -p1
 
