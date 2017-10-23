@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        154
+Release:        155
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -32,12 +32,9 @@ Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch27:	ldconfig-Os.patch
 Patch28:	stateless.patch
 Patch29:        nsswitch-altfiles-bugfix.patch
-Patch30:	fma.patch
+Patch30:	math-2.27.patch
 Patch32:	mathlto.patch
-Patch33:	fma-expf-fix.patch
-Patch34: 	fma-expf.patch
 Patch35:	vzeroupper.patch
-Patch36:	exp.patch
 Patch37:	malloc-relaxed.patch
 
 
@@ -214,16 +211,14 @@ GNU C library extra components.
 %patch30 -p1
 
 %patch32 -p1
-%patch33 -p1
-%patch34 -p1
 %patch35 -p1
-%patch36 -p1
 %patch37 -p1
 
 %patch102 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
+export LANG=C
 
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
@@ -869,7 +864,7 @@ popd
 /usr/lib64/libcrypt.a
 /usr/lib64/libdl.a
 /usr/lib64/libg.a
-/usr/lib64/libieee.a
+#/usr/lib64/libieee.a
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
 /usr/lib64/libnsl.a
