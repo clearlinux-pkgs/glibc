@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        155
+Release:        156
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -33,6 +33,7 @@ Patch27:	ldconfig-Os.patch
 Patch28:	stateless.patch
 Patch29:        nsswitch-altfiles-bugfix.patch
 Patch30:	math-2.27.patch
+Patch31:	exp2.patch
 Patch32:	mathlto.patch
 Patch35:	vzeroupper.patch
 Patch37:	malloc-relaxed.patch
@@ -209,7 +210,7 @@ GNU C library extra components.
 %patch28 -p1
 %patch29 -p1
 %patch30 -p1
-
+%patch31 -p1
 %patch32 -p1
 %patch35 -p1
 %patch37 -p1

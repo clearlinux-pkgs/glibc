@@ -1,0 +1,13 @@
+--- glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c~	2017-09-02 19:39:40.000000000 +0000
++++ glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c	2017-09-02 22:31:08.917146268 +0000
+@@ -99,6 +99,10 @@
+ 	  }
+ 	else
+ 	  {
++	    if (x > -2E-14 && x < 2E-14) {
++		retval = 1 + x + x*x/2;
++		goto ret;
++	    }
+ 	    retval = __slowexp (x);
+ 	    goto ret;
+ 	  }			/*if error is over bound */
