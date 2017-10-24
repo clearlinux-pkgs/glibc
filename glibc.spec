@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        156
+Release:        157
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -11,15 +11,15 @@ Group:          libs
 Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.26.tar.gz
 
 
-Patch4:         0001-Set-host.conf-multi-to-on-by-default.patch
-Patch6:         skip-error-msg-ld.so.conf.patch
-Patch7:         ldconfig-format-new.patch
-Patch8:         0001-sysdeps-unix-Add-support-for-usr-lib32-as-a-system-l.patch
-Patch9:         nsswitch-altfiles.patch
-Patch10:        ld-so-cache-in-var.patch
+Patch4:		0001-Set-host.conf-multi-to-on-by-default.patch
+Patch6:		skip-error-msg-ld.so.conf.patch
+Patch7:		ldconfig-format-new.patch
+Patch8:		0001-sysdeps-unix-Add-support-for-usr-lib32-as-a-system-l.patch
+Patch9:		nsswitch-altfiles.patch
+Patch10:	ld-so-cache-in-var.patch
 Patch11:	fewerlocales.patch
-Patch12:        mkdir-ldconfig.patch
-Patch13:        locale-var-cache.patch
+Patch12:	mkdir-ldconfig.patch
+Patch13:	locale-var-cache.patch
 Patch14:	nonscd.patch
 Patch17:	alternate_trim.patch
 Patch18:	madvise-bss.patch
@@ -31,7 +31,7 @@ Patch24:	malloc_tune.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch27:	ldconfig-Os.patch
 Patch28:	stateless.patch
-Patch29:        nsswitch-altfiles-bugfix.patch
+Patch29:	nsswitch-altfiles-bugfix.patch
 Patch30:	math-2.27.patch
 Patch31:	exp2.patch
 Patch32:	mathlto.patch
@@ -39,18 +39,18 @@ Patch35:	vzeroupper.patch
 Patch37:	malloc-relaxed.patch
 
 
-Patch100:       CVE-2016-10228.nopatch
+Patch100:	CVE-2016-10228.nopatch
 Patch101:	CVE-2017-8804.nopatch
-Patch102:   malloc-assert-3.patch
-Patch103:   cve-2017-15804.patch
+Patch102:	malloc-assert-3.patch
+Patch103:	cve-2017-15804.patch
 
-BuildRequires:  grep
-BuildRequires:  texinfo
-BuildRequires:  linux-libc-headers
+BuildRequires:	grep
+BuildRequires:	texinfo
+BuildRequires:	linux-libc-headers
 BuildRequires:	gettext-dev
 BuildRequires:	bison
-BuildRequires:  gcc-dev32 gcc-libgcc32 gcc-libstdc++32
-BuildRequires:  python3-dev
+BuildRequires:	gcc-dev32 gcc-libgcc32 gcc-libstdc++32
+BuildRequires:	python3-dev
 
 
 %description
