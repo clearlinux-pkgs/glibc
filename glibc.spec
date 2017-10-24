@@ -43,6 +43,7 @@ Patch100:	CVE-2016-10228.nopatch
 Patch101:	CVE-2017-8804.nopatch
 Patch102:	malloc-assert-3.patch
 Patch103:	cve-2017-15804.patch
+Patch104:	cve-2017-15670.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -218,6 +219,7 @@ GNU C library extra components.
 
 %patch102 -p1
 %patch103 -p1
+%patch104 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
