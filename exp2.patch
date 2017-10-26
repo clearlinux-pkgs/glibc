@@ -1,13 +1,1265 @@
---- glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c~	2017-09-02 19:39:40.000000000 +0000
-+++ glibc-2.26/sysdeps/ieee754/dbl-64/e_exp.c	2017-09-02 22:31:08.917146268 +0000
-@@ -99,6 +99,10 @@
- 	  }
- 	else
- 	  {
-+	    if (x > -2E-14 && x < 2E-14) {
-+		retval = 1 + x + x*x/2;
-+		goto ret;
+From: Patrick McGehearty <patrick.mcgehearty@oracle.com>
+To: libc-alpha@sourceware.org
+Subject: [PATCH] Improves __ieee754_exp() performance by greater than 5x on sparc/x86.
+Date: Thu, 26 Oct 2017 12:44:23 -0400
+Message-Id: <1509036263-113745-1-git-send-email-patrick.mcgehearty@oracle.com>
+
+Version 2 of proposed patch.
+Revised copyright notice and formatting issues.
+Removed slowexp.c and related references.
+Replaced tables of double float constants with hex constants, taking special
+  attention to correctly handle little endian and big endian versions.
+  Using hex initialization also required changing variables to be declared
+  as unions.  Tables moved from e_exp.c to sysdeps/ieee754/dbl-64/eexp.tbl.
+Replaced __fegetround(), __fesetround() with get_rounding_mode and
+  libc_fesetround().
+Removed use of "small". "inexact mode" now ignored.
+Retested and rebenchmarked on sparc and x86 with the above changes.
+
+These changes will be active for all platforms that don't provide
+their own exp() routines. They will also be active for ieee754
+versions of ccos, ccosh, cosh, csin, csinh, sinh, exp10, gamma, and
+erf.
+
+Typical performance gains is typically around 5x when measured on
+Sparc s7 for common values between exp(1) and exp(40).
+
+Using the glibc perf tests on sparc,
+      sparc (nsec)    x86 (nsec)
+      old     new     old     new
+max   17629   381    5173     766
+min     399    54      15      13
+mean   5317   199    1349      24
+
+The extreme max times for the old (ieee754) exp are due to the
+multiprecision computation in the old algorithm when the true value is
+very near 0.5 ulp away from an value representable in double
+precision. The new algorithm does not take special measures for those
+cases. The current glibc exp perf tests overrepresent those values.
+Informal testing suggests approximately one in 200 cases might
+invoke the high cost computation. The performance advantage of the new
+algorithm for other values is still large but not as large as indicated
+by the chart above.
+
+Glibc correctness tests for exp() and expf() were run. Within the
+test suite 3 input values were found to cause 1 bit differences (ulp)
+when "FE_TONEAREST" rounding mode is set. No differences in exp() were
+seen for the tested values for the other rounding modes.
+Typical example:
+exp(-0x1.760cd2p+0)  (-1.46113312244415283203125)
+ new code:    2.31973271630014299393707e-01   0x1.db14cd799387ap-3
+ old code:    2.31973271630014271638132e-01   0x1.db14cd7993879p-3
+    exp    =  2.31973271630014285508337 (high precision)
+Old delta: off by 0.49 ulp
+New delta: off by 0.51 ulp
+
+In addition, because ieee754_exp() is used by other routines, cexp()
+showed test results with very small imaginary input values where the
+imaginary portion of the result was off by 3 ulp when in upward
+rounding mode, but not in the other rounding modes.  For x86, tgamma
+showed a few values where the ulp increased to 6 (max ulp for tgamma
+is 5). Sparc tgamma did not show these failures.  I presume the tgamma
+differences are due to compiler optimization differences within the
+gamma function. The gamma function is known to be difficult to compute
+accurately.
+---
+ manual/probes.texi                          |   14 -
+ math/Makefile                               |    2 +-
+ sysdeps/generic/math_private.h              |    1 -
+ sysdeps/ieee754/dbl-64/e_exp.c              |  379 +++++++++++++-----------
+ sysdeps/ieee754/dbl-64/e_pow.c              |    2 +-
+ sysdeps/ieee754/dbl-64/eexp.tbl             |  440 +++++++++++++++++++++++++++
+ sysdeps/ieee754/dbl-64/slowexp.c            |   86 ------
+ sysdeps/powerpc/power4/fpu/Makefile         |    1 -
+ sysdeps/x86_64/fpu/multiarch/Makefile       |    9 +-
+ sysdeps/x86_64/fpu/multiarch/e_exp-avx.c    |    1 -
+ sysdeps/x86_64/fpu/multiarch/e_exp-fma.c    |    1 -
+ sysdeps/x86_64/fpu/multiarch/e_exp-fma4.c   |    1 -
+ sysdeps/x86_64/fpu/multiarch/slowexp-avx.c  |    9 -
+ sysdeps/x86_64/fpu/multiarch/slowexp-fma.c  |    9 -
+ sysdeps/x86_64/fpu/multiarch/slowexp-fma4.c |    9 -
+ 15 files changed, 651 insertions(+), 313 deletions(-)
+ create mode 100644 sysdeps/ieee754/dbl-64/eexp.tbl
+ delete mode 100644 sysdeps/ieee754/dbl-64/slowexp.c
+ delete mode 100644 sysdeps/x86_64/fpu/multiarch/slowexp-avx.c
+ delete mode 100644 sysdeps/x86_64/fpu/multiarch/slowexp-fma.c
+ delete mode 100644 sysdeps/x86_64/fpu/multiarch/slowexp-fma4.c
+
+diff --git a/manual/probes.texi b/manual/probes.texi
+index 8ab6756..f8ae64b 100644
+--- a/manual/probes.texi
++++ b/manual/probes.texi
+@@ -258,20 +258,6 @@ Unless explicitly mentioned otherwise, a precision of 1 implies 24 bits of
+ precision in the mantissa of the multiple precision number.  Hence, a precision
+ level of 32 implies 768 bits of precision in the mantissa.
+ 
+-@deftp Probe slowexp_p6 (double @var{$arg1}, double @var{$arg2})
+-This probe is triggered when the @code{exp} function is called with an
+-input that results in multiple precision computation with precision
+-6.  Argument @var{$arg1} is the input value and @var{$arg2} is the
+-computed output.
+-@end deftp
+-
+-@deftp Probe slowexp_p32 (double @var{$arg1}, double @var{$arg2})
+-This probe is triggered when the @code{exp} function is called with an
+-input that results in multiple precision computation with precision
+-32.  Argument @var{$arg1} is the input value and @var{$arg2} is the
+-computed output.
+-@end deftp
+-
+ @deftp Probe slowpow_p10 (double @var{$arg1}, double @var{$arg2}, double @var{$arg3}, double @var{$arg4})
+ This probe is triggered when the @code{pow} function is called with
+ inputs that result in multiple precision computation with precision
+diff --git a/math/Makefile b/math/Makefile
+index 1feb425..f70aebf 100644
+--- a/math/Makefile
++++ b/math/Makefile
+@@ -114,7 +114,7 @@ type-ldouble-yes := ldouble
+ # double support
+ type-double-suffix :=
+ type-double-routines := branred doasin dosincos halfulp mpa mpatan2	\
+-		       mpatan mpexp mplog mpsqrt mptan sincos32 slowexp	\
++		       mpatan mpexp mplog mpsqrt mptan sincos32 \
+ 		       slowpow sincostab k_rem_pio2
+ 
+ # float support
+diff --git a/sysdeps/generic/math_private.h b/sysdeps/generic/math_private.h
+index 80c7c92..30fc3c9 100644
+--- a/sysdeps/generic/math_private.h
++++ b/sysdeps/generic/math_private.h
+@@ -262,7 +262,6 @@ extern double __sin32 (double __x, double __res, double __res1);
+ extern double __cos32 (double __x, double __res, double __res1);
+ extern double __mpsin (double __x, double __dx, bool __range_reduce);
+ extern double __mpcos (double __x, double __dx, bool __range_reduce);
+-extern double __slowexp (double __x);
+ extern double __slowpow (double __x, double __y, double __z);
+ extern void __docos (double __x, double __dx, double __v[]);
+ 
+diff --git a/sysdeps/ieee754/dbl-64/e_exp.c b/sysdeps/ieee754/dbl-64/e_exp.c
+index 6757a14..0b0e0e3 100644
+--- a/sysdeps/ieee754/dbl-64/e_exp.c
++++ b/sysdeps/ieee754/dbl-64/e_exp.c
+@@ -1,3 +1,4 @@
++/* EXP function - Compute double precision exponential */
+ /*
+  * IBM Accurate Mathematical Library
+  * written by International Business Machines Corp.
+@@ -23,7 +24,7 @@
+ /*           exp1                                                          */
+ /*                                                                         */
+ /* FILES NEEDED:dla.h endian.h mpa.h mydefs.h uexp.h                       */
+-/*              mpa.c mpexp.x slowexp.c                                    */
++/*              mpa.c mpexp.x                                              */
+ /*                                                                         */
+ /* An ultimate exp routine. Given an IEEE double machine number x          */
+ /* it computes the correctly rounded (to nearest) value of e^x             */
+@@ -32,207 +33,239 @@
+ /*                                                                         */
+ /***************************************************************************/
+ 
++/*  IBM exp(x) replaced by following exp(x) in 2017. IBM exp1(x,xx) remains. */
++/*
++   exp(x)
++   Hybrid algorithm of Peter Tang's Table driven method (for large
++   arguments) and an accurate table (for small arguments).
++   Written by K.C. Ng, November 1988.
++   Method (large arguments):
++	1. Argument Reduction: given the input x, find r and integer k
++	   and j such that
++	             x = (k+j/32)*(ln2) + r,  |r| <= (1/64)*ln2
++
++	2. exp(x) = 2^k * (2^(j/32) + 2^(j/32)*expm1(r))
++	   a. expm1(r) is approximated by a polynomial:
++	      expm1(r) ~ r + t1*r^2 + t2*r^3 + ... + t5*r^6
++	      Here t1 = 1/2 exactly.
++	   b. 2^(j/32) is represented to twice double precision
++	      as TBL[2j]+TBL[2j+1].
++
++   Note: If divide were fast enough, we could use another approximation
++	 in 2.a:
++	      expm1(r) ~ (2r)/(2-R), R = r - r^2*(t1 + t2*r^2)
++	      (for the same t1 and t2 as above)
++
++   Special cases:
++	exp(INF) is INF, exp(NaN) is NaN;
++	exp(-INF)=  0;
++	for finite argument, only exp(0)=1 is exact.
++
++   Accuracy:
++	According to an error analysis, the error is always less than
++	an ulp (unit in the last place).  The largest errors observed
++	are less than 0.55 ulp for normal results and less than 0.75 ulp
++	for subnormal results.
++
++   Misc. info.
++	For IEEE double
++		if x >  7.09782712893383973096e+02 then exp(x) overflow
++		if x < -7.45133219101941108420e+02 then exp(x) underflow
++ */
++
+ #include <math.h>
++#include <math-svid-compat.h>
++#include <math_private.h>
++#include <errno.h>
+ #include "endian.h"
+ #include "uexp.h"
++#include "uexp.tbl"
+ #include "mydefs.h"
+ #include "MathLib.h"
+-#include "uexp.tbl"
+-#include <math_private.h>
+ #include <fenv.h>
+ #include <float.h>
+ 
+-#ifndef SECTION
+-# define SECTION
+-#endif
++extern double __ieee754_exp (double);
++
++#include "eexp.tbl"
++
++static const double
++  half = 0.5,
++  one = 1.0;
+ 
+-double __slowexp (double);
+ 
+-/* An ultimate exp routine. Given an IEEE double machine number x it computes
+-   the correctly rounded (to nearest) value of e^x.  */
+ double
+-SECTION
+-__ieee754_exp (double x)
++__ieee754_exp (double x_arg)
+ {
+-  double bexp, t, eps, del, base, y, al, bet, res, rem, cor;
+-  mynumber junk1, junk2, binexp = {{0, 0}};
+-  int4 i, j, m, n, ex;
++  double z, t;
+   double retval;
+-
++  int hx, ix, k, j, m;
++  int fe_val;
++  union
+   {
+-    SET_RESTORE_ROUND (FE_TONEAREST);
+-
+-    junk1.x = x;
+-    m = junk1.i[HIGH_HALF];
+-    n = m & hugeint;
+-
+-    if (n > smallint && n < bigint)
+-      {
+-	y = x * log2e.x + three51.x;
+-	bexp = y - three51.x;	/*  multiply the result by 2**bexp        */
+-
+-	junk1.x = y;
+-
+-	eps = bexp * ln_two2.x;	/* x = bexp*ln(2) + t - eps               */
+-	t = x - bexp * ln_two1.x;
+-
+-	y = t + three33.x;
+-	base = y - three33.x;	/* t rounded to a multiple of 2**-18      */
+-	junk2.x = y;
+-	del = (t - base) - eps;	/*  x = bexp*ln(2) + base + del           */
+-	eps = del + del * del * (p3.x * del + p2.x);
+-
+-	binexp.i[HIGH_HALF] = (junk1.i[LOW_HALF] + 1023) << 20;
+-
+-	i = ((junk2.i[LOW_HALF] >> 8) & 0xfffffffe) + 356;
+-	j = (junk2.i[LOW_HALF] & 511) << 1;
+-
+-	al = coar.x[i] * fine.x[j];
+-	bet = ((coar.x[i] * fine.x[j + 1] + coar.x[i + 1] * fine.x[j])
+-	       + coar.x[i + 1] * fine.x[j + 1]);
+-
+-	rem = (bet + bet * eps) + al * eps;
+-	res = al + rem;
+-	cor = (al - res) + rem;
+-	if (res == (res + cor * err_0))
+-	  {
+-	    retval = res * binexp.x;
+-	    goto ret;
++    int i_part[2];
++    double x;
++  } xx;
++  union
++  {
++    int y_part[2];
++    double y;
++  } yy;
++  xx.x = x_arg;
++
++  ix = xx.i_part[HIGH_HALF];
++  hx = ix & ~0x80000000;
++
++  if (hx < 0x3ff0a2b2)
++    {				/* |x| < 3/2 ln 2 */
++      if (hx < 0x3f862e42)
++	{			/* |x| < 1/64 ln 2 */
++	  if (hx < 0x3ed00000)
++	    {			/* |x| < 2^-18 */
++	      /* raise inexact if x != 0 */
++	      if (hx < 0x3e300000)
++		{
++		  retval = one + xx.x;
++		  return (retval);
++		}
++	      retval = one + xx.x * (one + half * xx.x);
++	      return (retval);
 +	    }
- 	    retval = __slowexp (x);
- 	    goto ret;
- 	  }			/*if error is over bound */
++	  /* 
++	     Use FE_TONEAREST rounding mode for computing yy.y 
++	     Avoid set/reset of rounding mode if already in FE_TONEAREST mode
++	  */
++	  fe_val = get_rounding_mode ();
++	  if (fe_val == FE_TONEAREST) {
++	    t = xx.x * xx.x;
++	    yy.y = xx.x + (t * (half + xx.x * t2.x) +
++			   (t * t) * (t3.x + xx.x * t4.x + t * t5.x));
++	    retval = one + yy.y;
++	  } else {
++	    libc_fesetround (FE_TONEAREST);
++	    t = xx.x * xx.x;
++	    yy.y = xx.x + (t * (half + xx.x * t2.x) +
++			   (t * t) * (t3.x + xx.x * t4.x + t * t5.x));
++	    retval = one + yy.y;
++	    libc_fesetround (fe_val);
+ 	  }
+-	else
+-	  {
+-	    retval = __slowexp (x);
+-	    goto ret;
+-	  }			/*if error is over bound */
+-      }
++	  return (retval);
++	}
+ 
+-    if (n <= smallint)
+-      {
+-	retval = 1.0;
+-	goto ret;
++      /* find the multiple of 2^-6 nearest x */
++      k = hx >> 20;
++      j = (0x00100000 | (hx & 0x000fffff)) >> (0x40c - k);
++      j = (j - 1) & ~1;
++      if (ix < 0)
++	j += 134;
++      /* 
++	 Use FE_TONEAREST rounding mode for computing yy.y 
++	 Avoid set/reset of rounding mode if already in FE_TONEAREST mode
++      */
++      fe_val = get_rounding_mode ();
++      if (fe_val == FE_TONEAREST) {
++	z = xx.x - TBL2.x[j];
++	t = z * z;
++	yy.y = z + (t * (half + (z * t2.x)) +
++		    (t * t) * (t3.x + z * t4.x + t * t5.x));
++	retval = TBL2.x[j + 1] + TBL2.x[j + 1] * yy.y;
++      } else {
++	libc_fesetround (FE_TONEAREST);
++	z = xx.x - TBL2.x[j];
++	t = z * z;
++	yy.y = z + (t * (half + (z * t2.x)) +
++		    (t * t) * (t3.x + z * t4.x + t * t5.x));
++	retval = TBL2.x[j + 1] + TBL2.x[j + 1] * yy.y;
++	libc_fesetround (fe_val);
+       }
++      return (retval);
++    }
+ 
+-    if (n >= badint)
+-      {
+-	if (n > infint)
+-	  {
+-	    retval = x + x;
+-	    goto ret;
+-	  }			/* x is NaN */
+-	if (n < infint)
+-	  {
+-	    if (x > 0)
+-	      goto ret_huge;
+-	    else
+-	      goto ret_tiny;
+-	  }
+-	/* x is finite,  cause either overflow or underflow  */
+-	if (junk1.i[LOW_HALF] != 0)
+-	  {
+-	    retval = x + x;
+-	    goto ret;
+-	  }			/*  x is NaN  */
+-	retval = (x > 0) ? inf.x : zero;	/* |x| = inf;  return either inf or 0 */
+-	goto ret;
+-      }
++  if (hx >= 0x40862e42)
++    {				/* x is large, infinite, or nan */
++      if (hx >= 0x7ff00000)
++	{
++	  if (ix == 0xfff00000 && xx.i_part[LOW_HALF] == 0)
++	    return (zero);	/* exp(-inf) = 0 */
++	  return (xx.x * xx.x);	/* exp(nan/inf) is nan or inf */
++	}
++      if (xx.x > threshold1.x)
++	{			/* set overflow error condition */
++	  retval = hhuge * hhuge;
++	  return retval;
++	} 
++      if (-xx.x > threshold2.x)
++	{			/* set underflow error condition */
++	  double force_underflow = tiny * tiny;
++	  math_force_eval (force_underflow);
++	  retval = zero;
++	  return retval;
++	}
++    }
+ 
+-    y = x * log2e.x + three51.x;
+-    bexp = y - three51.x;
+-    junk1.x = y;
+-    eps = bexp * ln_two2.x;
+-    t = x - bexp * ln_two1.x;
+-    y = t + three33.x;
+-    base = y - three33.x;
+-    junk2.x = y;
+-    del = (t - base) - eps;
+-    eps = del + del * del * (p3.x * del + p2.x);
+-    i = ((junk2.i[LOW_HALF] >> 8) & 0xfffffffe) + 356;
+-    j = (junk2.i[LOW_HALF] & 511) << 1;
+-    al = coar.x[i] * fine.x[j];
+-    bet = ((coar.x[i] * fine.x[j + 1] + coar.x[i + 1] * fine.x[j])
+-	   + coar.x[i + 1] * fine.x[j + 1]);
+-    rem = (bet + bet * eps) + al * eps;
+-    res = al + rem;
+-    cor = (al - res) + rem;
+-    if (m >> 31)
+-      {
+-	ex = junk1.i[LOW_HALF];
+-	if (res < 1.0)
+-	  {
+-	    res += res;
+-	    cor += cor;
+-	    ex -= 1;
+-	  }
+-	if (ex >= -1022)
+-	  {
+-	    binexp.i[HIGH_HALF] = (1023 + ex) << 20;
+-	    if (res == (res + cor * err_0))
+-	      {
+-		retval = res * binexp.x;
+-		goto ret;
+-	      }
+-	    else
+-	      {
+-		retval = __slowexp (x);
+-		goto check_uflow_ret;
+-	      }			/*if error is over bound */
+-	  }
+-	ex = -(1022 + ex);
+-	binexp.i[HIGH_HALF] = (1023 - ex) << 20;
+-	res *= binexp.x;
+-	cor *= binexp.x;
+-	eps = 1.0000000001 + err_0 * binexp.x;
+-	t = 1.0 + res;
+-	y = ((1.0 - t) + res) + cor;
+-	res = t + y;
+-	cor = (t - res) + y;
+-	if (res == (res + eps * cor))
+-	  {
+-	    binexp.i[HIGH_HALF] = 0x00100000;
+-	    retval = (res - 1.0) * binexp.x;
+-	    goto check_uflow_ret;
+-	  }
+-	else
+-	  {
+-	    retval = __slowexp (x);
+-	    goto check_uflow_ret;
+-	  }			/*   if error is over bound    */
+-      check_uflow_ret:
+-	if (retval < DBL_MIN)
+-	  {
+-	    double force_underflow = tiny * tiny;
+-	    math_force_eval (force_underflow);
+-	  }
+-	if (retval == 0)
+-	  goto ret_tiny;
+-	goto ret;
+-      }
++  /* 
++     Use FE_TONEAREST rounding mode for computing yy.y 
++     Avoid set/reset of rounding mode if already in FE_TONEAREST mode
++  */
++  fe_val = get_rounding_mode ();
++  if (fe_val == FE_TONEAREST) {
++    t = invln2_32.x * xx.x;
++    if (ix < 0)
++      t -= half;
+     else
+-      {
+-	binexp.i[HIGH_HALF] = (junk1.i[LOW_HALF] + 767) << 20;
+-	if (res == (res + cor * err_0))
+-	  retval = res * binexp.x * t256.x;
+-	else
+-	  retval = __slowexp (x);
+-	if (isinf (retval))
+-	  goto ret_huge;
+-	else
+-	  goto ret;
+-      }
++      t += half;
++    k = (int) t;
++    j = (k & 0x1f) << 1;
++    m = k >> 5;
++    z = (xx.x - k * ln2_32hi.x) - k * ln2_32lo.x;
++
++    /* z is now in primary range */
++    t = z * z;
++    yy.y = z + (t * (half + z * t2.x) + 
++		(t * t) * (t3.x + z * t4.x + t * t5.x));
++    yy.y = TBL.x[j] + (TBL.x[j + 1] + TBL.x[j] * yy.y);
++  } else {
++    libc_fesetround (FE_TONEAREST);
++    t = invln2_32.x * xx.x;
++    if (ix < 0)
++      t -= half;
++    else
++      t += half;
++    k = (int) t;
++    j = (k & 0x1f) << 1;
++    m = k >> 5;
++    z = (xx.x - k * ln2_32hi.x) - k * ln2_32lo.x;
++
++    /* z is now in primary range */
++    t = z * z;
++    yy.y = z + (t * (half + z * t2.x) +
++		(t * t) * (t3.x + z * t4.x + t * t5.x));
++    yy.y = TBL.x[j] + (TBL.x[j + 1] + TBL.x[j] * yy.y);
++    libc_fesetround (fe_val);
+   }
+-ret:
+-  return retval;
+ 
+- ret_huge:
+-  return hhuge * hhuge;
+-
+- ret_tiny:
+-  return tiny * tiny;
++  if (m < -1021)
++    {
++      yy.y_part[HIGH_HALF] += (m + 54) << 20;
++      retval = twom54.x * yy.y;
++      if (retval < DBL_MIN)
++	{
++	  double force_underflow = tiny * tiny;
++	  math_force_eval (force_underflow);
++	}
++      return retval;
++    }
++  yy.y_part[HIGH_HALF] += m << 20;
++  return (yy.y);
+ }
+ #ifndef __ieee754_exp
+ strong_alias (__ieee754_exp, __exp_finite)
+ #endif
+ 
++#ifndef SECTION
++# define SECTION
++#endif
++
+ /* Compute e^(x+xx).  The routine also receives bound of error of previous
+    calculation.  If after computing exp the error exceeds the allowed bounds,
+    the routine returns a non-positive number.  Otherwise it returns the
+diff --git a/sysdeps/ieee754/dbl-64/e_pow.c b/sysdeps/ieee754/dbl-64/e_pow.c
+index 9f6439e..2eb8dbf 100644
+--- a/sysdeps/ieee754/dbl-64/e_pow.c
++++ b/sysdeps/ieee754/dbl-64/e_pow.c
+@@ -25,7 +25,7 @@
+ /*             log1                                                        */
+ /*             checkint                                                    */
+ /* FILES NEEDED: dla.h endian.h mpa.h mydefs.h                             */
+-/*               halfulp.c mpexp.c mplog.c slowexp.c slowpow.c mpa.c       */
++/*               halfulp.c mpexp.c mplog.c slowpow.c mpa.c                 */
+ /*                          uexp.c  upow.c				   */
+ /*               root.tbl uexp.tbl upow.tbl                                */
+ /* An ultimate power routine. Given two IEEE double machine numbers y,x    */
+diff --git a/sysdeps/ieee754/dbl-64/eexp.tbl b/sysdeps/ieee754/dbl-64/eexp.tbl
+new file mode 100644
+index 0000000..cecb8d4
+--- /dev/null
++++ b/sysdeps/ieee754/dbl-64/eexp.tbl
+@@ -0,0 +1,440 @@
++/* EXP function tables - for use in ocmputing double precisoin exponential
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifdef BIG_ENDI
++static const union {
++  int i[128];
++  double x[64];
++} TBL = { .i = {
++ 0x3FF00000, 0x00000000, 0x00000000, 0x00000000,
++ 0x3FF059B0, 0xD3158574, 0x3C8D73E2, 0xA475B465,
++ 0x3FF0B558, 0x6CF9890F, 0x3C98A62E, 0x4ADC610A,
++ 0x3FF11301, 0xD0125B51, 0xBC96C510, 0x39449B3A,
++ 0x3FF172B8, 0x3C7D517B, 0xBC819041, 0xB9D78A76,
++ 0x3FF1D487, 0x3168B9AA, 0x3C9E016E, 0x00A2643C,
++ 0x3FF2387A, 0x6E756238, 0x3C99B07E, 0xB6C70573,
++ 0x3FF29E9D, 0xF51FDEE1, 0x3C8612E8, 0xAFAD1255,
++ 0x3FF306FE, 0x0A31B715, 0x3C86F46A, 0xD23182E4,
++ 0x3FF371A7, 0x373AA9CB, 0xBC963AEA, 0xBF42EAE2,
++ 0x3FF3DEA6, 0x4C123422, 0x3C8ADA09, 0x11F09EBC,
++ 0x3FF44E08, 0x6061892D, 0x3C489B7A, 0x04EF80D0,
++ 0x3FF4BFDA, 0xD5362A27, 0x3C7D4397, 0xAFEC42E2,
++ 0x3FF5342B, 0x569D4F82, 0xBC807ABE, 0x1DB13CAC,
++ 0x3FF5AB07, 0xDD485429, 0x3C96324C, 0x054647AD,
++ 0x3FF6247E, 0xB03A5585, 0xBC9383C1, 0x7E40B497,
++ 0x3FF6A09E, 0x667F3BCD, 0xBC9BDD34, 0x13B26456,
++ 0x3FF71F75, 0xE8EC5F74, 0xBC816E47, 0x86887A99,
++ 0x3FF7A114, 0x73EB0187, 0xBC841577, 0xEE04992F,
++ 0x3FF82589, 0x994CCE13, 0xBC9D4C1D, 0xD41532D8,
++ 0x3FF8ACE5, 0x422AA0DB, 0x3C96E9F1, 0x56864B27,
++ 0x3FF93737, 0xB0CDC5E5, 0xBC675FC7, 0x81B57EBC,
++ 0x3FF9C491, 0x82A3F090, 0x3C7C7C46, 0xB071F2BE,
++ 0x3FFA5503, 0xB23E255D, 0xBC9D2F6E, 0xDB8D41E1,
++ 0x3FFAE89F, 0x995AD3AD, 0x3C97A1CD, 0x345DCC81,
++ 0x3FFB7F76, 0xF2FB5E47, 0xBC75584F, 0x7E54AC3B,
++ 0x3FFC199B, 0xDD85529C, 0x3C811065, 0x895048DD,
++ 0x3FFCB720, 0xDCEF9069, 0x3C7503CB, 0xD1E949DB,
++ 0x3FFD5818, 0xDCFBA487, 0x3C82ED02, 0xD75B3706,
++ 0x3FFDFC97, 0x337B9B5F, 0xBC91A5CD, 0x4F184B5C,
++ 0x3FFEA4AF, 0xA2A490DA, 0xBC9E9C23, 0x179C2893,
++ 0x3FFF5076, 0x5B6E4540, 0x3C99D3E1, 0x2DD8A18B } };
++
++/*
++   For i = 0, ..., 66,
++     TBL2[2*i] is a double precision number near (i+1)*2^-6, and
++     TBL2[2*i+1] = exp(TBL2[2*i]) to within a relative error less
++     than 2^-60.
++
++   For i = 67, ..., 133,
++     TBL2[2*i] is a double precision number near -(i+1)*2^-6, and
++     TBL2[2*i+1] = exp(TBL2[2*i]) to within a relative error less
++     than 2^-60.
++*/
++static const union {
++  int i[536];
++  double x[268];
++} TBL2 = { .i = {
++ 0x3F8FFFFF, 0xFFFFFC82, 0x3FF04080, 0xAB55DE32,
++ 0x3F9FFFFF, 0xFFFFFFDB, 0x3FF08205, 0x601127EC,
++ 0x3FA80000, 0x000000A0, 0x3FF0C492, 0x36829E91,
++ 0x3FAFFFFF, 0xFFFFFF79, 0x3FF1082B, 0x577D34E9,
++ 0x3FB3FFFF, 0xFFFFFFFC, 0x3FF14CD4, 0xFC989CD6,
++ 0x3FB80000, 0x00000060, 0x3FF19293, 0x7074E0D4,
++ 0x3FBC0000, 0x00000061, 0x3FF1D96B, 0x0EFF0E80,
++ 0x3FBFFFFF, 0xFFFFFFD6, 0x3FF22160, 0x45B6F5CA,
++ 0x3FC1FFFF, 0xFFFFFF58, 0x3FF26A77, 0x93F6014C,
++ 0x3FC3FFFF, 0xFFFFFF75, 0x3FF2B4B5, 0x8B372C65,
++ 0x3FC5FFFF, 0xFFFFFF00, 0x3FF3001E, 0xCF601AD1,
++ 0x3FC80000, 0x00000020, 0x3FF34CB8, 0x170B583A,
++ 0x3FC9FFFF, 0xFFFFA629, 0x3FF39A86, 0x2BD3B344,
++ 0x3FCC0000, 0x0000000F, 0x3FF3E98D, 0xEAA11DCE,
++ 0x3FCE0000, 0x0000007F, 0x3FF439D4, 0x43F5F16D,
++ 0x3FD00000, 0x00000072, 0x3FF48B5E, 0x3C3E81AB,
++ 0x3FD0FFFF, 0xFFFFFECA, 0x3FF4DE30, 0xEC211DFB,
++ 0x3FD1FFFF, 0xFFFFFF8F, 0x3FF53251, 0x80CFACD2,
++ 0x3FD30000, 0x0000003B, 0x3FF587C5, 0x3C5A7B04,
++ 0x3FD40000, 0x00000034, 0x3FF5DE91, 0x76046007,
++ 0x3FD4FFFF, 0xFFFFFF89, 0x3FF636BB, 0x9A98322F,
++ 0x3FD5FFFF, 0xFFFFFFE7, 0x3FF69049, 0x2CBF942A,
++ 0x3FD6FFFF, 0xFFFFFF78, 0x3FF6EB3F, 0xC55B1E45,
++ 0x3FD7FFFF, 0xFFFFFF65, 0x3FF747A5, 0x13DBEF32,
++ 0x3FD8FFFF, 0xFFFFFFD5, 0x3FF7A57E, 0xDE9EA22E,
++ 0x3FD9FFFF, 0xFFFFFF6E, 0x3FF804D3, 0x0347B50F,
++ 0x3FDAFFFF, 0xFFFFFFC3, 0x3FF865A7, 0x772164AE,
++ 0x3FDC0000, 0x00000053, 0x3FF8C802, 0x477B0030,
++ 0x3FDD0000, 0x0000004D, 0x3FF92BE9, 0x9A09BF1E,
++ 0x3FDE0000, 0x00000096, 0x3FF99163, 0xAD4B1E08,
++ 0x3FDEFFFF, 0xFFFFFEFA, 0x3FF9F876, 0xD8E8C4FC,
++ 0x3FDFFFFF, 0xFFFFFFD0, 0x3FFA6129, 0x8E1E0688,
++ 0x3FE08000, 0x00000002, 0x3FFACB82, 0x581EEE56,
++ 0x3FE10000, 0x0000001F, 0x3FFB3787, 0xDC80F979,
++ 0x3FE17FFF, 0xFFFFFFF8, 0x3FFBA540, 0xDBA56E4F,
++ 0x3FE1FFFF, 0xFFFFFFFA, 0x3FFC14B4, 0x31256441,
++ 0x3FE27FFF, 0xFFFFFFC4, 0x3FFC85E8, 0xD43F7C9B,
++ 0x3FE2FFFF, 0xFFFFFFFD, 0x3FFCF8E5, 0xD84758A6,
++ 0x3FE38000, 0x0000001F, 0x3FFD6DB2, 0x6D16CD84,
++ 0x3FE3FFFF, 0xFFFFFFD8, 0x3FFDE455, 0xDF80E39B,
++ 0x3FE48000, 0x00000052, 0x3FFE5CD7, 0x99C6A59C,
++ 0x3FE4FFFF, 0xFFFFFFC8, 0x3FFED73F, 0x240DC10C,
++ 0x3FE58000, 0x00000013, 0x3FFF5394, 0x24D90F71,
++ 0x3FE5FFFF, 0xFFFFFFBC, 0x3FFFD1DE, 0x6182F885,
++ 0x3FE68000, 0x0000002D, 0x40002912, 0xDF5CE741,
++ 0x3FE70000, 0x00000040, 0x40006A39, 0x207F0A2A,
++ 0x3FE78000, 0x0000004F, 0x4000AC66, 0x0691652A,
++ 0x3FE7FFFF, 0xFFFFFF6F, 0x4000EF9D, 0xB467DCAB,
++ 0x3FE87FFF, 0xFFFFFFE5, 0x400133E4, 0x5D82E943,
++ 0x3FE90000, 0x00000035, 0x4001793E, 0x4652CC6D,
++ 0x3FE97FFF, 0xFFFFFFB3, 0x4001BFAF, 0xC47BDA48,
++ 0x3FEA0000, 0x00000000, 0x4002073D, 0x3F1BD518,
++ 0x3FEA8000, 0x0000004A, 0x40024FEB, 0x2F105CE2,
++ 0x3FEAFFFF, 0xFFFFFFED, 0x400299BE, 0x1F3E7F11,
++ 0x3FEB7FFF, 0xFFFFFFFB, 0x4002E4BA, 0xACDB6611,
++ 0x3FEC0000, 0x0000001D, 0x400330E5, 0x87B62B39,
++ 0x3FEC8000, 0x00000079, 0x40037E43, 0x7282D538,
++ 0x3FECFFFF, 0xFFFFFF51, 0x4003CCD9, 0x43268248,
++ 0x3FED7FFF, 0xFFFFFF74, 0x40041CAB, 0xE304CADC,
++ 0x3FEE0000, 0x00000011, 0x40046DC0, 0x4F4E5343,
++ 0x3FEE8000, 0x0000001E, 0x4004C01B, 0x9950A124,
++ 0x3FEEFFFF, 0xFFFFFF9E, 0x400513C2, 0xE6C73196,
++ 0x3FEF7FFF, 0xFFFFFFED, 0x400568BB, 0x722DD586,
++ 0x3FF00000, 0x00000034, 0x4005BF0A, 0x8B1457B0,
++ 0x3FF03FFF, 0xFFFFFFE2, 0x400616B5, 0x967376DF,
++ 0x3FF07FFF, 0xFFFFFF4B, 0x40066FC2, 0x0F0337A9,
++ 0x3FF0BFFF, 0xFFFFFFFD, 0x4006CA35, 0x859290F5,
++ 0xBF8FFFFF, 0xFFFFFFE4, 0x3FEF80FE, 0xABFEEFA5,
++ 0xBF9FFFFF, 0xFFFFFB0B, 0x3FEF03F5, 0x6A88B5FE,
++ 0xBFA7FFFF, 0xFFFFFFA7, 0x3FEE88DC, 0x6AFECFC5,
++ 0xBFAFFFFF, 0xFFFFFEA8, 0x3FEE0FAB, 0xFBC702B8,
++ 0xBFB3FFFF, 0xFFFFFFB3, 0x3FED985C, 0x89D041AC,
++ 0xBFB7FFFF, 0xFFFFFFE3, 0x3FED22E6, 0xA0197C06,
++ 0xBFBBFFFF, 0xFFFFFF9A, 0x3FECAF42, 0xE73A4C89,
++ 0xBFBFFFFF, 0xFFFFFF98, 0x3FEC3D6A, 0x24ED822D,
++ 0xBFC1FFFF, 0xFFFFFFE9, 0x3FEBCD55, 0x3B9D7B67,
++ 0xBFC3FFFF, 0xFFFFFFE0, 0x3FEB5EFD, 0x29F24C2D,
++ 0xBFC5FFFF, 0xFFFFF553, 0x3FEAF25B, 0x0A61A9F4,
++ 0xBFC7FFFF, 0xFFFFFF8B, 0x3FEA8768, 0x12C08794,
++ 0xBFC9FFFF, 0xFFFFFE51, 0x3FEA1E1D, 0x93D68828,
++ 0xBFCBFFFF, 0xFFFFFF6E, 0x3FE9B674, 0xF8F2F3F5,
++ 0xBFCDFFFF, 0xFFFFFF7F, 0x3FE95067, 0xC7837A0C,
++ 0xBFCFFFFF, 0xFFFFFF7A, 0x3FE8EBEF, 0x9EAC8225,
++ 0xBFD0FFFF, 0xFFFFFFFE, 0x3FE88906, 0x36E31F55,
++ 0xBFD1FFFF, 0xFFFFFF41, 0x3FE827A5, 0x6188975E,
++ 0xBFD2FFFF, 0xFFFFFFBA, 0x3FE7C7C7, 0x08877656,
++ 0xBFD3FFFF, 0xFFFFFFF8, 0x3FE76965, 0x2DF22F81,
++ 0xBFD4FFFF, 0xFFFFFF90, 0x3FE70C79, 0xEBA33C2F,
++ 0xBFD5FFFF, 0xFFFFFFDB, 0x3FE6B0FF, 0x72DEB8AA,
++ 0xBFD6FFFF, 0xFFFFFF9A, 0x3FE656F0, 0x0BF5798E,
++ 0xBFD7FFFF, 0xFFFFFF9F, 0x3FE5FE46, 0x15E98EB0,
++ 0xBFD8FFFF, 0xFFFFFFEE, 0x3FE5A6FC, 0x061433CE,
++ 0xBFD9FFFF, 0xFFFFFC4A, 0x3FE5510C, 0x67CD26CD,
++ 0xBFDAFFFF, 0xFFFFFF30, 0x3FE4FC71, 0xDC13566B,
++ 0xBFDBFFFF, 0xFFFFFFF0, 0x3FE4A927, 0x1936FD0E,
++ 0xBFDCFFFF, 0xFFFFFFF3, 0x3FE45726, 0xEA84FB8C,
++ 0xBFDDFFFF, 0xFFFFFFF3, 0x3FE4066C, 0x2FF3912B,
++ 0xBFDEFFFF, 0xFFFFFF80, 0x3FE3B6F1, 0xDDD05AB9,
++ 0xBFDFFFFF, 0xFFFFFFDF, 0x3FE368B2, 0xFC6F9614,
++ 0xBFE08000, 0x00000000, 0x3FE31BAA, 0xA7DCA843,
++ 0xBFE0FFFF, 0xFFFFFFA4, 0x3FE2CFD4, 0x0F8BDCE4,
++ 0xBFE17FFF, 0xFFFFFF0A, 0x3FE2852A, 0x760D5CE7,
++ 0xBFE20000, 0x00000000, 0x3FE23BA9, 0x30C1568B,
++ 0xBFE27FFF, 0xFFFFFFBB, 0x3FE1F34B, 0xA78D568D,
++ 0xBFE2FFFF, 0xFFFFFE32, 0x3FE1AC0D, 0x5492C1DB,
++ 0xBFE37FFF, 0xFFFFF042, 0x3FE165E9, 0xC3E67EF2,
++ 0xBFE3FFFF, 0xFFFFFF77, 0x3FE120DC, 0x93499431,
++ 0xBFE47FFF, 0xFFFFFF6B, 0x3FE0DCE1, 0x71E34ECE,
++ 0xBFE4FFFF, 0xFFFFFFF1, 0x3FE099F4, 0x1FFBE588,
++ 0xBFE57FFF, 0xFFFFFE02, 0x3FE05810, 0x6EB8A7AE,
++ 0xBFE5FFFF, 0xFFFFFFE5, 0x3FE01732, 0x3FD9002E,
++ 0xBFE67FFF, 0xFFFFFFB0, 0x3FDFAEAB, 0x0AE9386C,
++ 0xBFE6FFFF, 0xFFFFFFB2, 0x3FDF30EC, 0x837503D7,
++ 0xBFE77FFF, 0xFFFFFF7F, 0x3FDEB521, 0x0D627133,
++ 0xBFE7FFFF, 0xFFFFFFE8, 0x3FDE3B40, 0xEBEFCD95,
++ 0xBFE87FFF, 0xFFFFFFC8, 0x3FDDC344, 0x8110DAE2,
++ 0xBFE8FFFF, 0xFFFFFB30, 0x3FDD4D24, 0x4CF4EF06,
++ 0xBFE97FFF, 0xFFFFFFEF, 0x3FDCD8D8, 0xED8EE395,
++ 0xBFE9FFFF, 0xFFFFFFA7, 0x3FDC665B, 0x1E1F1E5C,
++ 0xBFEA7FFF, 0xFFFFFFDC, 0x3FDBF5A3, 0xB6BF18D6,
++ 0xBFEAFFFF, 0xFFFFFF95, 0x3FDB86AB, 0xABEEF93B,
++ 0xBFEB7FFF, 0xFFFFFFCB, 0x3FDB196C, 0x0E24D256,
++ 0xBFEBFFFF, 0xFFFFFF32, 0x3FDAADDE, 0x095DADF7,
++ 0xBFEC7FFF, 0xFFFFFF6A, 0x3FDA43FA, 0xE4B047C9,
++ 0xBFECFFFF, 0xFFFFFFB6, 0x3FD9DBBC, 0x01E182A4,
++ 0xBFED7FFF, 0xFFFFFFCA, 0x3FD9751A, 0xDCFA81EC,
++ 0xBFEDFFFF, 0xFFFFFFCD, 0x3FD91011, 0x0BE0699E,
++ 0xBFEE7FFF, 0xFFFFFFFB, 0x3FD8AC98, 0x3DEDBC69,
++ 0xBFEEFFFF, 0xFFFFFF88, 0x3FD84AAA, 0x3B8D51A9,
++ 0xBFEF7FFF, 0xFFFFFFBB, 0x3FD7EA40, 0xE5D6D92E,
++ 0xBFEFFFFF, 0xFFFFFFDB, 0x3FD78B56, 0x362CEF53,
++ 0xBFF03FFF, 0xFFFFFF00, 0x3FD72DE4, 0x3DDCB1F2,
++ 0xBFF07FFF, 0xFFFFFE6F, 0x3FD6D1E5, 0x25BED085,
++ 0xBFF0BFFF, 0xFFFFFFD6, 0x3FD67753, 0x2DDA1C57 } };
++
++#else
++#ifdef LITTLE_ENDI
++
++static const union {
++  int i[128];
++  double x[64];
++} TBL = { .i = {
++ 0x00000000, 0x3FF00000, 0x00000000, 0x00000000,
++ 0xD3158574, 0x3FF059B0, 0xA475B465, 0x3C8D73E2,
++ 0x6CF9890F, 0x3FF0B558, 0x4ADC610A, 0x3C98A62E,
++ 0xD0125B51, 0x3FF11301, 0x39449B3A, 0xBC96C510,
++ 0x3C7D517B, 0x3FF172B8, 0xB9D78A76, 0xBC819041,
++ 0x3168B9AA, 0x3FF1D487, 0x00A2643C, 0x3C9E016E,
++ 0x6E756238, 0x3FF2387A, 0xB6C70573, 0x3C99B07E,
++ 0xF51FDEE1, 0x3FF29E9D, 0xAFAD1255, 0x3C8612E8,
++ 0x0A31B715, 0x3FF306FE, 0xD23182E4, 0x3C86F46A,
++ 0x373AA9CB, 0x3FF371A7, 0xBF42EAE2, 0xBC963AEA,
++ 0x4C123422, 0x3FF3DEA6, 0x11F09EBC, 0x3C8ADA09,
++ 0x6061892D, 0x3FF44E08, 0x04EF80D0, 0x3C489B7A,
++ 0xD5362A27, 0x3FF4BFDA, 0xAFEC42E2, 0x3C7D4397,
++ 0x569D4F82, 0x3FF5342B, 0x1DB13CAC, 0xBC807ABE,
++ 0xDD485429, 0x3FF5AB07, 0x054647AD, 0x3C96324C,
++ 0xB03A5585, 0x3FF6247E, 0x7E40B497, 0xBC9383C1,
++ 0x667F3BCD, 0x3FF6A09E, 0x13B26456, 0xBC9BDD34,
++ 0xE8EC5F74, 0x3FF71F75, 0x86887A99, 0xBC816E47,
++ 0x73EB0187, 0x3FF7A114, 0xEE04992F, 0xBC841577,
++ 0x994CCE13, 0x3FF82589, 0xD41532D8, 0xBC9D4C1D,
++ 0x422AA0DB, 0x3FF8ACE5, 0x56864B27, 0x3C96E9F1,
++ 0xB0CDC5E5, 0x3FF93737, 0x81B57EBC, 0xBC675FC7,
++ 0x82A3F090, 0x3FF9C491, 0xB071F2BE, 0x3C7C7C46,
++ 0xB23E255D, 0x3FFA5503, 0xDB8D41E1, 0xBC9D2F6E,
++ 0x995AD3AD, 0x3FFAE89F, 0x345DCC81, 0x3C97A1CD,
++ 0xF2FB5E47, 0x3FFB7F76, 0x7E54AC3B, 0xBC75584F,
++ 0xDD85529C, 0x3FFC199B, 0x895048DD, 0x3C811065,
++ 0xDCEF9069, 0x3FFCB720, 0xD1E949DB, 0x3C7503CB,
++ 0xDCFBA487, 0x3FFD5818, 0xD75B3706, 0x3C82ED02,
++ 0x337B9B5F, 0x3FFDFC97, 0x4F184B5C, 0xBC91A5CD,
++ 0xA2A490DA, 0x3FFEA4AF, 0x179C2893, 0xBC9E9C23,
++ 0x5B6E4540, 0x3FFF5076, 0x2DD8A18B, 0x3C99D3E1 } };
++/*
++   For i = 0, ..., 66,
++     TBL2[2*i] is a double precision number near (i+1)*2^-6, and
++     TBL2[2*i+1] = exp(TBL2[2*i]) to within a relative error less
++     than 2^-60.
++
++   For i = 67, ..., 133,
++     TBL2[2*i] is a double precision number near -(i+1)*2^-6, and
++     TBL2[2*i+1] = exp(TBL2[2*i]) to within a relative error less
++     than 2^-60.
++*/
++static const union {
++  int i[536];
++  double x[268];
++} TBL2 = { .i = {
++ 0xFFFFFC82, 0x3F8FFFFF, 0xAB55DE32, 0x3FF04080,
++ 0xFFFFFFDB, 0x3F9FFFFF, 0x601127EC, 0x3FF08205,
++ 0x000000A0, 0x3FA80000, 0x36829E91, 0x3FF0C492,
++ 0xFFFFFF79, 0x3FAFFFFF, 0x577D34E9, 0x3FF1082B,
++ 0xFFFFFFFC, 0x3FB3FFFF, 0xFC989CD6, 0x3FF14CD4,
++ 0x00000060, 0x3FB80000, 0x7074E0D4, 0x3FF19293,
++ 0x00000061, 0x3FBC0000, 0x0EFF0E80, 0x3FF1D96B,
++ 0xFFFFFFD6, 0x3FBFFFFF, 0x45B6F5CA, 0x3FF22160,
++ 0xFFFFFF58, 0x3FC1FFFF, 0x93F6014C, 0x3FF26A77,
++ 0xFFFFFF75, 0x3FC3FFFF, 0x8B372C65, 0x3FF2B4B5,
++ 0xFFFFFF00, 0x3FC5FFFF, 0xCF601AD1, 0x3FF3001E,
++ 0x00000020, 0x3FC80000, 0x170B583A, 0x3FF34CB8,
++ 0xFFFFA629, 0x3FC9FFFF, 0x2BD3B344, 0x3FF39A86,
++ 0x0000000F, 0x3FCC0000, 0xEAA11DCE, 0x3FF3E98D,
++ 0x0000007F, 0x3FCE0000, 0x43F5F16D, 0x3FF439D4,
++ 0x00000072, 0x3FD00000, 0x3C3E81AB, 0x3FF48B5E,
++ 0xFFFFFECA, 0x3FD0FFFF, 0xEC211DFB, 0x3FF4DE30,
++ 0xFFFFFF8F, 0x3FD1FFFF, 0x80CFACD2, 0x3FF53251,
++ 0x0000003B, 0x3FD30000, 0x3C5A7B04, 0x3FF587C5,
++ 0x00000034, 0x3FD40000, 0x76046007, 0x3FF5DE91,
++ 0xFFFFFF89, 0x3FD4FFFF, 0x9A98322F, 0x3FF636BB,
++ 0xFFFFFFE7, 0x3FD5FFFF, 0x2CBF942A, 0x3FF69049,
++ 0xFFFFFF78, 0x3FD6FFFF, 0xC55B1E45, 0x3FF6EB3F,
++ 0xFFFFFF65, 0x3FD7FFFF, 0x13DBEF32, 0x3FF747A5,
++ 0xFFFFFFD5, 0x3FD8FFFF, 0xDE9EA22E, 0x3FF7A57E,
++ 0xFFFFFF6E, 0x3FD9FFFF, 0x0347B50F, 0x3FF804D3,
++ 0xFFFFFFC3, 0x3FDAFFFF, 0x772164AE, 0x3FF865A7,
++ 0x00000053, 0x3FDC0000, 0x477B0030, 0x3FF8C802,
++ 0x0000004D, 0x3FDD0000, 0x9A09BF1E, 0x3FF92BE9,
++ 0x00000096, 0x3FDE0000, 0xAD4B1E08, 0x3FF99163,
++ 0xFFFFFEFA, 0x3FDEFFFF, 0xD8E8C4FC, 0x3FF9F876,
++ 0xFFFFFFD0, 0x3FDFFFFF, 0x8E1E0688, 0x3FFA6129,
++ 0x00000002, 0x3FE08000, 0x581EEE56, 0x3FFACB82,
++ 0x0000001F, 0x3FE10000, 0xDC80F979, 0x3FFB3787,
++ 0xFFFFFFF8, 0x3FE17FFF, 0xDBA56E4F, 0x3FFBA540,
++ 0xFFFFFFFA, 0x3FE1FFFF, 0x31256441, 0x3FFC14B4,
++ 0xFFFFFFC4, 0x3FE27FFF, 0xD43F7C9B, 0x3FFC85E8,
++ 0xFFFFFFFD, 0x3FE2FFFF, 0xD84758A6, 0x3FFCF8E5,
++ 0x0000001F, 0x3FE38000, 0x6D16CD84, 0x3FFD6DB2,
++ 0xFFFFFFD8, 0x3FE3FFFF, 0xDF80E39B, 0x3FFDE455,
++ 0x00000052, 0x3FE48000, 0x99C6A59C, 0x3FFE5CD7,
++ 0xFFFFFFC8, 0x3FE4FFFF, 0x240DC10C, 0x3FFED73F,
++ 0x00000013, 0x3FE58000, 0x24D90F71, 0x3FFF5394,
++ 0xFFFFFFBC, 0x3FE5FFFF, 0x6182F885, 0x3FFFD1DE,
++ 0x0000002D, 0x3FE68000, 0xDF5CE741, 0x40002912,
++ 0x00000040, 0x3FE70000, 0x207F0A2A, 0x40006A39,
++ 0x0000004F, 0x3FE78000, 0x0691652A, 0x4000AC66,
++ 0xFFFFFF6F, 0x3FE7FFFF, 0xB467DCAB, 0x4000EF9D,
++ 0xFFFFFFE5, 0x3FE87FFF, 0x5D82E943, 0x400133E4,
++ 0x00000035, 0x3FE90000, 0x4652CC6D, 0x4001793E,
++ 0xFFFFFFB3, 0x3FE97FFF, 0xC47BDA48, 0x4001BFAF,
++ 0x00000000, 0x3FEA0000, 0x3F1BD518, 0x4002073D,
++ 0x0000004A, 0x3FEA8000, 0x2F105CE2, 0x40024FEB,
++ 0xFFFFFFED, 0x3FEAFFFF, 0x1F3E7F11, 0x400299BE,
++ 0xFFFFFFFB, 0x3FEB7FFF, 0xACDB6611, 0x4002E4BA,
++ 0x0000001D, 0x3FEC0000, 0x87B62B39, 0x400330E5,
++ 0x00000079, 0x3FEC8000, 0x7282D538, 0x40037E43,
++ 0xFFFFFF51, 0x3FECFFFF, 0x43268248, 0x4003CCD9,
++ 0xFFFFFF74, 0x3FED7FFF, 0xE304CADC, 0x40041CAB,
++ 0x00000011, 0x3FEE0000, 0x4F4E5343, 0x40046DC0,
++ 0x0000001E, 0x3FEE8000, 0x9950A124, 0x4004C01B,
++ 0xFFFFFF9E, 0x3FEEFFFF, 0xE6C73196, 0x400513C2,
++ 0xFFFFFFED, 0x3FEF7FFF, 0x722DD586, 0x400568BB,
++ 0x00000034, 0x3FF00000, 0x8B1457B0, 0x4005BF0A,
++ 0xFFFFFFE2, 0x3FF03FFF, 0x967376DF, 0x400616B5,
++ 0xFFFFFF4B, 0x3FF07FFF, 0x0F0337A9, 0x40066FC2,
++ 0xFFFFFFFD, 0x3FF0BFFF, 0x859290F5, 0x4006CA35,
++ 0xFFFFFFE4, 0xBF8FFFFF, 0xABFEEFA5, 0x3FEF80FE,
++ 0xFFFFFB0B, 0xBF9FFFFF, 0x6A88B5FE, 0x3FEF03F5,
++ 0xFFFFFFA7, 0xBFA7FFFF, 0x6AFECFC5, 0x3FEE88DC,
++ 0xFFFFFEA8, 0xBFAFFFFF, 0xFBC702B8, 0x3FEE0FAB,
++ 0xFFFFFFB3, 0xBFB3FFFF, 0x89D041AC, 0x3FED985C,
++ 0xFFFFFFE3, 0xBFB7FFFF, 0xA0197C06, 0x3FED22E6,
++ 0xFFFFFF9A, 0xBFBBFFFF, 0xE73A4C89, 0x3FECAF42,
++ 0xFFFFFF98, 0xBFBFFFFF, 0x24ED822D, 0x3FEC3D6A,
++ 0xFFFFFFE9, 0xBFC1FFFF, 0x3B9D7B67, 0x3FEBCD55,
++ 0xFFFFFFE0, 0xBFC3FFFF, 0x29F24C2D, 0x3FEB5EFD,
++ 0xFFFFF553, 0xBFC5FFFF, 0x0A61A9F4, 0x3FEAF25B,
++ 0xFFFFFF8B, 0xBFC7FFFF, 0x12C08794, 0x3FEA8768,
++ 0xFFFFFE51, 0xBFC9FFFF, 0x93D68828, 0x3FEA1E1D,
++ 0xFFFFFF6E, 0xBFCBFFFF, 0xF8F2F3F5, 0x3FE9B674,
++ 0xFFFFFF7F, 0xBFCDFFFF, 0xC7837A0C, 0x3FE95067,
++ 0xFFFFFF7A, 0xBFCFFFFF, 0x9EAC8225, 0x3FE8EBEF,
++ 0xFFFFFFFE, 0xBFD0FFFF, 0x36E31F55, 0x3FE88906,
++ 0xFFFFFF41, 0xBFD1FFFF, 0x6188975E, 0x3FE827A5,
++ 0xFFFFFFBA, 0xBFD2FFFF, 0x08877656, 0x3FE7C7C7,
++ 0xFFFFFFF8, 0xBFD3FFFF, 0x2DF22F81, 0x3FE76965,
++ 0xFFFFFF90, 0xBFD4FFFF, 0xEBA33C2F, 0x3FE70C79,
++ 0xFFFFFFDB, 0xBFD5FFFF, 0x72DEB8AA, 0x3FE6B0FF,
++ 0xFFFFFF9A, 0xBFD6FFFF, 0x0BF5798E, 0x3FE656F0,
++ 0xFFFFFF9F, 0xBFD7FFFF, 0x15E98EB0, 0x3FE5FE46,
++ 0xFFFFFFEE, 0xBFD8FFFF, 0x061433CE, 0x3FE5A6FC,
++ 0xFFFFFC4A, 0xBFD9FFFF, 0x67CD26CD, 0x3FE5510C,
++ 0xFFFFFF30, 0xBFDAFFFF, 0xDC13566B, 0x3FE4FC71,
++ 0xFFFFFFF0, 0xBFDBFFFF, 0x1936FD0E, 0x3FE4A927,
++ 0xFFFFFFF3, 0xBFDCFFFF, 0xEA84FB8C, 0x3FE45726,
++ 0xFFFFFFF3, 0xBFDDFFFF, 0x2FF3912B, 0x3FE4066C,
++ 0xFFFFFF80, 0xBFDEFFFF, 0xDDD05AB9, 0x3FE3B6F1,
++ 0xFFFFFFDF, 0xBFDFFFFF, 0xFC6F9614, 0x3FE368B2,
++ 0x00000000, 0xBFE08000, 0xA7DCA843, 0x3FE31BAA,
++ 0xFFFFFFA4, 0xBFE0FFFF, 0x0F8BDCE4, 0x3FE2CFD4,
++ 0xFFFFFF0A, 0xBFE17FFF, 0x760D5CE7, 0x3FE2852A,
++ 0x00000000, 0xBFE20000, 0x30C1568B, 0x3FE23BA9,
++ 0xFFFFFFBB, 0xBFE27FFF, 0xA78D568D, 0x3FE1F34B,
++ 0xFFFFFE32, 0xBFE2FFFF, 0x5492C1DB, 0x3FE1AC0D,
++ 0xFFFFF042, 0xBFE37FFF, 0xC3E67EF2, 0x3FE165E9,
++ 0xFFFFFF77, 0xBFE3FFFF, 0x93499431, 0x3FE120DC,
++ 0xFFFFFF6B, 0xBFE47FFF, 0x71E34ECE, 0x3FE0DCE1,
++ 0xFFFFFFF1, 0xBFE4FFFF, 0x1FFBE588, 0x3FE099F4,
++ 0xFFFFFE02, 0xBFE57FFF, 0x6EB8A7AE, 0x3FE05810,
++ 0xFFFFFFE5, 0xBFE5FFFF, 0x3FD9002E, 0x3FE01732,
++ 0xFFFFFFB0, 0xBFE67FFF, 0x0AE9386C, 0x3FDFAEAB,
++ 0xFFFFFFB2, 0xBFE6FFFF, 0x837503D7, 0x3FDF30EC,
++ 0xFFFFFF7F, 0xBFE77FFF, 0x0D627133, 0x3FDEB521,
++ 0xFFFFFFE8, 0xBFE7FFFF, 0xEBEFCD95, 0x3FDE3B40,
++ 0xFFFFFFC8, 0xBFE87FFF, 0x8110DAE2, 0x3FDDC344,
++ 0xFFFFFB30, 0xBFE8FFFF, 0x4CF4EF06, 0x3FDD4D24,
++ 0xFFFFFFEF, 0xBFE97FFF, 0xED8EE395, 0x3FDCD8D8,
++ 0xFFFFFFA7, 0xBFE9FFFF, 0x1E1F1E5C, 0x3FDC665B,
++ 0xFFFFFFDC, 0xBFEA7FFF, 0xB6BF18D6, 0x3FDBF5A3,
++ 0xFFFFFF95, 0xBFEAFFFF, 0xABEEF93B, 0x3FDB86AB,
++ 0xFFFFFFCB, 0xBFEB7FFF, 0x0E24D256, 0x3FDB196C,
++ 0xFFFFFF32, 0xBFEBFFFF, 0x095DADF7, 0x3FDAADDE,
++ 0xFFFFFF6A, 0xBFEC7FFF, 0xE4B047C9, 0x3FDA43FA,
++ 0xFFFFFFB6, 0xBFECFFFF, 0x01E182A4, 0x3FD9DBBC,
++ 0xFFFFFFCA, 0xBFED7FFF, 0xDCFA81EC, 0x3FD9751A,
++ 0xFFFFFFCD, 0xBFEDFFFF, 0x0BE0699E, 0x3FD91011,
++ 0xFFFFFFFB, 0xBFEE7FFF, 0x3DEDBC69, 0x3FD8AC98,
++ 0xFFFFFF88, 0xBFEEFFFF, 0x3B8D51A9, 0x3FD84AAA,
++ 0xFFFFFFBB, 0xBFEF7FFF, 0xE5D6D92E, 0x3FD7EA40,
++ 0xFFFFFFDB, 0xBFEFFFFF, 0x362CEF53, 0x3FD78B56,
++ 0xFFFFFF00, 0xBFF03FFF, 0x3DDCB1F2, 0x3FD72DE4,
++ 0xFFFFFE6F, 0xBFF07FFF, 0x25BED085, 0x3FD6D1E5,
++ 0xFFFFFFD6, 0xBFF0BFFF, 0x2DDA1C57, 0x3FD67753 } };
++
++#endif
++#endif
++
++
++#ifdef BIG_ENDI
++
++static const mynumber 
++/* Following three values used to scale x to primary range */
++  invln2_32 = {{0x40471547, 0x652b82fe}}, /* 4.61662413084468283841e+01 */
++  ln2_32hi =  {{0x3f962e42, 0xfee00000}}, /* 2.16608493865351192653e-02 */
++  ln2_32lo =  {{0x3d9a39ef, 0x35793c76}}, /* 5.96317165397058656257e-12 */
++/* t2-t5 terms used for polynomial computation */
++  t2 = {{0x3fc55555, 0x55548f7c}}, /* 1.6666666666526086527e-1 */
++  t3 = {{0x3fa55555, 0x55545d4e}}, /* 4.1666666666226079285e-2 */
++  t4 = {{0x3f811115, 0xb7aa905e}}, /* 8.3333679843421958056e-3 */
++  t5 = {{0x3f56c172, 0x8d739765}}, /* 1.3888949086377719040e-3 */
++/* maximum value for x to not overflow */
++  threshold1 = {{0x40862E42, 0xFEFA39EF}}, /* 7.09782712893383973096e+02 */
++/* maximum value for -x to not underflow */
++  threshold2 = {{0x40874910, 0xD52D3051}}, /* 7.45133219101941108420e+02 */
++/* scaling factor used when result near zero*/
++  twom54 = {{0x3c900000, 0x00000000}}; /* 5.55111512312578270212e-17 */
++
++#else
++#ifdef LITTLE_ENDI
++
++static const mynumber 
++/* Following three values used to scale x to primary range */
++  invln2_32 = {{0x652b82fe, 0x40471547}}, /* 4.61662413084468283841e+01 */
++  ln2_32hi =  {{0xfee00000, 0x3f962e42}}, /* 2.16608493865351192653e-02 */
++  ln2_32lo =  {{0x35793c76, 0x3d9a39ef}}, /* 5.96317165397058656257e-12 */
++/* t2-t5 terms used for polynomial computation */
++  t2 = {{0x55548f7c, 0x3fc55555}}, /* 1.6666666666526086527e-1 */
++  t3 = {{0x55545d4e, 0x3fa55555}}, /* 4.1666666666226079285e-2 */
++  t4 = {{0xb7aa905e, 0x3f811115}}, /* 8.3333679843421958056e-3 */
++  t5 = {{0x8d739765, 0x3f56c172}}, /* 1.3888949086377719040e-3 */
++/* maximum value for x to not overflow */
++  threshold1 = {{0xFEFA39EF, 0x40862E42}}, /* 7.09782712893383973096e+02 */
++/* maximum value for -x to not underflow */
++  threshold2 = {{0xD52D3051, 0x40874910}}, /* 7.45133219101941108420e+02 */
++/* scaling factor used when result near zero*/
++  twom54 = {{0x00000000, 0x3c900000}}; /* 5.55111512312578270212e-17 */
++
++#endif
++#endif
+diff --git a/sysdeps/ieee754/dbl-64/slowexp.c b/sysdeps/ieee754/dbl-64/slowexp.c
+deleted file mode 100644
+index e8fa2e2..0000000
+--- a/sysdeps/ieee754/dbl-64/slowexp.c
++++ /dev/null
+@@ -1,86 +0,0 @@
+-/*
+- * IBM Accurate Mathematical Library
+- * written by International Business Machines Corp.
+- * Copyright (C) 2001-2017 Free Software Foundation, Inc.
+- *
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU Lesser General Public License as published by
+- * the Free Software Foundation; either version 2.1 of the License, or
+- * (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU Lesser General Public License for more details.
+- *
+- * You should have received a copy of the GNU Lesser General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- */
+-/**************************************************************************/
+-/*  MODULE_NAME:slowexp.c                                                 */
+-/*                                                                        */
+-/*  FUNCTION:slowexp                                                      */
+-/*                                                                        */
+-/*  FILES NEEDED:mpa.h                                                    */
+-/*               mpa.c mpexp.c                                            */
+-/*                                                                        */
+-/*Converting from double precision to Multi-precision and calculating     */
+-/* e^x                                                                    */
+-/**************************************************************************/
+-#include <math_private.h>
+-
+-#include <stap-probe.h>
+-
+-#ifndef USE_LONG_DOUBLE_FOR_MP
+-# include "mpa.h"
+-void __mpexp (mp_no *x, mp_no *y, int p);
+-#endif
+-
+-#ifndef SECTION
+-# define SECTION
+-#endif
+-
+-/*Converting from double precision to Multi-precision and calculating  e^x */
+-double
+-SECTION
+-__slowexp (double x)
+-{
+-#ifndef USE_LONG_DOUBLE_FOR_MP
+-  double w, z, res, eps = 3.0e-26;
+-  int p;
+-  mp_no mpx, mpy, mpz, mpw, mpeps, mpcor;
+-
+-  /* Use the multiple precision __MPEXP function to compute the exponential
+-     First at 144 bits and if it is not accurate enough, at 768 bits.  */
+-  p = 6;
+-  __dbl_mp (x, &mpx, p);
+-  __mpexp (&mpx, &mpy, p);
+-  __dbl_mp (eps, &mpeps, p);
+-  __mul (&mpeps, &mpy, &mpcor, p);
+-  __add (&mpy, &mpcor, &mpw, p);
+-  __sub (&mpy, &mpcor, &mpz, p);
+-  __mp_dbl (&mpw, &w, p);
+-  __mp_dbl (&mpz, &z, p);
+-  if (w == z)
+-    {
+-      /* Track how often we get to the slow exp code plus
+-	 its input/output values.  */
+-      LIBC_PROBE (slowexp_p6, 2, &x, &w);
+-      return w;
+-    }
+-  else
+-    {
+-      p = 32;
+-      __dbl_mp (x, &mpx, p);
+-      __mpexp (&mpx, &mpy, p);
+-      __mp_dbl (&mpy, &res, p);
+-
+-      /* Track how often we get to the uber-slow exp code plus
+-	 its input/output values.  */
+-      LIBC_PROBE (slowexp_p32, 2, &x, &res);
+-      return res;
+-    }
+-#else
+-  return (double) __ieee754_expl((long double)x);
+-#endif
+-}
+diff --git a/sysdeps/powerpc/power4/fpu/Makefile b/sysdeps/powerpc/power4/fpu/Makefile
+index e17d32f..ded9976 100644
+--- a/sysdeps/powerpc/power4/fpu/Makefile
++++ b/sysdeps/powerpc/power4/fpu/Makefile
+@@ -3,5 +3,4 @@
+ ifeq ($(subdir),math)
+ CFLAGS-mpa.c += --param max-unroll-times=4 -funroll-loops -fpeel-loops
+ CPPFLAGS-slowpow.c += -DUSE_LONG_DOUBLE_FOR_MP=1
+-CPPFLAGS-slowexp.c += -DUSE_LONG_DOUBLE_FOR_MP=1
+ endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/Makefile b/sysdeps/x86_64/fpu/multiarch/Makefile
+index d660552..4051232 100644
+--- a/sysdeps/x86_64/fpu/multiarch/Makefile
++++ b/sysdeps/x86_64/fpu/multiarch/Makefile
+@@ -10,7 +10,7 @@ libm-sysdep_routines += s_ceil-sse4_1 s_ceilf-sse4_1 s_floor-sse4_1 \
+ 
+ libm-sysdep_routines += e_exp-fma e_log-fma e_pow-fma s_atan-fma \
+ 			e_asin-fma e_atan2-fma s_sin-fma s_tan-fma \
+-			mplog-fma mpa-fma slowexp-fma slowpow-fma \
++			mplog-fma mpa-fma slowpow-fma \
+ 			sincos32-fma doasin-fma dosincos-fma \
+ 			halfulp-fma mpexp-fma \
+ 			mpatan2-fma mpatan-fma mpsqrt-fma mptan-fma
+@@ -32,7 +32,6 @@ CFLAGS-mpsqrt-fma.c = -mfma -mavx2
+ CFLAGS-mptan-fma.c = -mfma -mavx2
+ CFLAGS-s_atan-fma.c = -mfma -mavx2
+ CFLAGS-sincos32-fma.c = -mfma -mavx2
+-CFLAGS-slowexp-fma.c = -mfma -mavx2
+ CFLAGS-slowpow-fma.c = -mfma -mavx2
+ CFLAGS-s_sin-fma.c = -mfma -mavx2
+ CFLAGS-s_tan-fma.c = -mfma -mavx2
+@@ -42,7 +41,7 @@ libm-sysdep_routines += e_expf-fma
+ 
+ libm-sysdep_routines += e_exp-fma4 e_log-fma4 e_pow-fma4 s_atan-fma4 \
+ 			e_asin-fma4 e_atan2-fma4 s_sin-fma4 s_tan-fma4 \
+-			mplog-fma4 mpa-fma4 slowexp-fma4 slowpow-fma4 \
++			mplog-fma4 mpa-fma4 slowpow-fma4 \
+ 			sincos32-fma4 doasin-fma4 dosincos-fma4 \
+ 			halfulp-fma4 mpexp-fma4 \
+ 			mpatan2-fma4 mpatan-fma4 mpsqrt-fma4 mptan-fma4
+@@ -64,14 +63,13 @@ CFLAGS-mpsqrt-fma4.c = -mfma4
+ CFLAGS-mptan-fma4.c = -mfma4
+ CFLAGS-s_atan-fma4.c = -mfma4
+ CFLAGS-sincos32-fma4.c = -mfma4
+-CFLAGS-slowexp-fma4.c = -mfma4
+ CFLAGS-slowpow-fma4.c = -mfma4
+ CFLAGS-s_sin-fma4.c = -mfma4
+ CFLAGS-s_tan-fma4.c = -mfma4
+ 
+ libm-sysdep_routines += e_exp-avx e_log-avx s_atan-avx \
+ 			e_atan2-avx s_sin-avx s_tan-avx \
+-			mplog-avx mpa-avx slowexp-avx \
++			mplog-avx mpa-avx \
+ 			mpexp-avx
+ 
+ CFLAGS-e_atan2-avx.c = -msse2avx -DSSE2AVX
+@@ -82,7 +80,6 @@ CFLAGS-mpexp-avx.c = -msse2avx -DSSE2AVX
+ CFLAGS-mplog-avx.c = -msse2avx -DSSE2AVX
+ CFLAGS-s_atan-avx.c = -msse2avx -DSSE2AVX
+ CFLAGS-s_sin-avx.c = -msse2avx -DSSE2AVX
+-CFLAGS-slowexp-avx.c = -msse2avx -DSSE2AVX
+ CFLAGS-s_tan-avx.c = -msse2avx -DSSE2AVX
+ endif
+ 
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_exp-avx.c b/sysdeps/x86_64/fpu/multiarch/e_exp-avx.c
+index ee5dd6d..afd9174 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_exp-avx.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_exp-avx.c
+@@ -1,6 +1,5 @@
+ #define __ieee754_exp __ieee754_exp_avx
+ #define __exp1 __exp1_avx
+-#define __slowexp __slowexp_avx
+ #define SECTION __attribute__ ((section (".text.avx")))
+ 
+ #include <sysdeps/ieee754/dbl-64/e_exp.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_exp-fma.c b/sysdeps/x86_64/fpu/multiarch/e_exp-fma.c
+index 6e0fdb7..765b1b9 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_exp-fma.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_exp-fma.c
+@@ -1,6 +1,5 @@
+ #define __ieee754_exp __ieee754_exp_fma
+ #define __exp1 __exp1_fma
+-#define __slowexp __slowexp_fma
+ #define SECTION __attribute__ ((section (".text.fma")))
+ 
+ #include <sysdeps/ieee754/dbl-64/e_exp.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_exp-fma4.c b/sysdeps/x86_64/fpu/multiarch/e_exp-fma4.c
+index ae6eb67..9ac7aca 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_exp-fma4.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_exp-fma4.c
+@@ -1,6 +1,5 @@
+ #define __ieee754_exp __ieee754_exp_fma4
+ #define __exp1 __exp1_fma4
+-#define __slowexp __slowexp_fma4
+ #define SECTION __attribute__ ((section (".text.fma4")))
+ 
+ #include <sysdeps/ieee754/dbl-64/e_exp.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/slowexp-avx.c b/sysdeps/x86_64/fpu/multiarch/slowexp-avx.c
+deleted file mode 100644
+index d01c6d7..0000000
+--- a/sysdeps/x86_64/fpu/multiarch/slowexp-avx.c
++++ /dev/null
+@@ -1,9 +0,0 @@
+-#define __slowexp __slowexp_avx
+-#define __add __add_avx
+-#define __dbl_mp __dbl_mp_avx
+-#define __mpexp __mpexp_avx
+-#define __mul __mul_avx
+-#define __sub __sub_avx
+-#define SECTION __attribute__ ((section (".text.avx")))
+-
+-#include <sysdeps/ieee754/dbl-64/slowexp.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/slowexp-fma.c b/sysdeps/x86_64/fpu/multiarch/slowexp-fma.c
+deleted file mode 100644
+index 6fffca1..0000000
+--- a/sysdeps/x86_64/fpu/multiarch/slowexp-fma.c
++++ /dev/null
+@@ -1,9 +0,0 @@
+-#define __slowexp __slowexp_fma
+-#define __add __add_fma
+-#define __dbl_mp __dbl_mp_fma
+-#define __mpexp __mpexp_fma
+-#define __mul __mul_fma
+-#define __sub __sub_fma
+-#define SECTION __attribute__ ((section (".text.fma")))
+-
+-#include <sysdeps/ieee754/dbl-64/slowexp.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/slowexp-fma4.c b/sysdeps/x86_64/fpu/multiarch/slowexp-fma4.c
+deleted file mode 100644
+index 3bcde84..0000000
+--- a/sysdeps/x86_64/fpu/multiarch/slowexp-fma4.c
++++ /dev/null
+@@ -1,9 +0,0 @@
+-#define __slowexp __slowexp_fma4
+-#define __add __add_fma4
+-#define __dbl_mp __dbl_mp_fma4
+-#define __mpexp __mpexp_fma4
+-#define __mul __mul_fma4
+-#define __sub __sub_fma4
+-#define SECTION __attribute__ ((section (".text.fma4")))
+-
+-#include <sysdeps/ieee754/dbl-64/slowexp.c>
+-- 
+1.7.1
+
