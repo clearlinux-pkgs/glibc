@@ -1,0 +1,106 @@
+From 9d0ffa60ad88799b33ab6437ba0f29b39c019462 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 7 Dec 2017 10:11:02 -0800
+Subject: [PATCH 2/2] x86-64: Add sinf with FMA
+
+On Skylake, bench-sinf reports performance improvement:
+
+            Before        After         Improvement
+max        153.996       100.094           54%
+min        8.546         6.852             25%
+mean       18.1223       11.802            54%
+
+	* sysdeps/x86_64/fpu/multiarch/Makefile (libm-sysdep_routines):
+	Add s_sinf-sse2 and s_sinf-fma.
+	(CFLAGS-s_sinf-fma.c): New.
+	* sysdeps/x86_64/fpu/multiarch/s_sinf-fma.c: New file.
+	* sysdeps/x86_64/fpu/multiarch/s_sinf-sse2.c: Likewise.
+	* sysdeps/x86_64/fpu/multiarch/s_sinf.c: Likewise.
+---
+ ChangeLog                                  |  9 +++++++++
+ NEWS                                       |  4 ++--
+ sysdeps/x86_64/fpu/multiarch/Makefile      |  5 ++++-
+ sysdeps/x86_64/fpu/multiarch/s_sinf-fma.c  |  2 ++
+ sysdeps/x86_64/fpu/multiarch/s_sinf-sse2.c |  2 ++
+ sysdeps/x86_64/fpu/multiarch/s_sinf.c      | 28 ++++++++++++++++++++++++++++
+ 6 files changed, 47 insertions(+), 3 deletions(-)
+ create mode 100644 sysdeps/x86_64/fpu/multiarch/s_sinf-fma.c
+ create mode 100644 sysdeps/x86_64/fpu/multiarch/s_sinf-sse2.c
+ create mode 100644 sysdeps/x86_64/fpu/multiarch/s_sinf.c
+
+diff --git a/sysdeps/x86_64/fpu/multiarch/Makefile b/sysdeps/x86_64/fpu/multiarch/Makefile
+index c78624b47d..cab84bff3a 100644
+--- a/sysdeps/x86_64/fpu/multiarch/Makefile
++++ b/sysdeps/x86_64/fpu/multiarch/Makefile
+@@ -37,14 +37,17 @@ CFLAGS-slowpow-fma.c = -mfma -mavx2
+ CFLAGS-s_sin-fma.c = -mfma -mavx2
+ CFLAGS-s_tan-fma.c = -mfma -mavx2
+ 
++libm-sysdep_routines += s_sinf-sse2
++
+ libm-sysdep_routines += e_exp2f-fma e_expf-fma e_log2f-fma e_logf-fma \
+-			e_powf-fma
++			e_powf-fma s_sinf-fma
+ 
+ CFLAGS-e_exp2f-fma.c = -mfma -mavx2
+ CFLAGS-e_expf-fma.c = -mfma -mavx2
+ CFLAGS-e_log2f-fma.c = -mfma -mavx2
+ CFLAGS-e_logf-fma.c = -mfma -mavx2
+ CFLAGS-e_powf-fma.c = -mfma -mavx2
++CFLAGS-s_sinf-fma.c = -mfma -mavx2
+ 
+ libm-sysdep_routines += e_exp-fma4 e_log-fma4 e_pow-fma4 s_atan-fma4 \
+ 			e_asin-fma4 e_atan2-fma4 s_sin-fma4 s_tan-fma4 \
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_sinf-fma.c b/sysdeps/x86_64/fpu/multiarch/s_sinf-fma.c
+new file mode 100644
+index 0000000000..34440ebf4a
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_sinf-fma.c
+@@ -0,0 +1,2 @@
++#define SINF __sinf_fma
++#include <sysdeps/ieee754/flt-32/s_sinf.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_sinf-sse2.c b/sysdeps/x86_64/fpu/multiarch/s_sinf-sse2.c
+new file mode 100644
+index 0000000000..74e32c98db
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_sinf-sse2.c
+@@ -0,0 +1,2 @@
++#define SINF __sinf_sse2
++#include <sysdeps/ieee754/flt-32/s_sinf.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_sinf.c b/sysdeps/x86_64/fpu/multiarch/s_sinf.c
+new file mode 100644
+index 0000000000..831bc6f131
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_sinf.c
+@@ -0,0 +1,28 @@
++/* Multiple versions of sinf.
++   Copyright (C) 2017 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <libm-alias-float.h>
++
++extern float __redirect_sinf (float);
++
++#define SYMBOL_NAME sinf
++#include "ifunc-fma.h"
++
++libc_ifunc_redirected (__redirect_sinf, __sinf, IFUNC_SELECTOR ());
++
++libm_alias_float (__sin, sin)
+-- 
+2.15.1
+
