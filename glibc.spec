@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        160
+Release:        161
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -37,6 +37,8 @@ Patch31:	exp2.patch
 Patch32:	mathlto.patch
 Patch35:	vzeroupper.patch
 Patch37:	malloc-relaxed.patch
+Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
+Patch39:	0002-x86-64-Add-sinf-with-FMA.patch
 
 
 Patch100:	CVE-2016-10228.nopatch
@@ -217,11 +219,15 @@ GNU C library extra components.
 %patch32 -p1
 %patch35 -p1
 %patch37 -p1
+#%patch38 -p1
+%patch39 -p1
 
 %patch102 -p1
 %patch103 -p1
 %patch104 -p1
 %patch105 -p1
+
+rm sysdeps/x86_64/fpu/s_sinf.S
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
