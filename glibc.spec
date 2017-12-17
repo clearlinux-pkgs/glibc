@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        162
+Release:        163
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -228,6 +228,7 @@ GNU C library extra components.
 %patch105 -p1
 
 rm sysdeps/x86_64/fpu/s_sinf.S
+rm sysdeps/x86_64/fpu/s_cosf.S
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
