@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.26
-Release:        164
+Release:        165
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -328,6 +328,52 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 make %{?_smp_mflags}
 popd
 
+mkdir ../glibc-buildroot-avx512
+pushd ../glibc-buildroot-avx512
+
+export CFLAGS="-O3 -march=skylake-avx512 -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 "
+export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
+unset LDFLAGS
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
+
+../glibc-2.26/configure \
+    --prefix=/usr \
+    --exec_prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/bin \
+    --libexecdir=/usr/lib64/glibc \
+    --datadir=/usr/share \
+    --sysconfdir=%{_sysconfdir} \
+    --sharedstatedir=%{_localstatedir}/lib \
+    --localstatedir=%{_localstatedir} \
+    --libdir=/usr/lib64 \
+    --localedir=/usr/lib/locale \
+    --infodir=/usr/share/info \
+    --mandir=/usr/share/man \
+    --disable-silent-rules \
+    --disable-dependency-tracking \
+    --enable-kernel=3.10 \
+    --without-cvs \
+    --disable-profile \
+    --disable-debug \
+    --without-gd  \
+    --enable-clocale=gnu \
+    --enable-add-ons \
+    --without-selinux \
+    --enable-obsolete-rpc \
+    --build=%{glibc_target} \
+    --host=%{glibc_target} \
+    --with-pkgversion='Clear Linux Software for Intel Architecture' \
+    --enable-lock-elision=yes \
+    --enable-bind-now  \
+    --enable-tunables \
+    --enable-stack-protector=strong \
+    libc_cv_slibdir=/usr/lib64 \
+    libc_cv_complocaledir=/usr/lib/locale
+
+make %{?_smp_mflags}
+popd
+
 
 mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
@@ -402,6 +448,14 @@ ln -s libm-2.26.so %{buildroot}/usr/lib64/haswell/libm.so.6
 ln -s libmvec-2.26.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
 ln -s libcrypt-2.26.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
 ln -s libc-2.26.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+popd
+
+pushd ../glibc-buildroot-avx512
+mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.26.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.26.so
+ln -s libm-2.26.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
+ln -s libmvec-2.26.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
 popd
 
 
@@ -649,6 +703,7 @@ popd
 %files lib-avx2
 /usr/lib64/haswell/libmvec*
 /usr/lib64/haswell/libc*
+/usr/lib64/haswell/avx512_1/*
 
 # TODO: SPLIT!
 %files locale
