@@ -48,6 +48,7 @@ Patch103:	cve-2017-15804.patch
 Patch104:	cve-2017-15670.patch
 Patch105:   cve-2017-15671.patch
 Patch106:   cve-2017-17426.patch
+Patch107:   cve-2017-16997.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -228,6 +229,7 @@ GNU C library extra components.
 %patch104 -p1
 %patch105 -p1
 %patch106 -p1
+%patch107 -p1
 
 rm sysdeps/x86_64/fpu/s_sinf.S
 rm sysdeps/x86_64/fpu/s_cosf.S
