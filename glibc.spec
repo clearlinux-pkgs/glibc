@@ -2,13 +2,13 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.26
+Version:        2.27
 Release:        169
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.26.tar.gz
+Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.27.tar.gz
 
 
 Patch4:		0001-Set-host.conf-multi-to-on-by-default.patch
@@ -29,26 +29,13 @@ Patch21:	large-page-huge-page.patch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
-Patch27:	ldconfig-Os.patch
+#Patch27:	ldconfig-Os.patch
 Patch28:	stateless.patch
 Patch29:	nsswitch-altfiles-bugfix.patch
-Patch30:	math-2.27.patch
-Patch31:	exp2.patch
 Patch32:	mathlto.patch
-Patch35:	vzeroupper.patch
-Patch37:	malloc-relaxed.patch
+Patch35:	vzeroupper-2.27.patch
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
-Patch39:	0002-x86-64-Add-sinf-with-FMA.patch
 
-
-Patch100:	CVE-2016-10228.nopatch
-Patch101:	CVE-2017-8804.nopatch
-Patch102:	malloc-assert-3.patch
-Patch103:	cve-2017-15804.patch
-Patch104:	cve-2017-15670.patch
-Patch105:   cve-2017-15671.patch
-Patch106:   cve-2017-17426.patch
-Patch107:   cve-2017-16997.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -157,8 +144,6 @@ Requires: glibc-dev
 %description -n libc6-dev
 GNU C library.
 
-
-
 %package dev32
 License:        GPL-2.0
 Summary:        GNU C library
@@ -201,7 +186,6 @@ GNU C library extra components.
 %patch8 -p1
 %patch9 -p1
 %patch10 -p1
-#%patch11 -p1
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
@@ -210,29 +194,13 @@ GNU C library extra components.
 %patch19 -p1
 %patch20 -p1
 %patch21 -p1
-#%patch23 -p1
 %patch24 -p1
 %patch26 -p1
-%patch27 -p1
+#%patch27 -p1
 %patch28 -p1
 %patch29 -p1
-%patch30 -p1
-%patch31 -p1
 %patch32 -p1
 %patch35 -p1
-%patch37 -p1
-#%patch38 -p1
-%patch39 -p1
-
-%patch102 -p1
-%patch103 -p1
-%patch104 -p1
-%patch105 -p1
-%patch106 -p1
-%patch107 -p1
-
-rm sysdeps/x86_64/fpu/s_sinf.S
-rm sysdeps/x86_64/fpu/s_cosf.S
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
@@ -245,7 +213,7 @@ export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.26/configure \
+../glibc-2.27/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -292,7 +260,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.26/configure \
+../glibc-2.27/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -338,7 +306,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.26/configure \
+../glibc-2.27/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -376,7 +344,6 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 make %{?_smp_mflags}
 popd
 
-
 mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
 
@@ -385,7 +352,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -g2  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.26/configure \
+../glibc-2.27/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -423,7 +390,6 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
 
 
-
 make %{?_smp_mflags}
 popd
 
@@ -442,22 +408,22 @@ popd
 
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.26.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.26.so
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.26.so
-cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.26.so
-ln -s libm-2.26.so %{buildroot}/usr/lib64/haswell/libm.so.6
-ln -s libmvec-2.26.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-ln -s libcrypt-2.26.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
-ln -s libc-2.26.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.27.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.27.so
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.27.so
+cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.27.so
+ln -s libm-2.27.so %{buildroot}/usr/lib64/haswell/libm.so.6
+ln -s libmvec-2.27.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+ln -s libcrypt-2.27.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+ln -s libc-2.27.so  %{buildroot}/usr/lib64/haswell/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
 mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
-cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.26.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.26.so
-ln -s libm-2.26.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
-ln -s libmvec-2.26.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.27.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.27.so
+ln -s libm-2.27.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
+ln -s libmvec-2.27.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
 popd
 
 
@@ -653,50 +619,54 @@ popd
 /usr/lib64/gconv/UTF-32.so
 /usr/lib64/gconv/UTF-7.so
 /usr/lib64/gconv/VISCII.so
+/usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
-/usr/lib64/ld-2.26.so
+/usr/lib64/ld-2.27.so
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/libBrokenLocale-2.26.so
+/usr/lib64/libBrokenLocale-2.27.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
-/usr/lib64/libanl-2.26.so
+/usr/lib64/libanl-2.27.so
 /usr/lib64/libanl.so.1
-/usr/lib64/libc-2.26.so
+/usr/lib64/libc-2.27.so
 /usr/lib64/libc.so.6
-/usr/lib64/libcidn-2.26.so
+/usr/lib64/libcidn-2.27.so
 /usr/lib64/libcidn.so.1
-/usr/lib64/libcrypt-2.26.so
+/usr/lib64/libcrypt-2.27.so
 /usr/lib64/libcrypt.so.1
-/usr/lib64/libdl-2.26.so
+/usr/lib64/libdl-2.27.so
 /usr/lib64/libdl.so.2
-/usr/lib64/libm-2.26.so
+/usr/lib64/libm-2.27.so
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
-/usr/lib64/libnsl-2.26.so
+/usr/lib64/libnsl-2.27.so
 /usr/lib64/libnsl.so.1
-/usr/lib64/libnss_dns-2.26.so
+/usr/lib64/libnss_dns-2.27.so
 /usr/lib64/libnss_dns.so.2
-/usr/lib64/libnss_files-2.26.so
+/usr/lib64/libnss_files-2.27.so
 /usr/lib64/libnss_files.so.2
-/usr/lib64/libnss_hesiod-2.26.so
+/usr/lib64/libnss_hesiod-2.27.so
 /usr/lib64/libnss_hesiod.so.2
+/usr/lib64/libnss_compat-2.27.so
+/usr/lib64/libnss_compat.so
+/usr/lib64/libnss_compat.so.2
 /usr/lib64/libpcprofile.so
-/usr/lib64/libpthread-2.26.so
+/usr/lib64/libpthread-2.27.so
 /usr/lib64/libpthread.so.0
-/usr/lib64/libresolv-2.26.so
+/usr/lib64/libresolv-2.27.so
 /usr/lib64/libresolv.so.2
-/usr/lib64/librt-2.26.so
+/usr/lib64/librt-2.27.so
 /usr/lib64/librt.so.1
 /usr/lib64/libthread_db-1.0.so
 /usr/lib64/libthread_db.so.1
-/usr/lib64/libutil-2.26.so
+/usr/lib64/libutil-2.27.so
 /usr/lib64/libutil.so.1
-/usr/lib64/libmvec-2.26.so
+/usr/lib64/libmvec-2.27.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm-2.26.so
+/usr/lib64/haswell/libm-2.27.so
 /usr/lib64/haswell/libm.so.6
 
 /sbin/ldconfig
@@ -710,7 +680,7 @@ popd
 # TODO: SPLIT!
 %files locale
 /usr/lib/locale
-/usr/lib/locale/locale-archive
+%exclude /usr/lib/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
 /usr/bin/localedef
@@ -886,7 +856,7 @@ popd
 /usr/lib64/libdl.so
 /usr/lib64/libm.so
 /usr/lib64/libmvec_nonshared.a
-/usr/lib64/libnsl.so
+#/usr/lib64/libnsl.so
 /usr/lib64/libnss_dns.so
 /usr/lib64/libnss_files.so
 /usr/lib64/libnss_hesiod.so
@@ -922,13 +892,12 @@ popd
 /usr/lib32/libnss_dns.so.2
 /usr/lib32/libnss_files.so.2
 /usr/lib32/libnss_hesiod.so.2
-/usr/lib32/libnss_hesiod.so.2
 /usr/lib32/libpthread.so.0
 /usr/lib32/libresolv.so.2
 /usr/lib32/librt.so.1
 /usr/lib32/libthread_db.so.1
 /usr/lib32/libutil.so.1
-
+/usr/lib32/libnss_compat.so.2
 
 %files staticdev
 /usr/lib64/libBrokenLocale.a
@@ -940,13 +909,13 @@ popd
 #/usr/lib64/libieee.a
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
-/usr/lib64/libnsl.a
+##/usr/lib64/libnsl.a
 /usr/lib64/libpthread.a
 /usr/lib64/libresolv.a
 /usr/lib64/librpcsvc.a
 /usr/lib64/librt.a
 /usr/lib64/libutil.a
-/usr/lib64/libm-2.26.a
+/usr/lib64/libm-2.27.a
 /usr/lib64/libmvec.a
 
 
@@ -955,7 +924,7 @@ popd
 
 %files extras
 /usr/bin/makedb
-/usr/lib64/libnss_db-2.26.so
+/usr/lib64/libnss_db-2.27.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
 %exclude %{_localstatedir}/db/Makefile

@@ -1,6 +1,8 @@
---- glibc-2.25/elf/Makefile~	2017-02-05 15:28:43.000000000 +0000
-+++ glibc-2.25/elf/Makefile	2017-06-03 21:41:38.216095575 +0000
-@@ -72,9 +72,9 @@
+diff --git a/elf/Makefile b/elf/Makefile
+index 2a432d8..2bcd427 100644
+--- a/elf/Makefile
++++ b/elf/Makefile
+@@ -74,9 +74,9 @@ define elide-stack-protector
  $(if $(filter $(@F),$(patsubst %,%$(1),$(2))), $(no-stack-protector))
  endef
  
@@ -13,16 +15,16 @@
  
  ifeq ($(unwind-find-fde),yes)
  routines += unwind-dw2-fde-glibc
-@@ -539,11 +539,11 @@
+@@ -561,11 +561,11 @@ $(objpfx)ldconfig: $(ldconfig-modules:%=$(objpfx)%.o)
  
  SYSCONF-FLAGS := -D'SYSCONFDIR="$(sysconfdir)"'
- CFLAGS-ldconfig.c = $(SYSCONF-FLAGS) -D'LIBDIR="$(libdir)"' \
+ CFLAGS-ldconfig.c += $(SYSCONF-FLAGS) -D'LIBDIR="$(libdir)"' \
 -		    -D'SLIBDIR="$(slibdir)"'
 +		    -D'SLIBDIR="$(slibdir)"' -Os
  libof-ldconfig = ldconfig
--CFLAGS-dl-cache.c = $(SYSCONF-FLAGS)
--CFLAGS-cache.c = $(SYSCONF-FLAGS)
--CFLAGS-rtld.c = $(SYSCONF-FLAGS)
+-CFLAGS-dl-cache.c += $(SYSCONF-FLAGS)
+-CFLAGS-cache.c += $(SYSCONF-FLAGS)
+-CFLAGS-rtld.c += $(SYSCONF-FLAGS)
 +CFLAGS-dl-cache.c = $(SYSCONF-FLAGS) -Os
 +CFLAGS-cache.c = $(SYSCONF-FLAGS) -Os
 +CFLAGS-rtld.c = $(SYSCONF-FLAGS) -Os
