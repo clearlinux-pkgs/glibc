@@ -245,6 +245,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-bind-now  \
     --enable-tunables \
     --enable-stack-protector=strong \
+    --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/lib/locale
 
@@ -292,6 +293,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-bind-now  \
     --enable-tunables \
     --enable-stack-protector=strong \
+    --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/lib/locale
 
@@ -338,6 +340,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-bind-now  \
     --enable-tunables \
     --enable-stack-protector=strong \
+    --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/lib/locale
 
@@ -385,6 +388,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-bind-now  \
     --enable-tunables \
     --enable-stack-protector=strong \
+    --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib32 \
     libc_cv_complocaledir=/usr/lib/locale \
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
@@ -856,7 +860,7 @@ popd
 /usr/lib64/libdl.so
 /usr/lib64/libm.so
 /usr/lib64/libmvec_nonshared.a
-#/usr/lib64/libnsl.so
+/usr/lib64/libnsl.so
 /usr/lib64/libnss_dns.so
 /usr/lib64/libnss_files.so
 /usr/lib64/libnss_hesiod.so
@@ -892,6 +896,8 @@ popd
 /usr/lib32/libnss_dns.so.2
 /usr/lib32/libnss_files.so.2
 /usr/lib32/libnss_hesiod.so.2
+/usr/lib32/libnss_nis.so.2
+/usr/lib32/libnss_nisplus.so.2
 /usr/lib32/libpthread.so.0
 /usr/lib32/libresolv.so.2
 /usr/lib32/librt.so.1
@@ -909,7 +915,7 @@ popd
 #/usr/lib64/libieee.a
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
-##/usr/lib64/libnsl.a
+/usr/lib64/libnsl.a
 /usr/lib64/libpthread.a
 /usr/lib64/libresolv.a
 /usr/lib64/librpcsvc.a
@@ -927,6 +933,12 @@ popd
 /usr/lib64/libnss_db-2.27.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
+/usr/lib64/libnss_nis-2.27.so
+/usr/lib64/libnss_nis.so
+/usr/lib64/libnss_nis.so.2
+/usr/lib64/libnss_nisplus-2.27.so
+/usr/lib64/libnss_nisplus.so
+/usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
 
 %files -n libc6-dev
