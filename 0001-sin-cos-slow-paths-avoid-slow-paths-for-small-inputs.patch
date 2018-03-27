@@ -1,0 +1,196 @@
+From 3eaef825303efc4175751d3ca8cb50d873ddb081 Mon Sep 17 00:00:00 2001
+From: Wilco Dijkstra <Wilco.Dijkstra@arm.com>
+Date: Wed, 21 Mar 2018 17:50:07 +0000
+Subject: [PATCH 1/7] sin/cos slow paths: avoid slow paths for small inputs
+
+This series of patches removes the slow patchs from sin, cos and sincos.
+Besides greatly simplifying the implementation, the new version is also much
+faster for inputs up to PI (41% faster) and for large inputs needing range
+reduction (27% faster).
+
+ULP is ~0.55 with no errors found after testing 1.6 billion inputs across most
+of the range with mpsin and mpcos.  The number of incorrectly rounded results
+(ie. ULP >0.5) is at most ~2750 per million inputs between 0.125 and 0.5,
+the average is ~850 per million between 0 and PI.
+
+Tested on AArch64 and x86_64 with no regressions.
+
+The first patch removes the slow paths for the cases where the input is small
+and doesn't require range reduction.  Update ULP tables for sin, cos and sincos
+on AArch64 and x86_64.
+
+ChangeLog:
+2018-03-20  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* sysdeps/aarch64/libm-test-ulps: Update ULP for sin, cos, sincos.
+	* sysdeps/ieee754/dbl-64/s_sin.c (__sin): Remove slow paths for small inputs.
+	(__cos): Likewise.
+	* sysdeps/x86_64/fpu/libm-test-ulps: Update ULP for sin, cos, sincos.
+---
+ sysdeps/aarch64/libm-test-ulps    |  6 ++++++
+ sysdeps/ieee754/dbl-64/s_sin.c    | 40 ++++++++++++++-------------------------
+ sysdeps/x86_64/fpu/libm-test-ulps |  6 ++++++
+ 3 files changed, 26 insertions(+), 26 deletions(-)
+
+diff --git a/sysdeps/aarch64/libm-test-ulps b/sysdeps/aarch64/libm-test-ulps
+index 1f469803be5..be06085154d 100644
+--- a/sysdeps/aarch64/libm-test-ulps
++++ b/sysdeps/aarch64/libm-test-ulps
+@@ -1012,7 +1012,9 @@ ildouble: 2
+ ldouble: 2
+ 
+ Function: "cos":
++double: 1
+ float: 1
++idouble: 1
+ ifloat: 1
+ ildouble: 1
+ ldouble: 1
+@@ -1970,7 +1972,9 @@ ildouble: 2
+ ldouble: 2
+ 
+ Function: "sin":
++double: 1
+ float: 1
++idouble: 1
+ ifloat: 1
+ ildouble: 1
+ ldouble: 1
+@@ -2000,7 +2004,9 @@ ildouble: 3
+ ldouble: 3
+ 
+ Function: "sincos":
++double: 1
+ float: 1
++idouble: 1
+ ifloat: 1
+ ildouble: 1
+ ldouble: 1
+diff --git a/sysdeps/ieee754/dbl-64/s_sin.c b/sysdeps/ieee754/dbl-64/s_sin.c
+index 8c589cbd4ab..0c16b728df1 100644
+--- a/sysdeps/ieee754/dbl-64/s_sin.c
++++ b/sysdeps/ieee754/dbl-64/s_sin.c
+@@ -448,7 +448,7 @@ SECTION
+ #endif
+ __sin (double x)
+ {
+-  double xx, res, t, cor;
++  double xx, t, cor;
+   mynumber u;
+   int4 k, m;
+   double retval = 0;
+@@ -471,26 +471,22 @@ __sin (double x)
+       xx = x * x;
+       /* Taylor series.  */
+       t = POLYNOMIAL (xx) * (xx * x);
+-      res = x + t;
+-      cor = (x - res) + t;
+-      retval = (res == res + 1.07 * cor) ? res : slow (x);
++      /* Max ULP of x + t is 0.535.  */
++      retval = x + t;
+     }				/*  else  if (k < 0x3fd00000)    */
+ /*---------------------------- 0.25<|x|< 0.855469---------------------- */
+   else if (k < 0x3feb6000)
+     {
+-      res = do_sin (x, 0, &cor);
+-      retval = (res == res + 1.096 * cor) ? res : slow1 (x);
+-      retval = __copysign (retval, x);
++      /* Max ULP is 0.548.  */
++      retval = __copysign (do_sin (x, 0, &cor), x);
+     }				/*   else  if (k < 0x3feb6000)    */
+ 
+ /*----------------------- 0.855469  <|x|<2.426265  ----------------------*/
+   else if (k < 0x400368fd)
+     {
+-
+       t = hp0 - fabs (x);
+-      res = do_cos (t, hp1, &cor);
+-      retval = (res == res + 1.020 * cor) ? res : slow2 (x);
+-      retval = __copysign (retval, x);
++      /* Max ULP is 0.51.  */
++      retval = __copysign (do_cos (t, hp1, &cor), x);
+     }				/*   else  if (k < 0x400368fd)    */
+ 
+ #ifndef IN_SINCOS
+@@ -541,7 +537,7 @@ SECTION
+ #endif
+ __cos (double x)
+ {
+-  double y, xx, res, cor, a, da;
++  double y, xx, cor, a, da;
+   mynumber u;
+   int4 k, m;
+ 
+@@ -561,8 +557,8 @@ __cos (double x)
+ 
+   else if (k < 0x3feb6000)
+     {				/* 2^-27 < |x| < 0.855469 */
+-      res = do_cos (x, 0, &cor);
+-      retval = (res == res + 1.020 * cor) ? res : cslow2 (x);
++      /* Max ULP is 0.51.  */
++      retval = do_cos (x, 0, &cor);
+     }				/*   else  if (k < 0x3feb6000)    */
+ 
+   else if (k < 0x400368fd)
+@@ -571,20 +567,12 @@ __cos (double x)
+       a = y + hp1;
+       da = (y - a) + hp1;
+       xx = a * a;
++      /* Max ULP is 0.501 if xx < 0.01588 or 0.518 otherwise.
++	 Range reduction uses 106 bits here which is sufficient.  */
+       if (xx < 0.01588)
+-	{
+-	  res = TAYLOR_SIN (xx, a, da, cor);
+-	  cor = 1.02 * cor + __copysign (1.0e-31, cor);
+-	  retval = (res == res + cor) ? res : sloww (a, da, x, true);
+-	}
++	retval = TAYLOR_SIN (xx, a, da, cor);
+       else
+-	{
+-	  res = do_sin (a, da, &cor);
+-	  cor = 1.035 * cor + __copysign (1.0e-31, cor);
+-	  retval = ((res == res + cor) ? __copysign (res, a)
+-		    : sloww1 (a, da, x, true));
+-	}
+-
++	retval = __copysign (do_sin (a, da, &cor), a);
+     }				/*   else  if (k < 0x400368fd)    */
+ 
+ 
+diff --git a/sysdeps/x86_64/fpu/libm-test-ulps b/sysdeps/x86_64/fpu/libm-test-ulps
+index 48e53f7ef2c..bbb8a4d0754 100644
+--- a/sysdeps/x86_64/fpu/libm-test-ulps
++++ b/sysdeps/x86_64/fpu/libm-test-ulps
+@@ -1262,7 +1262,9 @@ ildouble: 1
+ ldouble: 1
+ 
+ Function: "cos":
++double: 1
+ float128: 1
++idouble: 1
+ ifloat128: 1
+ ildouble: 1
+ ldouble: 1
+@@ -2528,7 +2530,9 @@ Function: "pow_vlen8_avx2":
+ float: 3
+ 
+ Function: "sin":
++double: 1
+ float128: 1
++idouble: 1
+ ifloat128: 1
+ ildouble: 1
+ ldouble: 1
+@@ -2578,7 +2582,9 @@ Function: "sin_vlen8_avx2":
+ float: 1
+ 
+ Function: "sincos":
++double: 1
+ float128: 1
++idouble: 1
+ ifloat128: 1
+ ildouble: 1
+ ldouble: 1
+-- 
+2.16.2
+

@@ -35,7 +35,13 @@ Patch29:	nsswitch-altfiles-bugfix.patch
 Patch32:	mathlto.patch
 Patch35:	vzeroupper-2.27.patch
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
-
+Patch39:        0001-sin-cos-slow-paths-avoid-slow-paths-for-small-inputs.patch
+Patch40:        0002-sin-cos-slow-paths-remove-large-range-reduction.patch
+Patch41:        0003-sin-cos-slow-paths-remove-slow-paths-from-small-rang.patch
+Patch42:        0004-sin-cos-slow-paths-remove-slow-paths-from-huge-range.patch
+Patch43:        0005-sin-cos-slow-paths-remove-unused-slowpath-functions.patch
+Patch44:        0006-sin-cos-slow-paths-refactor-duplicated-code-into-dos.patch
+Patch45:        0007-sin-cos-slow-paths-refactor-sincos-implementation.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -201,6 +207,13 @@ GNU C library extra components.
 %patch29 -p1
 %patch32 -p1
 %patch35 -p1
+%patch39 -p1
+%patch40 -p1
+%patch41 -p1
+%patch42 -p1
+%patch43 -p1
+%patch44 -p1
+%patch45 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909

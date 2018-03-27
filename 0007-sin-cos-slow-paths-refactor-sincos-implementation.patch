@@ -1,0 +1,221 @@
+From 5bfa907882cee178248d78b353ca9ce05951b3d8 Mon Sep 17 00:00:00 2001
+From: Wilco Dijkstra <Wilco.Dijkstra@arm.com>
+Date: Wed, 21 Mar 2018 17:57:29 +0000
+Subject: [PATCH 7/7] sin/cos slow paths: refactor sincos implementation
+
+Refactor the sincos implementation - rather than rely on odd partial inlining
+of preprocessed portions from sin and cos, explicitly write out the cases.
+This makes sincos much easier to maintain and provides an additional 16-20%
+speedup between 0 and 2^27.  The overall speedup of sincos is 48% over this range.
+Between 0 and PI it is 66% faster.
+
+ChangeLog:
+2018-03-20  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* sysdeps/ieee754/dbl-64/s_sin.c (__sin): Cleanup ifdefs.
+	(__cos): Likewise.
+	* sysdeps/ieee754/dbl-64/s_sin.c (__sincos): Refactor using the same
+	logic as sin and cos.
+---
+ sysdeps/ieee754/dbl-64/s_sin.c    | 29 ++---------------
+ sysdeps/ieee754/dbl-64/s_sincos.c | 68 ++++++++++++++++++++++++++++-----------
+ 2 files changed, 52 insertions(+), 45 deletions(-)
+
+diff --git a/sysdeps/ieee754/dbl-64/s_sin.c b/sysdeps/ieee754/dbl-64/s_sin.c
+index e4a2153bb8d..2fde7713ee3 100644
+--- a/sysdeps/ieee754/dbl-64/s_sin.c
++++ b/sysdeps/ieee754/dbl-64/s_sin.c
+@@ -197,27 +197,17 @@ do_sincos (double a, double da, int4 n)
+ /* An ultimate sin routine. Given an IEEE double machine number x   */
+ /* it computes the correctly rounded (to nearest) value of sin(x)  */
+ /*******************************************************************/
+-#ifdef IN_SINCOS
+-static double
+-#else
++#ifndef IN_SINCOS
+ double
+ SECTION
+-#endif
+ __sin (double x)
+ {
+-#ifndef IN_SINCOS
+   double t, a, da;
+   mynumber u;
+   int4 k, m, n;
+   double retval = 0;
+ 
+   SET_RESTORE_ROUND_53BIT (FE_TONEAREST);
+-#else
+-  double xx, t, cor;
+-  mynumber u;
+-  int4 k, m;
+-  double retval = 0;
+-#endif
+ 
+   u.x = x;
+   m = u.i[HIGH_HALF];
+@@ -242,7 +232,6 @@ __sin (double x)
+       retval = __copysign (do_cos (t, hp1), x);
+     }				/*   else  if (k < 0x400368fd)    */
+ 
+-#ifndef IN_SINCOS
+ /*-------------------------- 2.426265<|x|< 105414350 ----------------------*/
+   else if (k < 0x419921FB)
+     {
+@@ -263,7 +252,6 @@ __sin (double x)
+ 	__set_errno (EDOM);
+       retval = x / x;
+     }
+-#endif
+ 
+   return retval;
+ }
+@@ -274,27 +262,17 @@ __sin (double x)
+ /* it computes the correctly rounded (to nearest) value of cos(x)  */
+ /*******************************************************************/
+ 
+-#ifdef IN_SINCOS
+-static double
+-#else
+ double
+ SECTION
+-#endif
+ __cos (double x)
+ {
+   double y, a, da;
+   mynumber u;
+-#ifndef IN_SINCOS
+   int4 k, m, n;
+-#else
+-  int4 k, m;
+-#endif
+ 
+   double retval = 0;
+ 
+-#ifndef IN_SINCOS
+   SET_RESTORE_ROUND_53BIT (FE_TONEAREST);
+-#endif
+ 
+   u.x = x;
+   m = u.i[HIGH_HALF];
+@@ -320,8 +298,6 @@ __cos (double x)
+       retval = do_sin (a, da);
+     }				/*   else  if (k < 0x400368fd)    */
+ 
+-
+-#ifndef IN_SINCOS
+   else if (k < 0x419921FB)
+     {				/* 2.426265<|x|< 105414350 */
+       n = reduce_sincos (x, &a, &da);
+@@ -341,7 +317,6 @@ __cos (double x)
+ 	__set_errno (EDOM);
+       retval = x / x;		/* |x| > 2^1024 */
+     }
+-#endif
+ 
+   return retval;
+ }
+@@ -352,3 +327,5 @@ libm_alias_double (__cos, cos)
+ #ifndef __sin
+ libm_alias_double (__sin, sin)
+ #endif
++
++#endif
+diff --git a/sysdeps/ieee754/dbl-64/s_sincos.c b/sysdeps/ieee754/dbl-64/s_sincos.c
+index 4335ecbba3c..c7460371e44 100644
+--- a/sysdeps/ieee754/dbl-64/s_sincos.c
++++ b/sysdeps/ieee754/dbl-64/s_sincos.c
+@@ -23,9 +23,7 @@
+ #include <math_private.h>
+ #include <libm-alias-double.h>
+ 
+-#define __sin __sin_local
+-#define __cos __cos_local
+-#define IN_SINCOS 1
++#define IN_SINCOS
+ #include "s_sin.c"
+ 
+ void
+@@ -37,31 +35,63 @@ __sincos (double x, double *sinx, double *cosx)
+   SET_RESTORE_ROUND_53BIT (FE_TONEAREST);
+ 
+   u.x = x;
+-  k = 0x7fffffff & u.i[HIGH_HALF];
++  k = u.i[HIGH_HALF] & 0x7fffffff;
+ 
+   if (k < 0x400368fd)
+     {
+-      *sinx = __sin_local (x);
+-      *cosx = __cos_local (x);
+-      return;
+-    }
+-  if (k < 0x419921FB)
+-    {
+-      double a, da;
+-      int4 n = reduce_sincos (x, &a, &da);
+-
+-      *sinx = do_sincos (a, da, n);
+-      *cosx = do_sincos (a, da, n + 1);
++      double a, da, y;
++      /* |x| < 2^-27 => cos (x) = 1, sin (x) = x.  */
++      if (k < 0x3e400000)
++	{
++	  if (k < 0x3e500000)
++	    math_check_force_underflow (x);
++	  *sinx = x;
++	  *cosx = 1.0;
++	  return;
++	}
++      /* |x| < 0.855469.  */
++      else if (k < 0x3feb6000)
++	{
++	  *sinx = do_sin (x, 0);
++	  *cosx = do_cos (x, 0);
++	  return;
++	}
+ 
++      /* |x| < 2.426265.  */
++      y = hp0 - fabs (x);
++      a = y + hp1;
++      da = (y - a) + hp1;
++      *sinx = __copysign (do_cos (a, da), x);
++      *cosx = do_sin (a, da);
+       return;
+     }
++  /* |x| < 2^1024.  */
+   if (k < 0x7ff00000)
+     {
+-      double a, da;
+-      int4 n = __branred (x, &a, &da);
++      double a, da, xx;
++      unsigned int n;
+ 
+-      *sinx = do_sincos (a, da, n);
+-      *cosx = do_sincos (a, da, n + 1);
++      /* If |x| < 105414350 use simple range reduction.  */
++      n = k < 0x419921FB ? reduce_sincos (x, &a, &da) : __branred (x, &a, &da);
++      n = n & 3;
++
++      if (n == 1 || n == 2)
++	{
++	  a = -a;
++	  da = -da;
++	}
++
++      if (n & 1)
++	{
++	  double *temp = cosx;
++	  cosx = sinx;
++	  sinx = temp;
++	}
++
++      *sinx = do_sin (a, da);
++      xx = do_cos (a, da);
++      *cosx = (n & 2) ? -xx : xx;
++      return;
+     }
+ 
+   if (isinf (x))
+-- 
+2.16.2
+
