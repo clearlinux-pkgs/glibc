@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.27
-Release:        174
+Release:        175
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -34,6 +34,7 @@ Patch28:	stateless.patch
 Patch29:	nsswitch-altfiles-bugfix.patch
 Patch32:	mathlto.patch
 Patch35:	vzeroupper-2.27.patch
+# backports of libm work
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
 Patch39:        0001-sin-cos-slow-paths-avoid-slow-paths-for-small-inputs.patch
 Patch40:        0002-sin-cos-slow-paths-remove-large-range-reduction.patch
@@ -42,6 +43,7 @@ Patch42:        0004-sin-cos-slow-paths-remove-slow-paths-from-huge-range.patch
 Patch43:        0005-sin-cos-slow-paths-remove-unused-slowpath-functions.patch
 Patch44:        0006-sin-cos-slow-paths-refactor-duplicated-code-into-dos.patch
 Patch45:        0007-sin-cos-slow-paths-refactor-sincos-implementation.patch
+Patch50:	pause.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -214,6 +216,7 @@ GNU C library extra components.
 %patch43 -p1
 %patch44 -p1
 %patch45 -p1
+%patch50 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
