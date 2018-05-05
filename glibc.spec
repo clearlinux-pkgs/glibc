@@ -44,6 +44,7 @@ Patch43:        0005-sin-cos-slow-paths-remove-unused-slowpath-functions.patch
 Patch44:        0006-sin-cos-slow-paths-refactor-duplicated-code-into-dos.patch
 Patch45:        0007-sin-cos-slow-paths-refactor-sincos-implementation.patch
 Patch50:	pause.patch
+Patch51:        gcc-8-fix.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -217,6 +218,7 @@ GNU C library extra components.
 %patch44 -p1
 %patch45 -p1
 %patch50 -p1
+%patch51 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
