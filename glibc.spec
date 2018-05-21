@@ -46,6 +46,7 @@ Patch45:        0007-sin-cos-slow-paths-refactor-sincos-implementation.patch
 Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
+Patch53:    strcmp-wcscmp-with-AVX2.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -221,6 +222,7 @@ GNU C library extra components.
 %patch50 -p1
 %patch51 -p1
 %patch52 -p1
+%patch53 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
