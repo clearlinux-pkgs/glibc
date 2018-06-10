@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.27
-Release:        182
+Release:        183
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -895,10 +895,10 @@ popd
 
 %files dev32
 /usr/lib32/*.a
-/usr/lib32/*.so
 /usr/lib32/*.o
 
 %files libc32
+/usr/lib32/*.so
 /usr/lib/ld-linux.so.2
 /usr/bin/lddlibc4
 
