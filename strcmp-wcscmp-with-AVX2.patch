@@ -1,86 +1,102 @@
-From patchwork Mon May 14 21:56:27 2018
+From patchwork Tue May 29 18:53:39 2018
 Content-Type: text/plain; charset="utf-8"
 MIME-Version: 1.0
 Content-Transfer-Encoding: 7bit
-Subject: x86-64: Optimize strcmp/wcscmp with AVX2
-X-Patchwork-Submitter: Leonardo Sandoval
- <leonardo.sandoval.gonzalez@linux.intel.com>
-X-Patchwork-Id: 913261
-Message-Id: <20180514215627.32622-1-leonardo.sandoval.gonzalez@linux.intel.com>
+Subject: [v2] x86-64: Optimize strcmp/wcscmp with AVX2
+From: leonardo.sandoval.gonzalez@linux.intel.com
+X-Patchwork-Id: 27544
+Message-Id: <20180529185339.11541-1-leonardo.sandoval.gonzalez@linux.intel.com>
 To: libc-alpha@sourceware.org
 Cc: hjl.tools@gmail.com,
- Leonardo Sandoval <leonardo.sandoval.gonzalez@linux.intel.com>
-Date: Mon, 14 May 2018 16:56:27 -0500
-From: leonardo.sandoval.gonzalez@linux.intel.com
-List-Id: <libc-alpha.sourceware.org>
+	Leonardo Sandoval <leonardo.sandoval.gonzalez@linux.intel.com>
+Date: Tue, 29 May 2018 13:53:39 -0500
 
 From: Leonardo Sandoval <leonardo.sandoval.gonzalez@linux.intel.com>
 
-Optimize x86-64 strcmp/wcscmp with AVX2.  It uses vector compare as much
-as possible.  It is comparable with SSE2 strcmp for size <= 8 bytes and
-up to 6X faster for size > 8 bytes on Skylake.  Select AVX2 strcmp/wcscmp
-on AVX2 machines where vzeroupper is preferred and AVX unaligned load is
-fast.
+Optimize x86-64 strcmp/strncmp/wcscmp/wcsncmp with AVX2. It uses vector
+comparison as much as possible. Peak performance observed on a SkyLake
+machine: 9x, 3x, 2.5x and 5.5x for strcmp, strncmp, wcscmp and wcsncmp,
+respectively. The larger the comparison length, the more benefit using
+avx2 functions, except on the strcmp, where peak is observed at length
+== 32 bytes. Select AVX2 strcmp/wcscmp on AVX2 machines where vzeroupper
+is preferred and AVX unaligned load is fast.
 
 NB: It uses TZCNT instead of BSF since TZCNT produces the same result
 as BSF for non-zero input.  TZCNT is faster than BSF and is executed
 as BSF if machine doesn't support TZCNT.
 
 	* sysdeps/x86_64/multiarch/Makefile (sysdep_routines): Add
-	strcmp-avx2 and wcscmp-avx2.
+	strcmp-avx2, strncmp-avx2, wcscmp-avx2, wcscmp-sse2, wcsncmp-avx2 and
+	wcsncmp-sse2.
 	* sysdeps/x86_64/multiarch/ifunc-impl-list.c
 	(__libc_ifunc_impl_list): Add tests for __strcmp_avx2,
-	__wcscmp_avx2 and __wcscmp_sse2.
+	__strncmp_avx2,	__wcscmp_avx2, __wcsncmp_avx2, __wcscmp_sse2
+	and __wcsncmp_sse2.
+	* sysdeps/x86_64/multiarch/strcmp.c (OPTIMIZE (avx2)):
+	(IFUNC_SELECTOR): Return OPTIMIZE (avx2) on AVX 2 machines if
+	AVX unaligned load is fast and vzeroupper is preferred.
+	* sysdeps/x86_64/multiarch/strncmp.c: Likewise.
 	* sysdeps/x86_64/multiarch/strcmp-avx2.S: New file.
+	* sysdeps/x86_64/multiarch/strncmp-avx2.S: Likewise.
 	* sysdeps/x86_64/multiarch/wcscmp-avx2.S: Likewise.
 	* sysdeps/x86_64/multiarch/wcscmp-sse2.S: Likewise.
 	* sysdeps/x86_64/multiarch/wcscmp.c: Likewise.
-	* sysdeps/x86_64/multiarch/strcmp.c (OPTIMIZE (avx2)): New.
-	(IFUNC_SELECTOR): Return OPTIMIZE (avx2) on AVX 2 machines if
-	AVX unaligned load is fast and vzeroupper is preferred.
+	* sysdeps/x86_64/multiarch/wcsncmp-avx2.S: Likewise.
+	* sysdeps/x86_64/multiarch/wcsncmp-sse2.c: Likewise.
+	* sysdeps/x86_64/multiarch/wcsncmp.c: Likewise.
 	* sysdeps/x86_64/wcscmp.S (__wcscmp): Add alias only if __wcscmp
 	is undefined.
 
-Signed-off-by: Leonardo Sandoval <leonardo.sandoval.gonzalez@linux.intel.com>
-Signed-off-by: H.J. Lu <hjl.tools@gmail.com>
 ---
- sysdeps/x86_64/multiarch/Makefile          |   3 +-
- sysdeps/x86_64/multiarch/ifunc-impl-list.c |  10 +
- sysdeps/x86_64/multiarch/strcmp-avx2.S     | 512 +++++++++++++++++++++
+ sysdeps/x86_64/multiarch/Makefile          |   6 +-
+ sysdeps/x86_64/multiarch/ifunc-impl-list.c |  20 +
+ sysdeps/x86_64/multiarch/strcmp-avx2.S     | 847 +++++++++++++++++++++
  sysdeps/x86_64/multiarch/strcmp.c          |   6 +
+ sysdeps/x86_64/multiarch/strncmp-avx2.S    |   3 +
+ sysdeps/x86_64/multiarch/strncmp.c         |   6 +
  sysdeps/x86_64/multiarch/wcscmp-avx2.S     |   4 +
  sysdeps/x86_64/multiarch/wcscmp-sse2.S     |  23 +
- sysdeps/x86_64/multiarch/wcscmp.c          |  37 ++
+ sysdeps/x86_64/multiarch/wcscmp.c          |  37 +
+ sysdeps/x86_64/multiarch/wcsncmp-avx2.S    |   5 +
+ sysdeps/x86_64/multiarch/wcsncmp-sse2.c    |  20 +
+ sysdeps/x86_64/multiarch/wcsncmp.c         |  31 +
  sysdeps/x86_64/wcscmp.S                    |   2 +
- 8 files changed, 596 insertions(+), 1 deletion(-)
+ 14 files changed, 1033 insertions(+), 2 deletions(-)
  create mode 100644 sysdeps/x86_64/multiarch/strcmp-avx2.S
+ create mode 100644 sysdeps/x86_64/multiarch/strncmp-avx2.S
  create mode 100644 sysdeps/x86_64/multiarch/wcscmp-avx2.S
  create mode 100644 sysdeps/x86_64/multiarch/wcscmp-sse2.S
  create mode 100644 sysdeps/x86_64/multiarch/wcscmp.c
+ create mode 100644 sysdeps/x86_64/multiarch/wcsncmp-avx2.S
+ create mode 100644 sysdeps/x86_64/multiarch/wcsncmp-sse2.c
+ create mode 100644 sysdeps/x86_64/multiarch/wcsncmp.c
 
 diff --git a/sysdeps/x86_64/multiarch/Makefile b/sysdeps/x86_64/multiarch/Makefile
-index 68257c4017e..856ed98704f 100644
+index 68257c4017e..bb5e9707352 100644
 --- a/sysdeps/x86_64/multiarch/Makefile
 +++ b/sysdeps/x86_64/multiarch/Makefile
-@@ -6,7 +6,7 @@ ifeq ($(subdir),string)
+@@ -6,8 +6,8 @@ ifeq ($(subdir),string)
  
  sysdep_routines += strncat-c stpncpy-c strncpy-c \
  		   strcmp-sse2 strcmp-sse2-unaligned strcmp-ssse3  \
 -		   strcmp-sse4_2 \
+-		   strncmp-sse2 strncmp-ssse3 strncmp-sse4_2 \
 +		   strcmp-sse4_2 strcmp-avx2 \
- 		   strncmp-sse2 strncmp-ssse3 strncmp-sse4_2 \
++		   strncmp-sse2 strncmp-ssse3 strncmp-sse4_2 strncmp-avx2 \
  		   memchr-sse2 rawmemchr-sse2 memchr-avx2 rawmemchr-avx2 \
  		   memrchr-sse2 memrchr-avx2 \
-@@ -51,6 +51,7 @@ ifeq ($(subdir),wcsmbs)
+ 		   memcmp-sse2 \
+@@ -51,6 +51,8 @@ ifeq ($(subdir),wcsmbs)
  sysdep_routines += wmemcmp-sse4 wmemcmp-ssse3 wmemcmp-c \
  		   wmemcmp-avx2-movbe \
  		   wmemchr-sse2 wmemchr-avx2 \
 +		   wcscmp-sse2 wcscmp-avx2 \
++		   wcsncmp-sse2 wcsncmp-avx2 \
  		   wcscpy-ssse3 wcscpy-c \
  		   wcschr-sse2 wcschr-avx2 \
  		   wcsrchr-sse2 wcsrchr-avx2 \
 diff --git a/sysdeps/x86_64/multiarch/ifunc-impl-list.c b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
-index 7afd674b81c..5af34979d0f 100644
+index 7afd674b81c..9aaaef7251b 100644
 --- a/sysdeps/x86_64/multiarch/ifunc-impl-list.c
 +++ b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
 @@ -268,6 +268,9 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
@@ -93,7 +109,7 @@ index 7afd674b81c..5af34979d0f 100644
  	      IFUNC_IMPL_ADD (array, i, strcmp, HAS_CPU_FEATURE (SSE4_2),
  			      __strcmp_sse42)
  	      IFUNC_IMPL_ADD (array, i, strcmp, HAS_CPU_FEATURE (SSSE3),
-@@ -364,6 +367,13 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+@@ -364,6 +367,20 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
  			      __wcsrchr_avx2)
  	      IFUNC_IMPL_ADD (array, i, wcsrchr, 1, __wcsrchr_sse2))
  
@@ -104,16 +120,33 @@ index 7afd674b81c..5af34979d0f 100644
 +			      __wcscmp_avx2)
 +	      IFUNC_IMPL_ADD (array, i, wcscmp, 1, __wcscmp_sse2))
 +
++  /* Support sysdeps/x86_64/multiarch/wcsncmp.c.  */
++  IFUNC_IMPL (i, name, wcsncmp,
++	      IFUNC_IMPL_ADD (array, i, wcsncmp,
++			      HAS_ARCH_FEATURE (AVX2_Usable),
++			      __wcsncmp_avx2)
++	      IFUNC_IMPL_ADD (array, i, wcsncmp, 1, __wcsncmp_sse2))
++
    /* Support sysdeps/x86_64/multiarch/wcscpy.c.  */
    IFUNC_IMPL (i, name, wcscpy,
  	      IFUNC_IMPL_ADD (array, i, wcscpy, HAS_CPU_FEATURE (SSSE3),
+@@ -536,6 +553,9 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 
+   /* Support sysdeps/x86_64/multiarch/strncmp.c.  */
+   IFUNC_IMPL (i, name, strncmp,
++	      IFUNC_IMPL_ADD (array, i, strncmp,
++			      HAS_ARCH_FEATURE (AVX2_Usable),
++			      __strncmp_avx2)
+ 	      IFUNC_IMPL_ADD (array, i, strncmp, HAS_CPU_FEATURE (SSE4_2),
+ 			      __strncmp_sse42)
+ 	      IFUNC_IMPL_ADD (array, i, strncmp, HAS_CPU_FEATURE (SSSE3),
 diff --git a/sysdeps/x86_64/multiarch/strcmp-avx2.S b/sysdeps/x86_64/multiarch/strcmp-avx2.S
 new file mode 100644
-index 00000000000..513031959d7
+index 00000000000..e8397f3b05e
 --- /dev/null
 +++ b/sysdeps/x86_64/multiarch/strcmp-avx2.S
-@@ -0,0 +1,512 @@
-+/* strcmp/wcscmp optimized with AVX2.
+@@ -0,0 +1,847 @@
++/* strcmp/wcscmp/strncmp/wcsncmp optimized with AVX2.
 +   Copyright (C) 2018 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
 +
@@ -141,11 +174,8 @@ index 00000000000..513031959d7
 +
 +# define PAGE_SIZE	4096
 +
++/* VEC_SIZE = Number of bytes in a ymm register */
 +# define VEC_SIZE	32
-+
-+# if VEC_SIZE != 32
-+#  error Unsupported VEC_SIZE!
-+# endif
 +
 +/* Shift for dividing by (VEC_SIZE * 4).  */
 +# define DIVIDE_BY_VEC_4_SHIFT	7
@@ -154,12 +184,18 @@ index 00000000000..513031959d7
 +# endif
 +
 +# ifdef USE_AS_WCSCMP
++/* Compare packed dwords.  */
 +#  define VPCMPEQ	vpcmpeqd
++/* Compare packed dwords and store minimum.  */
 +#  define VPMINU	vpminud
++/* 1 dword char == 4 bytes.  */
 +#  define SIZE_OF_CHAR	4
 +# else
++/* Compare packed bytes.  */
 +#  define VPCMPEQ	vpcmpeqb
++/* Compare packed bytes and store minimum.  */
 +#  define VPMINU	vpminub
++/* 1 byte char == 1 byte.  */
 +#  define SIZE_OF_CHAR	1
 +# endif
 +
@@ -168,23 +204,39 @@ index 00000000000..513031959d7
 +# endif
 +
 +/* Warning!
-+           wcscmp has to use SIGNED comparison for elements.
-+           strcmp has to use UNSIGNED comparison for elemnts.
++           wcscmp/wcsncmp have to use SIGNED comparison for elements.
++           strcmp/strncmp have to use UNSIGNED comparison for elements.
 +*/
 +
-+/* The main idea of the strcmp comparison using AVX2 consists of
-+   comparing (VPCMPEQ) two ymm vectors.  The comparison can be on
-+   either packed bytes or dwords depending on USE_AS_WCSCMP. In
-+   order to check the null char, algorithm keeps the matched
-+   bytes/dwords, requiring two more AVX2 instructions (VPMINU and
-+   VPCMPEQ). In general, the costs of comparing VEC_SIZE bytes
-+   (32-bytes) are two VPCMPEQ and one VPMINU instructions, together
-+   with movdqu and testl instructions. Main loop (away from from
-+   page boundary) compares 4 vectors are a time, effectively comparing
-+   4 x VEC_SIZE bytes (128 bytes) on each loop.  */
++/* The main idea of the string comparison (byte or dword) using AVX2
++   consists of comparing (VPCMPEQ) two ymm vectors. The latter can be on
++   either packed bytes or dwords depending on USE_AS_WCSCMP. In order
++   to check the null char, algorithm keeps the matched bytes/dwords,
++   requiring two more AVX2 instructions (VPMINU and VPCMPEQ). In general,
++   the costs of comparing VEC_SIZE bytes (32-bytes) are two VPCMPEQ and
++   one VPMINU instructions, together with movdqu and testl instructions.
++   Main loop (away from from page boundary) compares 4 vectors are a time,
++   effectively comparing 4 x VEC_SIZE bytes (128 bytes) on each loop.
++
++   The routine strncmp/wcsncmp (enabled by defining USE_AS_STRNCMP) logic
++   is the same as strcmp, except that an a maximum offset is tracked.  If
++   the maximum offset is reached before a difference is found, zero is
++   returned.  */
 +
 +	.section .text.avx,"ax",@progbits
 +ENTRY (STRCMP)
++# ifdef USE_AS_STRNCMP
++	/* Check for simple cases (0 or 1) in offset.  */
++	cmp	$1, %rdx
++	je	L(char0)
++	jb	L(zero)
++#  ifdef USE_AS_WCSCMP
++	/* Convert units: from wide to byte char.  */
++	shl	$2, %rdx
++#  endif
++	/* Register %r11 tracks the maximum offset.  */
++	movq	%rdx, %r11
++# endif
 +	movl	%edi, %eax
 +	xorl	%edx, %edx
 +	/* Make %ymm7 all zeros in this function.  */
@@ -202,6 +254,12 @@ index 00000000000..513031959d7
 +	testl	%ecx, %ecx
 +	je	L(next_3_vectors)
 +	tzcntl	%ecx, %edx
++# ifdef USE_AS_STRNCMP
++	/* Return 0 if the mismatched index (%rdx) is after the maximum
++	   offset (%r11).   */
++	cmpq	%r11, %rdx
++	jae	L(zero)
++# endif
 +# ifdef USE_AS_WCSCMP
 +	xorl	%eax, %eax
 +	movl	(%rdi, %rdx), %ecx
@@ -223,15 +281,33 @@ index 00000000000..513031959d7
 +	.p2align 4
 +L(return_vec_size):
 +	tzcntl	%ecx, %edx
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	/* Return 0 if the mismatched index (%rdx + VEC_SIZE) is after
++	   the maximum offset (%r11).  */
++	addq	$VEC_SIZE, %rdx
++	cmpq	%r11, %rdx
++	jae	L(zero)
++#  ifdef USE_AS_WCSCMP
++	xorl	%eax, %eax
++	movl	(%rdi, %rdx), %ecx
++	cmpl	(%rsi, %rdx), %ecx
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rdi, %rdx), %eax
++	movzbl	(%rsi, %rdx), %edx
++	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
 +	xorl	%eax, %eax
 +	movl	VEC_SIZE(%rdi, %rdx), %ecx
 +	cmpl	VEC_SIZE(%rsi, %rdx), %ecx
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	VEC_SIZE(%rdi, %rdx), %eax
 +	movzbl	VEC_SIZE(%rsi, %rdx), %edx
 +	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
@@ -239,15 +315,33 @@ index 00000000000..513031959d7
 +	.p2align 4
 +L(return_2_vec_size):
 +	tzcntl	%ecx, %edx
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	/* Return 0 if the mismatched index (%rdx + 2 * VEC_SIZE) is
++	   after the maximum offset (%r11).  */
++	addq	$(VEC_SIZE * 2), %rdx
++	cmpq	%r11, %rdx
++	jae	L(zero)
++#  ifdef USE_AS_WCSCMP
++	xorl	%eax, %eax
++	movl	(%rdi, %rdx), %ecx
++	cmpl	(%rsi, %rdx), %ecx
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rdi, %rdx), %eax
++	movzbl	(%rsi, %rdx), %edx
++	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
 +	xorl	%eax, %eax
 +	movl	(VEC_SIZE * 2)(%rdi, %rdx), %ecx
 +	cmpl	(VEC_SIZE * 2)(%rsi, %rdx), %ecx
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	(VEC_SIZE * 2)(%rdi, %rdx), %eax
 +	movzbl	(VEC_SIZE * 2)(%rsi, %rdx), %edx
 +	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
@@ -255,15 +349,33 @@ index 00000000000..513031959d7
 +	.p2align 4
 +L(return_3_vec_size):
 +	tzcntl	%ecx, %edx
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	/* Return 0 if the mismatched index (%rdx + 3 * VEC_SIZE) is
++	   after the maximum offset (%r11).  */
++	addq	$(VEC_SIZE * 3), %rdx
++	cmpq	%r11, %rdx
++	jae	L(zero)
++#  ifdef USE_AS_WCSCMP
++	xorl	%eax, %eax
++	movl	(%rdi, %rdx), %ecx
++	cmpl	(%rsi, %rdx), %ecx
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rdi, %rdx), %eax
++	movzbl	(%rsi, %rdx), %edx
++	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
 +	xorl	%eax, %eax
 +	movl	(VEC_SIZE * 3)(%rdi, %rdx), %ecx
 +	cmpl	(VEC_SIZE * 3)(%rsi, %rdx), %ecx
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	(VEC_SIZE * 3)(%rdi, %rdx), %eax
 +	movzbl	(VEC_SIZE * 3)(%rsi, %rdx), %edx
 +	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
@@ -299,6 +411,16 @@ index 00000000000..513031959d7
 +	andq	$-(VEC_SIZE * 4), %rdx
 +	subq	%rdi, %rdx
 +	leaq	(%rdi, %rdx), %rax
++# ifdef USE_AS_STRNCMP
++	/* Starting from this point, the maximum offset, or simply the
++	   'offset', DECREASES by the same amount when base pointers are
++	   moved forward.  Return 0 when:
++	     1) On match: offset <= the matched vector index.
++	     2) On mistmach, offset is before the mistmatched index.
++	 */
++	subq	%rdx, %r11
++	jbe	L(zero)
++# endif
 +	addq	%rsi, %rdx
 +	movq	%rdx, %rsi
 +	andl	$(PAGE_SIZE - 1), %esi
@@ -312,6 +434,12 @@ index 00000000000..513031959d7
 +
 +	.p2align 4
 +L(loop):
++# ifdef USE_AS_STRNCMP
++	/* Base pointers are moved forward by 4 * VEC_SIZE.  Decrease
++	   the maximum offset (%r11) by the same amount.  */
++	subq	$(VEC_SIZE * 4), %r11
++	jbe	L(zero)
++# endif
 +	addq	$(VEC_SIZE * 4), %rax
 +	addq	$(VEC_SIZE * 4), %rdx
 +L(loop_start):
@@ -349,77 +477,162 @@ index 00000000000..513031959d7
 +	testl	%edi, %edi
 +	je	L(test_vec)
 +	tzcntl	%edi, %ecx
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	cmpq	%rcx, %r11
++	jbe	L(zero)
++#  ifdef USE_AS_WCSCMP
 +	movq	%rax, %rsi
 +	xorl	%eax, %eax
 +	movl	(%rsi, %rcx), %edi
 +	cmpl	(%rdx, %rcx), %edi
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	(%rax, %rcx), %eax
 +	movzbl	(%rdx, %rcx), %edx
 +	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
++	movq	%rax, %rsi
++	xorl	%eax, %eax
++	movl	(%rsi, %rcx), %edi
++	cmpl	(%rdx, %rcx), %edi
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rax, %rcx), %eax
++	movzbl	(%rdx, %rcx), %edx
++	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
 +
 +	.p2align 4
 +L(test_vec):
++# ifdef USE_AS_STRNCMP
++	/* The first vector matched.  Return 0 if the maximum offset
++	   (%r11) <= VEC_SIZE.  */
++	cmpq	$VEC_SIZE, %r11
++	jbe	L(zero)
++# endif
 +	VPCMPEQ	%ymm7, %ymm1, %ymm1
 +	vpmovmskb %ymm1, %ecx
 +	testl	%ecx, %ecx
 +	je	L(test_2_vec)
 +	tzcntl	%ecx, %edi
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	addq	$VEC_SIZE, %rdi
++	cmpq	%rdi, %r11
++	jbe	L(zero)
++#  ifdef USE_AS_WCSCMP
++	movq	%rax, %rsi
++	xorl	%eax, %eax
++	movl	(%rsi, %rdi), %ecx
++	cmpl	(%rdx, %rdi), %ecx
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rax, %rdi), %eax
++	movzbl	(%rdx, %rdi), %edx
++	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
 +	movq	%rax, %rsi
 +	xorl	%eax, %eax
 +	movl	VEC_SIZE(%rsi, %rdi), %ecx
 +	cmpl	VEC_SIZE(%rdx, %rdi), %ecx
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	VEC_SIZE(%rax, %rdi), %eax
 +	movzbl	VEC_SIZE(%rdx, %rdi), %edx
 +	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
 +
 +	.p2align 4
 +L(test_2_vec):
++# ifdef USE_AS_STRNCMP
++	/* The first 2 vectors matched.  Return 0 if the maximum offset
++	   (%r11) <= 2 * VEC_SIZE.  */
++	cmpq	$(VEC_SIZE * 2), %r11
++	jbe	L(zero)
++# endif
 +	VPCMPEQ	%ymm7, %ymm5, %ymm5
 +	vpmovmskb %ymm5, %ecx
 +	testl	%ecx, %ecx
 +	je	L(test_3_vec)
 +	tzcntl	%ecx, %edi
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	addq	$(VEC_SIZE * 2), %rdi
++	cmpq	%rdi, %r11
++	jbe	L(zero)
++#  ifdef USE_AS_WCSCMP
++	movq	%rax, %rsi
++	xorl	%eax, %eax
++	movl	(%rsi, %rdi), %ecx
++	cmpl	(%rdx, %rdi), %ecx
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rax, %rdi), %eax
++	movzbl	(%rdx, %rdi), %edx
++	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
 +	movq	%rax, %rsi
 +	xorl	%eax, %eax
 +	movl	(VEC_SIZE * 2)(%rsi, %rdi), %ecx
 +	cmpl	(VEC_SIZE * 2)(%rdx, %rdi), %ecx
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	(VEC_SIZE * 2)(%rax, %rdi), %eax
 +	movzbl	(VEC_SIZE * 2)(%rdx, %rdi), %edx
 +	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
 +
 +	.p2align 4
 +L(test_3_vec):
++# ifdef USE_AS_STRNCMP
++	/* The first 3 vectors matched.  Return 0 if the maximum offset
++	   (%r11) <= 3 * VEC_SIZE.  */
++	cmpq	$(VEC_SIZE * 3), %r11
++	jbe	L(zero)
++# endif
 +	VPCMPEQ	%ymm7, %ymm6, %ymm6
 +	vpmovmskb %ymm6, %esi
 +	tzcntl	%esi, %ecx
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	addq	$(VEC_SIZE * 3), %rcx
++	cmpq	%rcx, %r11
++	jbe	L(zero)
++#  ifdef USE_AS_WCSCMP
++	movq	%rax, %rsi
++	xorl	%eax, %eax
++	movl	(%rsi, %rcx), %esi
++	cmpl	(%rdx, %rcx), %esi
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rax, %rcx), %eax
++	movzbl	(%rdx, %rcx), %edx
++	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
 +	movq	%rax, %rsi
 +	xorl	%eax, %eax
 +	movl	(VEC_SIZE * 3)(%rsi, %rcx), %esi
 +	cmpl	(VEC_SIZE * 3)(%rdx, %rcx), %esi
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	(VEC_SIZE * 3)(%rax, %rcx), %eax
 +	movzbl	(VEC_SIZE * 3)(%rdx, %rcx), %edx
 +	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
@@ -464,16 +677,32 @@ index 00000000000..513031959d7
 +	testq	%rdi, %rdi
 +	je	L(loop_cross_page_2_vec)
 +	tzcntq	%rdi, %rcx
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	cmpq	%rcx, %r11
++	jbe	L(zero)
++#  ifdef USE_AS_WCSCMP
 +	movq	%rax, %rsi
 +	xorl	%eax, %eax
 +	movl	(%rsi, %rcx), %edi
 +	cmpl	(%rdx, %rcx), %edi
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	(%rax, %rcx), %eax
 +	movzbl	(%rdx, %rcx), %edx
 +	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
++	movq	%rax, %rsi
++	xorl	%eax, %eax
++	movl	(%rsi, %rcx), %edi
++	cmpl	(%rdx, %rcx), %edi
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rax, %rcx), %eax
++	movzbl	(%rdx, %rcx), %edx
++	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
@@ -515,16 +744,33 @@ index 00000000000..513031959d7
 +	addq	%r10, %rcx
 +	/* Adjust for number of bytes skipped.  */
 +	addq	%r8, %rcx
-+# ifdef USE_AS_WCSCMP
++# ifdef USE_AS_STRNCMP
++	addq	$(VEC_SIZE * 2), %rcx
++	subq	%rcx, %r11
++	jbe	L(zero)
++#  ifdef USE_AS_WCSCMP
++	movq	%rax, %rsi
++	xorl	%eax, %eax
++	movl	(%rsi, %rcx), %edi
++	cmpl	(%rdx, %rcx), %edi
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rax, %rcx), %eax
++	movzbl	(%rdx, %rcx), %edx
++	subl	%edx, %eax
++#  endif
++# else
++#  ifdef USE_AS_WCSCMP
 +	movq	%rax, %rsi
 +	xorl	%eax, %eax
 +	movl	(VEC_SIZE * 2)(%rsi, %rcx), %edi
 +	cmpl	(VEC_SIZE * 2)(%rdx, %rcx), %edi
 +	jne	L(wcscmp_return)
-+# else
++#  else
 +	movzbl	(VEC_SIZE * 2)(%rax, %rcx), %eax
 +	movzbl	(VEC_SIZE * 2)(%rdx, %rcx), %edx
 +	subl	%edx, %eax
++#  endif
 +# endif
 +	VZEROUPPER
 +	ret
@@ -532,11 +778,19 @@ index 00000000000..513031959d7
 +	.p2align 4
 +L(cross_page_loop):
 +	/* Check one byte/dword at a time.  */
++# ifdef USE_AS_WCSCMP
 +	cmpl	%ecx, %eax
++# else
++	subl	%ecx, %eax
++# endif
 +	jne	L(different)
 +	addl	$SIZE_OF_CHAR, %edx
 +	cmpl	$(VEC_SIZE * 4), %edx
 +	je	L(main_loop_header)
++# ifdef USE_AS_STRNCMP
++	cmpq	%r11, %rdx
++	jae	L(zero)
++# endif
 +# ifdef USE_AS_WCSCMP
 +	movl	(%rdi, %rdx), %eax
 +	movl	(%rsi, %rdx), %ecx
@@ -544,19 +798,65 @@ index 00000000000..513031959d7
 +	movzbl	(%rdi, %rdx), %eax
 +	movzbl	(%rsi, %rdx), %ecx
 +# endif
++	/* Check null char.  */
 +	testl	%eax, %eax
 +	jne	L(cross_page_loop)
-+	xorl	%eax, %eax
-+L(different):
++	/* Since %eax == 0, subtract is OK for both SIGNED and UNSIGNED
++	   comparisons.  */
 +	subl	%ecx, %eax
++# ifndef USE_AS_WCSCMP
++L(different):
++# endif
 +	VZEROUPPER
 +	ret
++
++# ifdef USE_AS_WCSCMP
++	.p2align 4
++L(different):
++	/* Use movl to avoid modifying EFLAGS.  */
++	movl	$0, %eax
++	setl	%al
++	negl	%eax
++	orl	$1, %eax
++	VZEROUPPER
++	ret
++# endif
++
++# ifdef USE_AS_STRNCMP
++	.p2align 4
++L(zero):
++	xorl	%eax, %eax
++	VZEROUPPER
++	ret
++
++	.p2align 4
++L(char0):
++#  ifdef USE_AS_WCSCMP
++	xorl	%eax, %eax
++	movl	(%rdi), %ecx
++	cmpl	(%rsi), %ecx
++	jne	L(wcscmp_return)
++#  else
++	movzbl	(%rsi), %ecx
++	movzbl	(%rdi), %eax
++	subl	%ecx, %eax
++#  endif
++	VZEROUPPER
++	ret
++# endif
 +
 +	.p2align 4
 +L(last_vector):
 +	addq	%rdx, %rdi
 +	addq	%rdx, %rsi
++# ifdef USE_AS_STRNCMP
++	subq	%rdx, %r11
++# endif
 +	tzcntl	%ecx, %edx
++# ifdef USE_AS_STRNCMP
++	cmpq	%r11, %rdx
++	jae	L(zero)
++# endif
 +# ifdef USE_AS_WCSCMP
 +	xorl	%eax, %eax
 +	movl	(%rdi, %rdx), %ecx
@@ -592,6 +892,12 @@ index 00000000000..513031959d7
 +	addl	$VEC_SIZE, %edx
 +
 +	addl	$VEC_SIZE, %eax
++# ifdef USE_AS_STRNCMP
++	/* Return 0 if the current offset (%rdx) >= the maximum offset
++	   (%r11).  */
++	cmpq	%r11, %rdx
++	jae	L(zero)
++# endif
 +	cmpl	$(PAGE_SIZE - VEC_SIZE), %eax
 +	jle	L(loop_1_vector)
 +L(cross_page_1_vector):
@@ -607,9 +913,72 @@ index 00000000000..513031959d7
 +	jne	L(last_vector)
 +
 +	addl	$16, %edx
++# ifndef USE_AS_WCSCMP
++	addl	$16, %eax
++# endif
++# ifdef USE_AS_STRNCMP
++	/* Return 0 if the current offset (%rdx) >= the maximum offset
++	   (%r11).  */
++	cmpq	%r11, %rdx
++	jae	L(zero)
++# endif
 +
 +L(cross_page_1_xmm):
-+	/* Less than 16 bytes to check, try one byte/dword at a time.  */
++# ifndef USE_AS_WCSCMP
++	/* Less than 16 bytes to check, try 8 byte vector.  NB: No need
++	   for wcscmp nor wcsncmp since wide char is 4 bytes.   */
++	cmpl	$(PAGE_SIZE - 8), %eax
++	jg	L(cross_page_8bytes)
++	vmovq	(%rdi, %rdx), %xmm1
++	vmovq	(%rsi, %rdx), %xmm0
++	VPCMPEQ	%xmm0, %xmm1, %xmm0
++	VPMINU	%xmm1, %xmm0, %xmm0
++	VPCMPEQ	%xmm7, %xmm0, %xmm0
++	vpmovmskb %xmm0, %ecx
++	/* Only last 8 bits are valid.  */
++	andl	$0xff, %ecx
++	testl	%ecx, %ecx
++	jne	L(last_vector)
++
++	addl	$8, %edx
++	addl	$8, %eax
++#  ifdef USE_AS_STRNCMP
++	/* Return 0 if the current offset (%rdx) >= the maximum offset
++	   (%r11).  */
++	cmpq	%r11, %rdx
++	jae	L(zero)
++#  endif
++
++L(cross_page_8bytes):
++	/* Less than 8 bytes to check, try 4 byte vector.  */
++	cmpl	$(PAGE_SIZE - 4), %eax
++	jg	L(cross_page_4bytes)
++	vmovd	(%rdi, %rdx), %xmm1
++	vmovd	(%rsi, %rdx), %xmm0
++	VPCMPEQ	%xmm0, %xmm1, %xmm0
++	VPMINU	%xmm1, %xmm0, %xmm0
++	VPCMPEQ	%xmm7, %xmm0, %xmm0
++	vpmovmskb %xmm0, %ecx
++	/* Only last 4 bits are valid.  */
++	andl	$0xf, %ecx
++	testl	%ecx, %ecx
++	jne	L(last_vector)
++
++	addl	$4, %edx
++#  ifdef USE_AS_STRNCMP
++	/* Return 0 if the current offset (%rdx) >= the maximum offset
++	   (%r11).  */
++	cmpq	%r11, %rdx
++	jae	L(zero)
++#  endif
++
++L(cross_page_4bytes):
++# endif
++	/* Less than 4 bytes to check, try one byte/dword at a time.  */
++# ifdef USE_AS_STRNCMP
++	cmpq	%r11, %rdx
++	jae	L(zero)
++# endif
 +# ifdef USE_AS_WCSCMP
 +	movl	(%rdi, %rdx), %eax
 +	movl	(%rsi, %rdx), %ecx
@@ -619,7 +988,6 @@ index 00000000000..513031959d7
 +# endif
 +	testl	%eax, %eax
 +	jne	L(cross_page_loop)
-+	xorl	%eax, %eax
 +	subl	%ecx, %eax
 +	VZEROUPPER
 +	ret
@@ -648,6 +1016,38 @@ index 0335f96b090..b903e418df1 100644
    if (CPU_FEATURES_ARCH_P (cpu_features, Fast_Unaligned_Load))
      return OPTIMIZE (sse2_unaligned);
  
+diff --git a/sysdeps/x86_64/multiarch/strncmp-avx2.S b/sysdeps/x86_64/multiarch/strncmp-avx2.S
+new file mode 100644
+index 00000000000..1678bcc235a
+--- /dev/null
++++ b/sysdeps/x86_64/multiarch/strncmp-avx2.S
+@@ -0,0 +1,3 @@
++#define STRCMP	__strncmp_avx2
++#define USE_AS_STRNCMP 1
++#include "strcmp-avx2.S"
+diff --git a/sysdeps/x86_64/multiarch/strncmp.c b/sysdeps/x86_64/multiarch/strncmp.c
+index 0d2d657a36c..02b6d0b6f57 100644
+--- a/sysdeps/x86_64/multiarch/strncmp.c
++++ b/sysdeps/x86_64/multiarch/strncmp.c
+@@ -29,12 +29,18 @@
+ extern __typeof (REDIRECT_NAME) OPTIMIZE (sse2) attribute_hidden;
+ extern __typeof (REDIRECT_NAME) OPTIMIZE (ssse3) attribute_hidden;
+ extern __typeof (REDIRECT_NAME) OPTIMIZE (sse42) attribute_hidden;
++extern __typeof (REDIRECT_NAME) OPTIMIZE (avx2) attribute_hidden;
+ 
+ static inline void *
+ IFUNC_SELECTOR (void)
+ {
+   const struct cpu_features* cpu_features = __get_cpu_features ();
+ 
++  if (!CPU_FEATURES_ARCH_P (cpu_features, Prefer_No_VZEROUPPER)
++      && CPU_FEATURES_ARCH_P (cpu_features, AVX2_Usable)
++      && CPU_FEATURES_ARCH_P (cpu_features, AVX_Fast_Unaligned_Load))
++    return OPTIMIZE (avx2);
++
+   if (CPU_FEATURES_CPU_P (cpu_features, SSE4_2)
+       && !CPU_FEATURES_ARCH_P (cpu_features, Slow_SSE4_2))
+     return OPTIMIZE (sse42);
 diff --git a/sysdeps/x86_64/multiarch/wcscmp-avx2.S b/sysdeps/x86_64/multiarch/wcscmp-avx2.S
 new file mode 100644
 index 00000000000..e5da4da689d
@@ -729,6 +1129,80 @@ index 00000000000..74d92cf0f96
 +__hidden_ver1 (__wcscmp, __GI___wcscmp, __redirect_wcscmp)
 +  __attribute__ ((visibility ("hidden")));
 +# endif
++#endif
+diff --git a/sysdeps/x86_64/multiarch/wcsncmp-avx2.S b/sysdeps/x86_64/multiarch/wcsncmp-avx2.S
+new file mode 100644
+index 00000000000..4fa1de4d3f1
+--- /dev/null
++++ b/sysdeps/x86_64/multiarch/wcsncmp-avx2.S
+@@ -0,0 +1,5 @@
++#define STRCMP __wcsncmp_avx2
++#define USE_AS_STRNCMP 1
++#define USE_AS_WCSCMP 1
++
++#include "strcmp-avx2.S"
+diff --git a/sysdeps/x86_64/multiarch/wcsncmp-sse2.c b/sysdeps/x86_64/multiarch/wcsncmp-sse2.c
+new file mode 100644
+index 00000000000..2bc7b4f6939
+--- /dev/null
++++ b/sysdeps/x86_64/multiarch/wcsncmp-sse2.c
+@@ -0,0 +1,20 @@
++/* wcsncmp optimized with SSE2.
++   Copyright (C) 2018 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define WCSNCMP __wcsncmp_sse2
++#include <wcsmbs/wcsncmp.c>
+diff --git a/sysdeps/x86_64/multiarch/wcsncmp.c b/sysdeps/x86_64/multiarch/wcsncmp.c
+new file mode 100644
+index 00000000000..90e9a352d91
+--- /dev/null
++++ b/sysdeps/x86_64/multiarch/wcsncmp.c
+@@ -0,0 +1,31 @@
++/* Multiple versions of wcsncmp.
++   Copyright (C) 2018 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++/* Define multiple versions only for the definition in libc.  */
++#if IS_IN (libc)
++# define wcsncmp __redirect_wcsncmp
++# define __wcsncmp __redirect___wcsncmp
++# include <wchar.h>
++# undef wcsncmp
++# undef __wcsncmp
++
++# define SYMBOL_NAME wcsncmp
++# include "ifunc-avx2.h"
++
++libc_ifunc_redirected (__redirect_wcsncmp, wcsncmp, IFUNC_SELECTOR ());
 +#endif
 diff --git a/sysdeps/x86_64/wcscmp.S b/sysdeps/x86_64/wcscmp.S
 index 1b9f81f54ce..0d506c8b5cd 100644

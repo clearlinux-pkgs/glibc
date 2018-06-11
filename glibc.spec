@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.27
-Release:        183
+Release:        184
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -46,7 +46,8 @@ Patch45:        0007-sin-cos-slow-paths-refactor-sincos-implementation.patch
 Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
-Patch53:    strcmp-wcscmp-with-AVX2.patch
+Patch53:        strcmp-wcscmp-with-AVX2.patch
+Patch54:        memmem.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -223,6 +224,7 @@ GNU C library extra components.
 %patch51 -p1
 %patch52 -p1
 %patch53 -p1
+%patch54 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909

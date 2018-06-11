@@ -1,0 +1,156 @@
+From patchwork Mon Jun 11 10:31:08 2018
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: Improve strstr performance
+From: Wilco Dijkstra <Wilco.Dijkstra@arm.com>
+X-Patchwork-Id: 27738
+Message-Id: <DB5PR08MB1030DA9F862D70A49C3FA40383780@DB5PR08MB1030.eurprd08.prod.outlook.com>
+To: "libc-alpha@sourceware.org" <libc-alpha@sourceware.org>
+Cc: nd <nd@arm.com>
+Date: Mon, 11 Jun 2018 10:31:08 +0000
+
+Improve strstr performance.  Strstr tends to be slow because it uses
+many calls to memchr and a slow byte loop to scan for the next match.
+Performance is significantly improved by using strnlen on larger blocks
+and using strchr to search for the next matching character.  strcasestr
+can also use strnlen to scan ahead, and memmem can use memchr to check
+for the next match.
+
+On the GLIBC bench tests the overall performance gains on Cortex-A72 are:
+strstr: +25%
+strcasestr: +4.3%
+memmem: +18%
+
+On a 256KB dataset strstr performance improves by 67%, strcasestr by 47%.
+
+Tested on AArch64, passes GLIBC tests.
+
+ChangeLog:
+2018-06-08  Wilco Dijkstra  <wdijkstr@arm.com>
+
+	* string/memmem.c (FASTSEARCH): Define.	
+	* string/str-two-way.h (two_way_short_needle): Minor cleanups.
+	Add support for FASTSEARCH.
+	* string/strcasestr.c (AVAILABLE): Use read-ahead strnlen.
+	* string/strstr.c (AVAILABLE): Use read-ahead strnlen.
+	(FASTSEARCH): Define.
+
+---
+
+
+diff --git a/string/memmem.c b/string/memmem.c
+index c17e1cf6a63c0709df0c1c7a45410c5178b2876e..43efaa3fb718e7a22c3b4122c278720768644d0f 100644
+--- a/string/memmem.c
++++ b/string/memmem.c
+@@ -31,6 +31,7 @@
+ 
+ #define RETURN_TYPE void *
+ #define AVAILABLE(h, h_l, j, n_l) ((j) <= (h_l) - (n_l))
++#define FASTSEARCH(S,C,N) (void*) memchr ((void *)(S), (C), (N))
+ #include "str-two-way.h"
+ 
+ #undef memmem
+diff --git a/string/str-two-way.h b/string/str-two-way.h
+index cd2605857d9b5c432c3c2b1c5e35f55d8e9285b6..6ce6798ea4d595bb4c95335233eb92595f447a28 100644
+--- a/string/str-two-way.h
++++ b/string/str-two-way.h
+@@ -281,50 +281,50 @@ two_way_short_needle (const unsigned char *haystack, size_t haystack_len,
+     }
+   else
+     {
+-      const unsigned char *phaystack = &haystack[suffix];
++      const unsigned char *phaystack;
+       /* The comparison always starts from needle[suffix], so cache it
+ 	 and use an optimized first-character loop.  */
+       unsigned char needle_suffix = CANON_ELEMENT (needle[suffix]);
+ 
+-#if CHECK_EOL
+-      /* We start matching from the SUFFIX'th element, so make sure we
+-	 don't hit '\0' before that.  */
+-      if (haystack_len < suffix + 1
+-	  && !AVAILABLE (haystack, haystack_len, 0, suffix + 1))
+-	return NULL;
+-#endif
+-
+       /* The two halves of needle are distinct; no extra memory is
+ 	 required, and any mismatch results in a maximal shift.  */
+       period = MAX (suffix, needle_len - suffix) + 1;
+       j = 0;
+-      while (1
+-#if !CHECK_EOL
+-	     && AVAILABLE (haystack, haystack_len, j, needle_len)
+-#endif
+-	     )
++      while (AVAILABLE (haystack, haystack_len, j, needle_len))
+ 	{
+ 	  unsigned char haystack_char;
+ 	  const unsigned char *pneedle;
+ 
+-	  /* TODO: The first-character loop can be sped up by adapting
+-	     longword-at-a-time implementation of memchr/strchr.  */
+-	  if (needle_suffix
++	  phaystack = &haystack[suffix + j];
++
++#ifdef FASTSEARCH
++	  if (*phaystack++ != needle_suffix)
++	    {
++	      phaystack = FASTSEARCH (phaystack, needle_suffix,
++				      haystack_len - needle_len - j);
++	      if (phaystack == NULL)
++		goto ret0;
++	      j = phaystack - &haystack[suffix];
++	      phaystack++;
++	    }
++#else
++	  while (needle_suffix
+ 	      != (haystack_char = CANON_ELEMENT (*phaystack++)))
+ 	    {
+ 	      RET0_IF_0 (haystack_char);
+-#if !CHECK_EOL
++# if !CHECK_EOL
+ 	      ++j;
+-#endif
+-	      continue;
++	      if (!AVAILABLE (haystack, haystack_len, j, needle_len))
++		goto ret0;
++# endif
+ 	    }
+ 
+-#if CHECK_EOL
++# if CHECK_EOL
+ 	  /* Calculate J if it wasn't kept up-to-date in the first-character
+ 	     loop.  */
+ 	  j = phaystack - &haystack[suffix] - 1;
++# endif
+ #endif
+-
+ 	  /* Scan for matches in right half.  */
+ 	  i = suffix + 1;
+ 	  pneedle = &needle[i];
+@@ -338,6 +338,11 @@ two_way_short_needle (const unsigned char *haystack, size_t haystack_len,
+ 		}
+ 	      ++i;
+ 	    }
++#if CHECK_EOL
++	  /* Update minimal length of haystack.  */
++	  if (phaystack > haystack + haystack_len)
++	    haystack_len = phaystack - haystack;
++#endif
+ 	  if (needle_len <= i)
+ 	    {
+ 	      /* Scan for matches in left half.  */
+@@ -360,13 +365,6 @@ two_way_short_needle (const unsigned char *haystack, size_t haystack_len,
+ 	    }
+ 	  else
+ 	    j += i - suffix + 1;
+-
+-#if CHECK_EOL
+-	  if (!AVAILABLE (haystack, haystack_len, j, needle_len))
+-	    break;
+-#endif
+-
+-	  phaystack = &haystack[suffix + j];
+ 	}
+     }
+  ret0: __attribute__ ((unused))
