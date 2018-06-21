@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.27
-Release:        185
+Release:        186
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -49,6 +49,7 @@ Patch52:	spin-smarter.patch
 Patch53:        strcmp-wcscmp-with-AVX2.patch
 Patch54:        memmem.patch
 Patch55:        CVE-2018-11236.patch
+Patch56:        CVE-2017-18269.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -227,6 +228,7 @@ GNU C library extra components.
 %patch53 -p1
 %patch54 -p1
 %patch55 -p1
+%patch56 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
