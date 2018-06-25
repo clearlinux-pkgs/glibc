@@ -50,6 +50,8 @@ Patch53:        strcmp-wcscmp-with-AVX2.patch
 Patch54:        memmem.patch
 Patch55:        CVE-2018-11236.patch
 Patch56:        CVE-2017-18269.patch
+Patch57:        cve-2018-11237.patch
+Patch58:        cve-2018-11237-1.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -229,6 +231,9 @@ GNU C library extra components.
 %patch54 -p1
 %patch55 -p1
 %patch56 -p1
+%patch57 -p1
+%patch58 -p1
+
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
