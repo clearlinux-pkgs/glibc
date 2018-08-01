@@ -2,13 +2,13 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.27
+Version:        2.28
 Release:        187
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.27.tar.gz
+Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.28.tar.gz
 
 
 Patch4:		0001-Set-host.conf-multi-to-on-by-default.patch
@@ -36,22 +36,9 @@ Patch32:	mathlto.patch
 Patch35:	vzeroupper-2.27.patch
 # backports of libm work
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
-Patch39:        0001-sin-cos-slow-paths-avoid-slow-paths-for-small-inputs.patch
-Patch40:        0002-sin-cos-slow-paths-remove-large-range-reduction.patch
-Patch41:        0003-sin-cos-slow-paths-remove-slow-paths-from-small-rang.patch
-Patch42:        0004-sin-cos-slow-paths-remove-slow-paths-from-huge-range.patch
-Patch43:        0005-sin-cos-slow-paths-remove-unused-slowpath-functions.patch
-Patch44:        0006-sin-cos-slow-paths-refactor-duplicated-code-into-dos.patch
-Patch45:        0007-sin-cos-slow-paths-refactor-sincos-implementation.patch
 Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
-Patch53:        strcmp-wcscmp-with-AVX2.patch
-Patch54:        memmem.patch
-Patch55:        CVE-2018-11236.patch
-Patch56:        CVE-2017-18269.patch
-Patch57:        cve-2018-11237.patch
-Patch58:        cve-2018-11237-1.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -119,7 +106,6 @@ Summary:        GNU C library
 Group:          libs
 Requires(pre):       filesystem
 Provides:       glibc
-Provides:       libcidn1
 Provides:       glibc-extra-nss
 Provides:       libsotruss
 Provides:       libmemusage
@@ -217,22 +203,9 @@ GNU C library extra components.
 %patch29 -p1
 %patch32 -p1
 %patch35 -p1
-%patch39 -p1
-%patch40 -p1
-%patch41 -p1
-%patch42 -p1
-%patch43 -p1
-%patch44 -p1
-%patch45 -p1
 %patch50 -p1
 %patch51 -p1
 %patch52 -p1
-%patch53 -p1
-%patch54 -p1
-%patch55 -p1
-%patch56 -p1
-%patch57 -p1
-%patch58 -p1
 
 
 %build
@@ -246,7 +219,7 @@ export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.27/configure \
+../glibc-2.28/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -294,7 +267,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.27/configure \
+../glibc-2.28/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -341,7 +314,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.27/configure \
+../glibc-2.28/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -388,7 +361,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -g2  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.27/configure \
+../glibc-2.28/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -445,22 +418,22 @@ popd
 
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.27.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.27.so
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.27.so
-cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.27.so
-ln -s libm-2.27.so %{buildroot}/usr/lib64/haswell/libm.so.6
-ln -s libmvec-2.27.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-ln -s libcrypt-2.27.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
-ln -s libc-2.27.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.28.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.28.so
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.28.so
+cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.28.so
+ln -s libm-2.28.so %{buildroot}/usr/lib64/haswell/libm.so.6
+ln -s libmvec-2.28.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+ln -s libcrypt-2.28.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+ln -s libc-2.28.so  %{buildroot}/usr/lib64/haswell/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
 mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
-cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.27.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.27.so
-ln -s libm-2.27.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
-ln -s libmvec-2.27.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.28.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.28.so
+ln -s libm-2.28.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
+ln -s libmvec-2.28.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
 popd
 
 
@@ -658,52 +631,50 @@ popd
 /usr/lib64/gconv/VISCII.so
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
-/usr/lib64/ld-2.27.so
+/usr/lib64/ld-2.28.so
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/libBrokenLocale-2.27.so
+/usr/lib64/libBrokenLocale-2.28.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
-/usr/lib64/libanl-2.27.so
+/usr/lib64/libanl-2.28.so
 /usr/lib64/libanl.so.1
-/usr/lib64/libc-2.27.so
+/usr/lib64/libc-2.28.so
 /usr/lib64/libc.so.6
-/usr/lib64/libcidn-2.27.so
-/usr/lib64/libcidn.so.1
-/usr/lib64/libcrypt-2.27.so
+/usr/lib64/libcrypt-2.28.so
 /usr/lib64/libcrypt.so.1
-/usr/lib64/libdl-2.27.so
+/usr/lib64/libdl-2.28.so
 /usr/lib64/libdl.so.2
-/usr/lib64/libm-2.27.so
+/usr/lib64/libm-2.28.so
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
-/usr/lib64/libnsl-2.27.so
+/usr/lib64/libnsl-2.28.so
 /usr/lib64/libnsl.so.1
-/usr/lib64/libnss_dns-2.27.so
+/usr/lib64/libnss_dns-2.28.so
 /usr/lib64/libnss_dns.so.2
-/usr/lib64/libnss_files-2.27.so
+/usr/lib64/libnss_files-2.28.so
 /usr/lib64/libnss_files.so.2
-/usr/lib64/libnss_hesiod-2.27.so
+/usr/lib64/libnss_hesiod-2.28.so
 /usr/lib64/libnss_hesiod.so.2
-/usr/lib64/libnss_compat-2.27.so
+/usr/lib64/libnss_compat-2.28.so
 /usr/lib64/libnss_compat.so
 /usr/lib64/libnss_compat.so.2
 /usr/lib64/libpcprofile.so
-/usr/lib64/libpthread-2.27.so
+/usr/lib64/libpthread-2.28.so
 /usr/lib64/libpthread.so.0
-/usr/lib64/libresolv-2.27.so
+/usr/lib64/libresolv-2.28.so
 /usr/lib64/libresolv.so.2
-/usr/lib64/librt-2.27.so
+/usr/lib64/librt-2.28.so
 /usr/lib64/librt.so.1
 /usr/lib64/libthread_db-1.0.so
 /usr/lib64/libthread_db.so.1
-/usr/lib64/libutil-2.27.so
+/usr/lib64/libutil-2.28.so
 /usr/lib64/libutil.so.1
-/usr/lib64/libmvec-2.27.so
+/usr/lib64/libmvec-2.28.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm-2.27.so
+/usr/lib64/haswell/libm-2.28.so
 /usr/lib64/haswell/libm.so.6
 
 /sbin/ldconfig
@@ -888,7 +859,6 @@ popd
 /usr/lib64/libanl.so
 /usr/lib64/libc.so
 /usr/lib64/libc_nonshared.a
-/usr/lib64/libcidn.so
 /usr/lib64/libcrypt.so
 /usr/lib64/libdl.so
 /usr/lib64/libm.so
@@ -898,7 +868,6 @@ popd
 /usr/lib64/libnss_files.so
 /usr/lib64/libnss_hesiod.so
 /usr/lib64/libpthread.so
-/usr/lib64/libpthread_nonshared.a
 /usr/lib64/libresolv.so
 /usr/lib64/librt.so
 /usr/lib64/libthread_db.so
@@ -920,7 +889,6 @@ popd
 /usr/lib32/libBrokenLocale.so.1
 /usr/lib32/libanl.so.1
 /usr/lib32/libc.so.6
-/usr/lib32/libcidn.so.1
 /usr/lib32/libcrypt.so.1
 /usr/lib32/libdl.so.2
 /usr/lib32/libm.so.6
@@ -954,7 +922,7 @@ popd
 /usr/lib64/librpcsvc.a
 /usr/lib64/librt.a
 /usr/lib64/libutil.a
-/usr/lib64/libm-2.27.a
+/usr/lib64/libm-2.28.a
 /usr/lib64/libmvec.a
 
 
@@ -963,13 +931,13 @@ popd
 
 %files extras
 /usr/bin/makedb
-/usr/lib64/libnss_db-2.27.so
+/usr/lib64/libnss_db-2.28.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
-/usr/lib64/libnss_nis-2.27.so
+/usr/lib64/libnss_nis-2.28.so
 /usr/lib64/libnss_nis.so
 /usr/lib64/libnss_nis.so.2
-/usr/lib64/libnss_nisplus-2.27.so
+/usr/lib64/libnss_nisplus-2.28.so
 /usr/lib64/libnss_nisplus.so
 /usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
