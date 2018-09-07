@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.28
-Release:        190
+Release:        191
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -230,7 +230,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --sharedstatedir=%{_localstatedir}/lib \
     --localstatedir=%{_localstatedir} \
     --libdir=/usr/lib64 \
-    --localedir=/usr/lib/locale \
+    --localedir=/usr/share/locale \
     --infodir=/usr/share/info \
     --mandir=/usr/share/man \
     --disable-silent-rules \
@@ -253,7 +253,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib64 \
-    libc_cv_complocaledir=/usr/lib/locale
+    libc_cv_complocaledir=/usr/share/locale
 
 make %{?_smp_mflags}
 popd
@@ -278,7 +278,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --sharedstatedir=%{_localstatedir}/lib \
     --localstatedir=%{_localstatedir} \
     --libdir=/usr/lib64 \
-    --localedir=/usr/lib/locale \
+    --localedir=/usr/share/locale \
     --infodir=/usr/share/info \
     --mandir=/usr/share/man \
     --disable-silent-rules \
@@ -301,7 +301,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib64 \
-    libc_cv_complocaledir=/usr/lib/locale
+    libc_cv_complocaledir=/usr/share/locale
 
 make %{?_smp_mflags}
 popd
@@ -325,7 +325,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --sharedstatedir=%{_localstatedir}/lib \
     --localstatedir=%{_localstatedir} \
     --libdir=/usr/lib64 \
-    --localedir=/usr/lib/locale \
+    --localedir=/usr/share/locale \
     --infodir=/usr/share/info \
     --mandir=/usr/share/man \
     --disable-silent-rules \
@@ -348,7 +348,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib64 \
-    libc_cv_complocaledir=/usr/lib/locale
+    libc_cv_complocaledir=/usr/share/locale
 
 make %{?_smp_mflags}
 popd
@@ -372,7 +372,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --sharedstatedir=%{_localstatedir}/lib \
     --localstatedir=%{_localstatedir} \
     --libdir=/usr/lib32 \
-    --localedir=/usr/lib/locale \
+    --localedir=/usr/share/locale \
     --infodir=/usr/share/info \
     --mandir=/usr/share/man \
     --disable-silent-rules \
@@ -396,7 +396,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     libc_cv_slibdir=/usr/lib32 \
-    libc_cv_complocaledir=/usr/lib/locale \
+    libc_cv_complocaledir=/usr/share/locale \
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
 
 
@@ -463,12 +463,12 @@ popd
 
 pushd localedata
 # Generate out of locale-archive an (en_US.) UTF-8 locale
-mkdir -p %{buildroot}/usr/lib/locale
+mkdir -p %{buildroot}/usr/share/locale
 I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/en_US -c -f charmaps/UTF-8 en_US.UTF-8
-mv %{buildroot}/usr/lib/locale/en_US.utf8 %{buildroot}/usr/lib/locale/en_US.UTF-8
+mv %{buildroot}/usr/share/locale/en_US.utf8 %{buildroot}/usr/share/locale/en_US.UTF-8
 popd
 
-ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/lib/locale/locale-archive
+ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/share/locale/locale-archive
 
 mkdir -p %{buildroot}/usr/lib
 ln -s ../lib32/ld-linux.so.2  %{buildroot}/usr/lib/ld-linux.so.2
@@ -506,8 +506,8 @@ popd
 /usr/sbin/zdump
 
 %files -n libc6
-%dir /usr/lib/locale
-/usr/lib/locale/en_US.UTF-8
+%dir /usr/share/locale
+/usr/share/locale/en_US.UTF-8
 /usr/lib64/audit/sotruss-lib.so
 /usr/lib64/gconv/ANSI_X3.110.so
 /usr/lib64/gconv/ARMSCII-8.so
@@ -687,8 +687,8 @@ popd
 
 # TODO: SPLIT!
 %files locale
-/usr/lib/locale
-%exclude /usr/lib/locale/locale-archive
+/usr/share/locale
+%exclude /usr/share/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
 /usr/bin/localedef
