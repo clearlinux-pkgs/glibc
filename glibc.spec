@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.28
-Release:        193
+Release:        194
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -255,6 +255,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-tunables \
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
+    --enable-static-pie \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
 
