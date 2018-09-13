@@ -9,6 +9,7 @@ Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
 Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.28.tar.gz
+Source1:        langs.txt
 
 Patch1:		glibc-stable-branch.patch
 
@@ -467,10 +468,13 @@ popd
 pushd localedata
 # Generate out of locale-archive an (en_US.) UTF-8 locale
 mkdir -p %{buildroot}/usr/share/locale
-I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/en_US -c -f charmaps/UTF-8 en_US.UTF-8
-I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/nl_NL -c -f charmaps/UTF-8 nl_NL.UTF-8
-mv %{buildroot}/usr/share/locale/en_US.utf8 %{buildroot}/usr/share/locale/en_US.UTF-8
-mv %{buildroot}/usr/share/locale/nl_NL.utf8 %{buildroot}/usr/share/locale/nl_NL.UTF-8
+langs_list=%{SOURCE1}
+
+while IFS= read -r lang
+do
+  I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/$lang -c -f charmaps/UTF-8 $lang.UTF-8
+  mv %{buildroot}/usr/share/locale/$lang.utf8 %{buildroot}/usr/share/locale/$lang.UTF-8
+done < $langs_list
 popd
 
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/share/locale/locale-archive
