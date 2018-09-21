@@ -1,8 +1,41 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..d9e7e6f1d8 100644
+index 08b42bd2f5..84503e3a0c 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,88 @@
+@@ -1,3 +1,121 @@
++2018-09-21  H.J. Lu  <hongjiu.lu@intel.com>
++	    Xuepeng Guo  <xuepeng.guo@intel.com>
++
++	[BZ #23606]
++	* sysdeps/i386/start.S: Include <sysdep.h>
++	(_start): Use ENTRY/END to insert ENDBR32 at entry when CET is
++	enabled.  Add cfi_undefined (eip).
++
++2018-09-19  Wilco Dijkstra  <wdijkstr@arm.com>
++
++	[BZ #23637]
++	* string/test-strstr.c (pr23637): New function.
++	(test_main): Add tests with longer needles.
++	* string/strcasestr.c (AVAILABLE): Fix readahead distance.
++	* string/strstr.c (AVAILABLE): Likewise.
++
++2018-09-19  Carlos O'Donell  <carlos@redhat.com>
++
++	* stdlib/tst-setcontext9.c (f1): Rename to...
++	(f1a): ... this.
++	(f1b): New function implementing lower half of f1 in alternate stack.
++
++2018-09-20  Florian Weimer  <fweimer@redhat.com>
++
++	* misc/tst-gethostid.c: New file.
++	* misc/Makefile [$(build-shared)] (tests): Add tst-gethostid.
++	(tst-gethostid): Link with -ldl.
++
++2018-09-20  Mingli Yu  <Mingli.Yu@windriver.com>
++
++	* sysdeps/unix/sysv/linux/gethostid.c (gethostid): Check for NULL
++	value from gethostbyname_r.
++
 +2018-09-06  Stefan Liebler  <stli@linux.ibm.com>
 +
 +	* sysdeps/unix/sysv/linux/spawni.c (maybe_script_execute):
@@ -92,10 +125,10 @@ index 08b42bd2f5..d9e7e6f1d8 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..2855ffde58 100644
+index 154ab22d7c..d1f1dd4b22 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,16 @@ See the end for copying conditions.
+@@ -5,6 +5,18 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -107,6 +140,8 @@ index 154ab22d7c..2855ffde58 100644
 +  [23521] nss_files aliases database file stream leak
 +  [23538] pthread_cond_broadcast: Fix waiters-after-spinning case
 +  [23578] regex: Fix memory overread in re_compile_pattern
++  [23606] Missing ENDBR32 in sysdeps/i386/start.S
++  [23679] gethostid: Missing NULL check for gethostbyname_r result
 +
 +
  Version 2.28
@@ -125,6 +160,28 @@ index 6a63a1b8a1..c5a616da10 100644
      __pthread_getattr_np;
      __pthread_attr_getstack;
    }
+diff --git a/misc/Makefile b/misc/Makefile
+index b7be2bc19a..c9f81515ac 100644
+--- a/misc/Makefile
++++ b/misc/Makefile
+@@ -86,6 +86,11 @@ tests := tst-dirname tst-tsearch tst-fdset tst-efgcvt tst-mntent tst-hsearch \
+ 	 tst-preadvwritev tst-preadvwritev64 tst-makedev tst-empty \
+ 	 tst-preadvwritev2 tst-preadvwritev64v2
+ 
++# Tests which need libdl.
++ifeq (yes,$(build-shared))
++tests += tst-gethostid
++endif
++
+ tests-internal := tst-atomic tst-atomic-long tst-allocate_once
+ tests-static := tst-empty
+ 
+@@ -145,3 +150,5 @@ tst-allocate_once-ENV = MALLOC_TRACE=$(objpfx)tst-allocate_once.mtrace
+ $(objpfx)tst-allocate_once-mem.out: $(objpfx)tst-allocate_once.out
+ 	$(common-objpfx)malloc/mtrace $(objpfx)tst-allocate_once.mtrace > $@; \
+ 	$(evaluate-test)
++
++$(objpfx)tst-gethostid: $(libdl)
 diff --git a/misc/error.c b/misc/error.c
 index b4e8b6c938..03378e2f2a 100644
 --- a/misc/error.c
@@ -145,6 +202,120 @@ index b4e8b6c938..03378e2f2a 100644
  
  #ifdef _LIBC
    _IO_funlockfile (stderr);
+diff --git a/misc/tst-gethostid.c b/misc/tst-gethostid.c
+new file mode 100644
+index 0000000000..1490aaf3f5
+--- /dev/null
++++ b/misc/tst-gethostid.c
+@@ -0,0 +1,108 @@
++/* Basic test for gethostid.
++   Copyright (C) 2018 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <gnu/lib-names.h>
++#include <nss.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/namespace.h>
++#include <support/support.h>
++#include <support/temp_file.h>
++#include <support/xdlfcn.h>
++#include <support/xstdio.h>
++#include <support/xunistd.h>
++#include <unistd.h>
++
++/* Initial test is run outside a chroot, to increase the likelihood of
++   success.  */
++static void
++outside_chroot (void *closure)
++{
++  long id = gethostid ();
++  printf ("info: host ID outside chroot: 0x%lx\n", id);
++}
++
++/* The same, but this time perform a chroot operation.  */
++static void
++in_chroot (void *closure)
++{
++  const char *chroot_path = closure;
++  xchroot (chroot_path);
++  long id = gethostid ();
++  printf ("info: host ID in chroot: 0x%lx\n", id);
++}
++
++static int
++do_test (void)
++{
++  support_isolate_in_subprocess (outside_chroot, NULL);
++
++  /* Now run the test inside a chroot.  */
++  support_become_root ();
++  if (!support_can_chroot ())
++    /* Cannot perform further tests.  */
++    return 0;
++
++  /* Only use nss_files.  */
++  __nss_configure_lookup ("hosts", "files");
++
++  /* Load the DSO outside of the chroot.  */
++  xdlopen (LIBNSS_FILES_SO, RTLD_LAZY);
++
++  char *chroot_dir = support_create_temp_directory ("tst-gethostid-");
++  support_isolate_in_subprocess (in_chroot, chroot_dir);
++
++  /* Tests with /etc/hosts in the chroot.  */
++  {
++    char *path = xasprintf ("%s/etc", chroot_dir);
++    add_temp_file (path);
++    xmkdir (path, 0777);
++    free (path);
++    path = xasprintf ("%s/etc/hosts", chroot_dir);
++    add_temp_file (path);
++
++    FILE *fp = xfopen (path, "w");
++    xfclose (fp);
++    printf ("info: chroot test with an empty /etc/hosts file\n");
++    support_isolate_in_subprocess (in_chroot, chroot_dir);
++
++    char hostname[1024];
++    int ret = gethostname (hostname, sizeof (hostname));
++    if (ret < 0)
++      printf ("warning: invalid result from gethostname: %d\n", ret);
++    else if (strlen (hostname) == 0)
++      puts ("warning: gethostname returned empty string");
++    else
++      {
++        printf ("info: chroot test with IPv6 address in /etc/hosts for: %s\n",
++                hostname);
++        fp = xfopen (path, "w");
++        /* Use an IPv6 address to induce another lookup failure.  */
++        fprintf (fp, "2001:db8::1 %s\n", hostname);
++        xfclose (fp);
++        support_isolate_in_subprocess (in_chroot, chroot_dir);
++      }
++    free (path);
++  }
++  free (chroot_dir);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/nptl/pthread_cond_common.c b/nptl/pthread_cond_common.c
 index 8e425eb01e..479e54febb 100644
 --- a/nptl/pthread_cond_common.c
@@ -723,6 +894,170 @@ index 0000000000..a4a1581bbc
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/stdlib/tst-setcontext9.c b/stdlib/tst-setcontext9.c
+index 4636ce9030..db8355766c 100644
+--- a/stdlib/tst-setcontext9.c
++++ b/stdlib/tst-setcontext9.c
+@@ -41,26 +41,55 @@ f2 (void)
+ }
+ 
+ static void
+-f1 (void)
++f1b (void)
+ {
+-  puts ("start f1");
+-  if (getcontext (&ctx[2]) != 0)
+-    {
+-      printf ("%s: getcontext: %m\n", __FUNCTION__);
+-      exit (EXIT_FAILURE);
+-    }
+   if (done)
+     {
+-      puts ("set context in f1");
++      puts ("set context in f1b");
+       if (setcontext (&ctx[3]) != 0)
+ 	{
+ 	  printf ("%s: setcontext: %m\n", __FUNCTION__);
+ 	  exit (EXIT_FAILURE);
+ 	}
+     }
++  exit (EXIT_FAILURE);
++}
++
++static void
++f1a (void)
++{
++  char st2[32768];
++  puts ("start f1a");
++  if (getcontext (&ctx[2]) != 0)
++    {
++      printf ("%s: getcontext: %m\n", __FUNCTION__);
++      exit (EXIT_FAILURE);
++    }
++  ctx[2].uc_stack.ss_sp = st2;
++  ctx[2].uc_stack.ss_size = sizeof st2;
++  ctx[2].uc_link = &ctx[0];
++  makecontext (&ctx[2], (void (*) (void)) f1b, 0);
+   f2 ();
+ }
+ 
++/* The execution path through the test looks like this:
++   do_test (call)
++   -> "making contexts"
++   -> "swap contexts"
++   f1a (via swapcontext to ctx[1], with alternate stack)
++   -> "start f1a"
++   f2 (call)
++   -> "swap contexts in f2"
++   f1b (via swapcontext to ctx[2], with alternate stack)
++   -> "set context in f1b"
++   do_test (via setcontext to ctx[3], main stack)
++   -> "setcontext"
++   f2 (via setcontext to ctx[4], with alternate stack)
++   -> "end f2"
++
++   We must use an alternate stack for f1b, because if we don't then the
++   result of executing an earlier caller may overwrite registers
++   spilled to the stack in f2.  */
+ static int
+ do_test (void)
+ {
+@@ -79,7 +108,7 @@ do_test (void)
+   ctx[1].uc_stack.ss_sp = st1;
+   ctx[1].uc_stack.ss_size = sizeof st1;
+   ctx[1].uc_link = &ctx[0];
+-  makecontext (&ctx[1], (void (*) (void)) f1, 0);
++  makecontext (&ctx[1], (void (*) (void)) f1a, 0);
+   puts ("swap contexts");
+   if (swapcontext (&ctx[3], &ctx[1]) != 0)
+     {
+diff --git a/string/strcasestr.c b/string/strcasestr.c
+index 5909fe3cdb..421764bd1b 100644
+--- a/string/strcasestr.c
++++ b/string/strcasestr.c
+@@ -37,8 +37,9 @@
+ /* Two-Way algorithm.  */
+ #define RETURN_TYPE char *
+ #define AVAILABLE(h, h_l, j, n_l)			\
+-  (((j) + (n_l) <= (h_l)) || ((h_l) += __strnlen ((void*)((h) + (h_l)), 512), \
+-			      (j) + (n_l) <= (h_l)))
++  (((j) + (n_l) <= (h_l)) \
++   || ((h_l) += __strnlen ((void*)((h) + (h_l)), (n_l) + 512), \
++       (j) + (n_l) <= (h_l)))
+ #define CHECK_EOL (1)
+ #define RET0_IF_0(a) if (!a) goto ret0
+ #define CANON_ELEMENT(c) TOLOWER (c)
+diff --git a/string/strstr.c b/string/strstr.c
+index 265e9f310c..79ebcc7532 100644
+--- a/string/strstr.c
++++ b/string/strstr.c
+@@ -33,8 +33,9 @@
+ 
+ #define RETURN_TYPE char *
+ #define AVAILABLE(h, h_l, j, n_l)			\
+-  (((j) + (n_l) <= (h_l)) || ((h_l) += __strnlen ((void*)((h) + (h_l)), 512), \
+-			      (j) + (n_l) <= (h_l)))
++  (((j) + (n_l) <= (h_l)) \
++   || ((h_l) += __strnlen ((void*)((h) + (h_l)), (n_l) + 512), \
++       (j) + (n_l) <= (h_l)))
+ #define CHECK_EOL (1)
+ #define RET0_IF_0(a) if (!a) goto ret0
+ #define FASTSEARCH(S,C,N) (void*) strchr ((void*)(S), (C))
+diff --git a/string/test-strstr.c b/string/test-strstr.c
+index 8d99716ff3..5861b01b73 100644
+--- a/string/test-strstr.c
++++ b/string/test-strstr.c
+@@ -151,6 +151,32 @@ check2 (void)
+     }
+ }
+ 
++#define N 1024
++
++static void
++pr23637 (void)
++{
++  char *h = (char*) buf1;
++  char *n = (char*) buf2;
++
++  for (int i = 0; i < N; i++)
++    {
++      n[i] = 'x';
++      h[i] = ' ';
++      h[i + N] = 'x';
++    }
++
++  n[N] = '\0';
++  h[N * 2] = '\0';
++
++  /* Ensure we don't match at the first 'x'.  */
++  h[0] = 'x';
++
++  char *exp_result = stupid_strstr (h, n);
++  FOR_EACH_IMPL (impl, 0)
++    check_result (impl, h, n, exp_result);
++}
++
+ static int
+ test_main (void)
+ {
+@@ -158,6 +184,7 @@ test_main (void)
+ 
+   check1 ();
+   check2 ();
++  pr23637 ();
+ 
+   printf ("%23s", "");
+   FOR_EACH_IMPL (impl, 0)
+@@ -202,6 +229,9 @@ test_main (void)
+ 	do_test (15, 9, hlen, klen, 1);
+ 	do_test (15, 15, hlen, klen, 0);
+ 	do_test (15, 15, hlen, klen, 1);
++
++	do_test (15, 15, hlen + klen * 4, klen * 4, 0);
++	do_test (15, 15, hlen + klen * 4, klen * 4, 1);
+       }
+ 
+   do_test (0, 0, page_size - 1, 16, 0);
 diff --git a/sysdeps/htl/pt-getspecific.c b/sysdeps/htl/pt-getspecific.c
 index a0227a67f6..64ddf9551a 100644
 --- a/sysdeps/htl/pt-getspecific.c
@@ -754,6 +1089,34 @@ index 132ac1718e..71c2fcd9c6 100644
  hidden_proto (_pthread_mutex_init)
  #endif
  
+diff --git a/sysdeps/i386/start.S b/sysdeps/i386/start.S
+index 91035fa83f..e35e9bd31b 100644
+--- a/sysdeps/i386/start.S
++++ b/sysdeps/i386/start.S
+@@ -52,10 +52,11 @@
+ 					NULL
+ */
+ 
+-	.text
+-	.globl _start
+-	.type _start,@function
+-_start:
++#include <sysdep.h>
++
++ENTRY (_start)
++	/* Clearing frame pointer is insufficient, use CFI.  */
++	cfi_undefined (eip)
+ 	/* Clear the frame pointer.  The ABI suggests this be done, to mark
+ 	   the outermost frame obviously.  */
+ 	xorl %ebp, %ebp
+@@ -131,6 +132,7 @@ _start:
+ 1:	movl	(%esp), %ebx
+ 	ret
+ #endif
++END (_start)
+ 
+ /* To fulfill the System V/i386 ABI we need this symbol.  Yuck, it's so
+    meaningless since we don't support machines < 80386.  */
 diff --git a/sysdeps/riscv/rv64/rvd/libm-test-ulps b/sysdeps/riscv/rv64/rvd/libm-test-ulps
 index f8feadcd0d..61be2df60d 100644
 --- a/sysdeps/riscv/rv64/rvd/libm-test-ulps
@@ -948,6 +1311,25 @@ index 3bde0cf4f0..bc140b5a7f 100644
  	}
       }
    return retval;
+diff --git a/sysdeps/unix/sysv/linux/gethostid.c b/sysdeps/unix/sysv/linux/gethostid.c
+index 2e20f034dc..ee0190e7f9 100644
+--- a/sysdeps/unix/sysv/linux/gethostid.c
++++ b/sysdeps/unix/sysv/linux/gethostid.c
+@@ -102,12 +102,12 @@ gethostid (void)
+     {
+       int ret = __gethostbyname_r (hostname, &hostbuf,
+ 				   tmpbuf.data, tmpbuf.length, &hp, &herr);
+-      if (ret == 0)
++      if (ret == 0 && hp != NULL)
+ 	break;
+       else
+ 	{
+ 	  /* Enlarge the buffer on ERANGE.  */
+-	  if (herr == NETDB_INTERNAL && errno == ERANGE)
++	  if (ret != 0 && herr == NETDB_INTERNAL && errno == ERANGE)
+ 	    {
+ 	      if (!scratch_buffer_grow (&tmpbuf))
+ 		return 0;
 diff --git a/sysdeps/unix/sysv/linux/spawni.c b/sysdeps/unix/sysv/linux/spawni.c
 index cf0213ece5..85239cedbf 100644
 --- a/sysdeps/unix/sysv/linux/spawni.c
