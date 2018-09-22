@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.28
-Release:        195
+Release:        196
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -697,6 +697,10 @@ popd
 # TODO: SPLIT!
 %files locale
 /usr/share/locale
+# NOTE: en_US.UTF-8 locale files are installed by libc6; avoid installing them
+# in the -locale subpackage, because it triggers a bug in librpm that can
+# corrupt file permissions and therefore lead to corrupt swupd update content...
+%exclude /usr/share/locale/en_US.UTF-8
 %exclude /usr/share/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
