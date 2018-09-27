@@ -1,8 +1,14 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..84503e3a0c 100644
+index 08b42bd2f5..4fbb9e2ad8 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,121 @@
+@@ -1,3 +1,127 @@
++2018-09-27  Andreas Schwab  <schwab@suse.de>
++
++	[BZ #23717]
++	* stdlib/tst-setcontext9.c (f1a): Make st2 static.
++	(do_test): Make st1 static.
++
 +2018-09-21  H.J. Lu  <hongjiu.lu@intel.com>
 +	    Xuepeng Guo  <xuepeng.guo@intel.com>
 +
@@ -125,10 +131,10 @@ index 08b42bd2f5..84503e3a0c 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..d1f1dd4b22 100644
+index 154ab22d7c..bc568bcec0 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,18 @@ See the end for copying conditions.
+@@ -5,6 +5,19 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -142,6 +148,7 @@ index 154ab22d7c..d1f1dd4b22 100644
 +  [23578] regex: Fix memory overread in re_compile_pattern
 +  [23606] Missing ENDBR32 in sysdeps/i386/start.S
 +  [23679] gethostid: Missing NULL check for gethostbyname_r result
++  [23717] Fix stack overflow in stdlib/tst-setcontext9
 +
 +
  Version 2.28
@@ -895,10 +902,10 @@ index 0000000000..a4a1581bbc
 +
 +#include <support/test-driver.c>
 diff --git a/stdlib/tst-setcontext9.c b/stdlib/tst-setcontext9.c
-index 4636ce9030..db8355766c 100644
+index 4636ce9030..009928235d 100644
 --- a/stdlib/tst-setcontext9.c
 +++ b/stdlib/tst-setcontext9.c
-@@ -41,26 +41,55 @@ f2 (void)
+@@ -41,30 +41,59 @@ f2 (void)
  }
  
  static void
@@ -927,7 +934,7 @@ index 4636ce9030..db8355766c 100644
 +static void
 +f1a (void)
 +{
-+  char st2[32768];
++  static char st2[32768];
 +  puts ("start f1a");
 +  if (getcontext (&ctx[2]) != 0)
 +    {
@@ -962,6 +969,11 @@ index 4636ce9030..db8355766c 100644
  static int
  do_test (void)
  {
+-  char st1[32768];
++  static char st1[32768];
+   puts ("making contexts");
+   if (getcontext (&ctx[0]) != 0)
+     {
 @@ -79,7 +108,7 @@ do_test (void)
    ctx[1].uc_stack.ss_sp = st1;
    ctx[1].uc_stack.ss_size = sizeof st1;
