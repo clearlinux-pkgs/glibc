@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.28
-Release:        197
+Release:        198
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -41,6 +41,7 @@ Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
 Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
+Patch53: 	nostackshrink.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -210,6 +211,7 @@ GNU C library extra components.
 %patch50 -p1
 %patch51 -p1
 %patch52 -p1
+%patch53 -p1
 
 
 %build
