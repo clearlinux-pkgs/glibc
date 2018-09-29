@@ -1,8 +1,22 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..4fbb9e2ad8 100644
+index 08b42bd2f5..11a9b8d98e 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,127 @@
+@@ -1,3 +1,141 @@
++2018-09-28  Adhemerval Zanella  <adhemerval.zanella@linaro.org>
++
++	[BZ #23579]
++	* misc/tst-preadvwritev2-common.c (do_test_with_invalid_fd,
++	do_test_with_invalid_iov): New tests.
++	* misc/tst-preadvwritev2.c, misc/tst-preadvwritev64v2.c (do_test):
++	Call do_test_with_invalid_fd and do_test_with_invalid_iov.
++	* sysdeps/unix/sysv/linux/preadv2.c (preadv2): Use fallback code iff
++	errno is ENOSYS.
++	* sysdeps/unix/sysv/linux/preadv64v2.c (preadv64v2): Likewise.
++	* sysdeps/unix/sysv/linux/pwritev2.c (pwritev2): Likewise.
++	* sysdeps/unix/sysv/linux/pwritev64v2.c (pwritev64v2): Likewise.
++	* NEWS: Add bug fixed.
++
 +2018-09-27  Andreas Schwab  <schwab@suse.de>
 +
 +	[BZ #23717]
@@ -131,10 +145,10 @@ index 08b42bd2f5..4fbb9e2ad8 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..bc568bcec0 100644
+index 154ab22d7c..fd14941128 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,19 @@ See the end for copying conditions.
+@@ -5,6 +5,20 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -146,6 +160,7 @@ index 154ab22d7c..bc568bcec0 100644
 +  [23521] nss_files aliases database file stream leak
 +  [23538] pthread_cond_broadcast: Fix waiters-after-spinning case
 +  [23578] regex: Fix memory overread in re_compile_pattern
++  [23579] libc: Errors misreported in preadv2
 +  [23606] Missing ENDBR32 in sysdeps/i386/start.S
 +  [23679] gethostid: Missing NULL check for gethostbyname_r result
 +  [23717] Fix stack overflow in stdlib/tst-setcontext9
@@ -323,6 +338,115 @@ index 0000000000..1490aaf3f5
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/misc/tst-preadvwritev2-common.c b/misc/tst-preadvwritev2-common.c
+index f889a21544..50b9da3fea 100644
+--- a/misc/tst-preadvwritev2-common.c
++++ b/misc/tst-preadvwritev2-common.c
+@@ -19,9 +19,6 @@
+ #include <limits.h>
+ #include <support/check.h>
+ 
+-static void
+-do_test_with_invalid_flags (void)
+-{
+ #ifndef RWF_HIPRI
+ # define RWF_HIPRI 0
+ #endif
+@@ -39,6 +36,68 @@ do_test_with_invalid_flags (void)
+ #endif
+ #define RWF_SUPPORTED	(RWF_HIPRI | RWF_DSYNC | RWF_SYNC | RWF_NOWAIT \
+ 			 | RWF_APPEND)
++
++static void
++do_test_with_invalid_fd (void)
++{
++  char buf[256];
++  struct iovec iov = { buf, sizeof buf };
++
++  /* Check with flag being 0 to use the fallback code which calls pwritev
++     or writev.  */
++  TEST_VERIFY (preadv2 (-1, &iov, 1, -1, 0) == -1);
++  TEST_COMPARE (errno, EBADF);
++  TEST_VERIFY (pwritev2 (-1, &iov, 1, -1, 0) == -1);
++  TEST_COMPARE (errno, EBADF);
++
++  /* Same tests as before but with flags being different than 0.  Since
++     there is no emulation for any flag value, fallback code returns
++     ENOTSUP.  This is different running on a kernel with preadv2/pwritev2
++     support, where EBADF is returned).  */
++  TEST_VERIFY (preadv2 (-1, &iov, 1, 0, RWF_HIPRI) == -1);
++  TEST_VERIFY (errno == EBADF || errno == ENOTSUP);
++  TEST_VERIFY (pwritev2 (-1, &iov, 1, 0, RWF_HIPRI) == -1);
++  TEST_VERIFY (errno == EBADF || errno == ENOTSUP);
++}
++
++static void
++do_test_with_invalid_iov (void)
++{
++  {
++    char buf[256];
++    struct iovec iov;
++
++    iov.iov_base = buf;
++    iov.iov_len = (size_t)SSIZE_MAX + 1;
++
++    TEST_VERIFY (preadv2 (temp_fd, &iov, 1, 0, 0) == -1);
++    TEST_COMPARE (errno, EINVAL);
++    TEST_VERIFY (pwritev2 (temp_fd, &iov, 1, 0, 0) == -1);
++    TEST_COMPARE (errno, EINVAL);
++
++    /* Same as for invalid file descriptor tests, emulation fallback
++       first checks for flag value and return ENOTSUP.  */
++    TEST_VERIFY (preadv2 (temp_fd, &iov, 1, 0, RWF_HIPRI) == -1);
++    TEST_VERIFY (errno == EINVAL || errno == ENOTSUP);
++    TEST_VERIFY (pwritev2 (temp_fd, &iov, 1, 0, RWF_HIPRI) == -1);
++    TEST_VERIFY (errno == EINVAL || errno == ENOTSUP);
++  }
++
++  {
++    /* An invalid iovec buffer should trigger an invalid memory access
++       or an error (Linux for instance returns EFAULT).  */
++    struct iovec iov[IOV_MAX+1] = { 0 };
++
++    TEST_VERIFY (preadv2 (temp_fd, iov, IOV_MAX + 1, 0, RWF_HIPRI) == -1);
++    TEST_VERIFY (errno == EINVAL || errno == ENOTSUP);
++    TEST_VERIFY (pwritev2 (temp_fd, iov, IOV_MAX + 1, 0, RWF_HIPRI) == -1);
++    TEST_VERIFY (errno == EINVAL || errno == ENOTSUP);
++  }
++}
++
++static void
++do_test_with_invalid_flags (void)
++{
+   /* Set the next bit from the mask of all supported flags.  */
+   int invalid_flag = RWF_SUPPORTED != 0 ? __builtin_clz (RWF_SUPPORTED) : 2;
+   invalid_flag = 0x1 << ((sizeof (int) * CHAR_BIT) - invalid_flag);
+diff --git a/misc/tst-preadvwritev2.c b/misc/tst-preadvwritev2.c
+index be22802dbe..cb58cbe41e 100644
+--- a/misc/tst-preadvwritev2.c
++++ b/misc/tst-preadvwritev2.c
+@@ -30,6 +30,8 @@ do_test (void)
+ {
+   do_test_with_invalid_flags ();
+   do_test_without_offset ();
++  do_test_with_invalid_fd ();
++  do_test_with_invalid_iov ();
+ 
+   return do_test_with_offset (0);
+ }
+diff --git a/misc/tst-preadvwritev64v2.c b/misc/tst-preadvwritev64v2.c
+index 8d3cc32b28..6a9de54c78 100644
+--- a/misc/tst-preadvwritev64v2.c
++++ b/misc/tst-preadvwritev64v2.c
+@@ -32,6 +32,8 @@ do_test (void)
+ {
+   do_test_with_invalid_flags ();
+   do_test_without_offset ();
++  do_test_with_invalid_fd ();
++  do_test_with_invalid_iov ();
+ 
+   return do_test_with_offset (0);
+ }
 diff --git a/nptl/pthread_cond_common.c b/nptl/pthread_cond_common.c
 index 8e425eb01e..479e54febb 100644
 --- a/nptl/pthread_cond_common.c
@@ -1342,6 +1466,58 @@ index 2e20f034dc..ee0190e7f9 100644
  	    {
  	      if (!scratch_buffer_grow (&tmpbuf))
  		return 0;
+diff --git a/sysdeps/unix/sysv/linux/preadv2.c b/sysdeps/unix/sysv/linux/preadv2.c
+index c8bf0764ef..bb08cbc5fd 100644
+--- a/sysdeps/unix/sysv/linux/preadv2.c
++++ b/sysdeps/unix/sysv/linux/preadv2.c
+@@ -32,7 +32,7 @@ preadv2 (int fd, const struct iovec *vector, int count, off_t offset,
+ # ifdef __NR_preadv2
+   ssize_t result = SYSCALL_CANCEL (preadv2, fd, vector, count,
+ 				   LO_HI_LONG (offset), flags);
+-  if (result >= 0)
++  if (result >= 0 || errno != ENOSYS)
+     return result;
+ # endif
+   /* Trying to emulate the preadv2 syscall flags is troublesome:
+diff --git a/sysdeps/unix/sysv/linux/preadv64v2.c b/sysdeps/unix/sysv/linux/preadv64v2.c
+index d7400a0252..b72a047347 100644
+--- a/sysdeps/unix/sysv/linux/preadv64v2.c
++++ b/sysdeps/unix/sysv/linux/preadv64v2.c
+@@ -30,7 +30,7 @@ preadv64v2 (int fd, const struct iovec *vector, int count, off64_t offset,
+ #ifdef __NR_preadv64v2
+   ssize_t result = SYSCALL_CANCEL (preadv64v2, fd, vector, count,
+ 				   LO_HI_LONG (offset), flags);
+-  if (result >= 0)
++  if (result >= 0 || errno != ENOSYS)
+     return result;
+ #endif
+   /* Trying to emulate the preadv2 syscall flags is troublesome:
+diff --git a/sysdeps/unix/sysv/linux/pwritev2.c b/sysdeps/unix/sysv/linux/pwritev2.c
+index 29c2264c8f..26333ebd43 100644
+--- a/sysdeps/unix/sysv/linux/pwritev2.c
++++ b/sysdeps/unix/sysv/linux/pwritev2.c
+@@ -28,7 +28,7 @@ pwritev2 (int fd, const struct iovec *vector, int count, off_t offset,
+ # ifdef __NR_pwritev2
+   ssize_t result = SYSCALL_CANCEL (pwritev2, fd, vector, count,
+ 				   LO_HI_LONG (offset), flags);
+-  if (result >= 0)
++  if (result >= 0 || errno != ENOSYS)
+     return result;
+ # endif
+   /* Trying to emulate the pwritev2 syscall flags is troublesome:
+diff --git a/sysdeps/unix/sysv/linux/pwritev64v2.c b/sysdeps/unix/sysv/linux/pwritev64v2.c
+index 42da321149..17ea905aa6 100644
+--- a/sysdeps/unix/sysv/linux/pwritev64v2.c
++++ b/sysdeps/unix/sysv/linux/pwritev64v2.c
+@@ -30,7 +30,7 @@ pwritev64v2 (int fd, const struct iovec *vector, int count, off64_t offset,
+ #ifdef __NR_pwritev64v2
+   ssize_t result = SYSCALL_CANCEL (pwritev64v2, fd, vector, count,
+ 				   LO_HI_LONG (offset), flags);
+-  if (result >= 0)
++  if (result >= 0 || errno != ENOSYS)
+     return result;
+ #endif
+   /* Trying to emulate the pwritev2 syscall flags is troublesome:
 diff --git a/sysdeps/unix/sysv/linux/spawni.c b/sysdeps/unix/sysv/linux/spawni.c
 index cf0213ece5..85239cedbf 100644
 --- a/sysdeps/unix/sysv/linux/spawni.c
