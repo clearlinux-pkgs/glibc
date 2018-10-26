@@ -1,8 +1,21 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..7726438658 100644
+index 08b42bd2f5..6debca5f83 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,196 @@
+@@ -1,3 +1,209 @@
++2018-10-25  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #23562]
++	[BZ #23821]
++	XFAIL siginfo_t si_band conform test on sparc64.
++	* sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h
++	(__SI_BAND_TYPE): Only override long int default type on sparc64.
++	* sysdeps/unix/sysv/linux/sparc/sparc64/Makefile
++	(conformtest-xfail-conds): Add sparc64-linux.
++	* conform/data/signal.h-data (siginfo_t): XFAIL si_band test on
++	sparc64.
++	* conform/data/sys/wait.h-data (siginfo_t): Likewise.
++
 +2018-10-19  Ilya Yu. Malakhov  <malakhov@mcst.ru>
 +
 +	[BZ #23562]
@@ -200,10 +213,10 @@ index 08b42bd2f5..7726438658 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..e95a0ea159 100644
+index 154ab22d7c..fda6788519 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,22 @@ See the end for copying conditions.
+@@ -5,6 +5,23 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -221,11 +234,40 @@ index 154ab22d7c..e95a0ea159 100644
 +  [23606] Missing ENDBR32 in sysdeps/i386/start.S
 +  [23679] gethostid: Missing NULL check for gethostbyname_r result
 +  [23717] Fix stack overflow in stdlib/tst-setcontext9
++  [23821] si_band in siginfo_t has wrong type long int on sparc64
 +
 +
  Version 2.28
  
  Major new features:
+diff --git a/conform/data/signal.h-data b/conform/data/signal.h-data
+index 11e54adb04..674e5793db 100644
+--- a/conform/data/signal.h-data
++++ b/conform/data/signal.h-data
+@@ -172,7 +172,8 @@ element siginfo_t pid_t si_pid
+ element siginfo_t uid_t si_uid
+ element siginfo_t {void*} si_addr
+ element siginfo_t int si_status
+-element siginfo_t long si_band
++// Bug 23821: si_band has type int on sparc64.
++xfail[sparc64-linux]-element siginfo_t long si_band
+ #  endif
+ #  ifndef XPG42
+ element siginfo_t {union sigval} si_value
+diff --git a/conform/data/sys/wait.h-data b/conform/data/sys/wait.h-data
+index ed3869b34f..c0761424da 100644
+--- a/conform/data/sys/wait.h-data
++++ b/conform/data/sys/wait.h-data
+@@ -46,7 +46,8 @@ element siginfo_t pid_t si_pid
+ element siginfo_t uid_t si_uid
+ element siginfo_t {void*} si_addr
+ element siginfo_t int si_status
+-element siginfo_t long si_band
++// Bug 23821: si_band has type int on sparc64.
++xfail[sparc64-linux]-element siginfo_t long si_band
+ # ifndef XPG42
+ element siginfo_t {union sigval} si_value
+ # endif
 diff --git a/htl/Versions b/htl/Versions
 index 6a63a1b8a1..c5a616da10 100644
 --- a/htl/Versions
@@ -2350,6 +2392,37 @@ index d8a1b9972f..71f32367dd 100644
 +	  s;								\
 +	}								\
      }
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h b/sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h
+index 9f79715ebe..4dd35237f6 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h
+@@ -2,7 +2,12 @@
+ #ifndef _BITS_SIGINFO_ARCH_H
+ #define _BITS_SIGINFO_ARCH_H 1
+ 
+-#define __SI_BAND_TYPE int
++/* The kernel uses int instead of long int (as in POSIX).  In 32-bit
++   mode, we can still use long int, but in 64-bit mode, we need to
++   deviate from POSIX.  */
++#if __WORDSIZE == 64
++# define __SI_BAND_TYPE int
++#endif
+ 
+ #define __SI_SIGFAULT_ADDL \
+   int _si_trapno;
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/Makefile b/sysdeps/unix/sysv/linux/sparc/sparc64/Makefile
+index 715af3df7b..218c246f16 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sparc64/Makefile
++++ b/sysdeps/unix/sysv/linux/sparc/sparc64/Makefile
+@@ -7,3 +7,8 @@ LD += -melf64_sparc
+ ifeq ($(subdir),stdlib)
+ sysdep_routines += __start_context
+ endif
++
++ifeq ($(subdir),conform)
++# For bug 23821 (incorrect type of si_band).
++conformtest-xfail-conds += sparc64-linux
++endif
 diff --git a/sysdeps/unix/sysv/linux/spawni.c b/sysdeps/unix/sysv/linux/spawni.c
 index cf0213ece5..85239cedbf 100644
 --- a/sysdeps/unix/sysv/linux/spawni.c
