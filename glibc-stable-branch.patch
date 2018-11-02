@@ -1,8 +1,50 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..73d5c57f0d 100644
+index 08b42bd2f5..d558df58af 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,216 @@
+@@ -1,3 +1,258 @@
++2018-10-23  Adhemerval Zanella  <adhemerval.zanella@linaro.org>
++
++	[BZ #23709]
++	* sysdeps/x86/cpu-features.c (init_cpu_features): Set TSX bits
++	independently of other flags.
++
++2018-10-30  Florian Weimer  <fweimer@redhat.com>
++
++	* stdlib/tst-strtod-overflow.c (do_test): Switch to
++	support_blob_repeat.
++
++2018-10-30  Florian Weimer  <fweimer@redhat.com>
++
++	* support/blob_repeat.c (allocate_big): Call mkstemp directly.
++
++2018-10-30  Florian Weimer  <fweimer@redhat.com>
++
++	* stdlib/test-bz22786.c (do_test): Additional free calls to avoid
++	memory leaks.
++
++2018-10-30  Florian Weimer  <fweimer@redhat.com>
++
++	Avoid spurious test failures in stdlib/test-bz22786.
++	* support/Makefile (libsupport-routines): Add blob_repeat.
++	(tests): Add tst-support_blob_repeat.
++	* support/blob_repeat.h: New file.
++	* support/blob_repeat.c: Likewise.
++	* support/tst-support_blob_repeat.c: Likewise.
++	* stdlib/test-bz22786.c (do_test): Replace malloc and memset with
++	support_blob_repeat_allocate.
++
++2018-08-30  Stefan Liebler  <stli@linux.ibm.com>
++
++	* stdlib/test-bz22786.c (do_test): Return EXIT_UNSUPPORTED
++	if malloc fails.
++
++2018-08-24  Paul Pluzhnikov  <ppluzhnikov@google.com>
++
++        [BZ #23400]
++        * stdlib/test-bz22786.c (do_test): Fix undefined behavior, don't
++        create temporary files in source tree.
++
 +2018-10-26  Szabolcs Nagy  <szabolcs.nagy@arm.com>
 +
 +	[BZ #23822]
@@ -220,10 +262,10 @@ index 08b42bd2f5..73d5c57f0d 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..f4d9885819 100644
+index 154ab22d7c..f3004915f2 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,24 @@ See the end for copying conditions.
+@@ -5,6 +5,26 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -232,6 +274,7 @@ index 154ab22d7c..f4d9885819 100644
 +The following bugs are resolved with this release:
 +
 +  [20209] localedata: Spelling mistake for Sunday in Greenlandic kl_GL
++  [23400] stdlib/test-bz22786.c creates temporary files in glibc source tree
 +  [23497] readdir64@GLIBC_2.1 cannot parse the kernel directory stream
 +  [23521] nss_files aliases database file stream leak
 +  [23538] pthread_cond_broadcast: Fix waiters-after-spinning case
@@ -240,6 +283,7 @@ index 154ab22d7c..f4d9885819 100644
 +  [23579] libc: Errors misreported in preadv2
 +  [23606] Missing ENDBR32 in sysdeps/i386/start.S
 +  [23679] gethostid: Missing NULL check for gethostbyname_r result
++  [23709] Fix CPU string flags for Haswell-type CPUs
 +  [23717] Fix stack overflow in stdlib/tst-setcontext9
 +  [23821] si_band in siginfo_t has wrong type long int on sparc64
 +  [23822] ia64 static libm.a is missing exp2f, log2f and powf symbols
@@ -1642,6 +1686,91 @@ index 0000000000..a4a1581bbc
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/stdlib/test-bz22786.c b/stdlib/test-bz22786.c
+index e7837f98c1..8035e8a394 100644
+--- a/stdlib/test-bz22786.c
++++ b/stdlib/test-bz22786.c
+@@ -26,49 +26,39 @@
+ #include <unistd.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#include <support/blob_repeat.h>
++#include <support/check.h>
++#include <support/support.h>
++#include <support/temp_file.h>
+ #include <support/test-driver.h>
+ #include <libc-diag.h>
+ 
+ static int
+ do_test (void)
+ {
+-  const char dir[] = "bz22786";
+-  const char lnk[] = "bz22786/symlink";
+-
+-  rmdir (dir);
+-  if (mkdir (dir, 0755) != 0 && errno != EEXIST)
+-    {
+-      printf ("mkdir %s: %m\n", dir);
+-      return EXIT_FAILURE;
+-    }
+-  if (symlink (".", lnk) != 0 && errno != EEXIST)
+-    {
+-      printf ("symlink (%s, %s): %m\n", dir, lnk);
+-      return EXIT_FAILURE;
+-    }
+-
+-  const size_t path_len = (size_t) INT_MAX + 1;
+-
+-  DIAG_PUSH_NEEDS_COMMENT;
+-#if __GNUC_PREREQ (7, 0)
+-  /* GCC 7 warns about too-large allocations; here we need such
+-     allocation to succeed for the test to work.  */
+-  DIAG_IGNORE_NEEDS_COMMENT (7, "-Walloc-size-larger-than=");
+-#endif
+-  char *path = malloc (path_len);
+-  DIAG_POP_NEEDS_COMMENT;
++  char *dir = support_create_temp_directory ("bz22786.");
++  char *lnk = xasprintf ("%s/symlink", dir);
++  const size_t path_len = (size_t) INT_MAX + strlen (lnk) + 1;
+ 
++  struct support_blob_repeat repeat
++    = support_blob_repeat_allocate ("a", 1, path_len);
++  char *path = repeat.start;
+   if (path == NULL)
+     {
+-      printf ("malloc (%zu): %m\n", path_len);
++      printf ("Repeated allocation (%zu bytes): %m\n", path_len);
++      /* On 31-bit s390 the malloc will always fail as we do not have
++	 so much memory, and we want to mark the test unsupported.
++	 Likewise on systems with little physical memory the test will
++	 fail and should be unsupported.  */
+       return EXIT_UNSUPPORTED;
+     }
+ 
+-  /* Construct very long path = "bz22786/symlink/aaaa....."  */
+-  char *p = mempcpy (path, lnk, sizeof (lnk) - 1);
++  TEST_VERIFY_EXIT (symlink (".", lnk) == 0);
++
++  /* Construct very long path = "/tmp/bz22786.XXXX/symlink/aaaa....."  */
++  char *p = mempcpy (path, lnk, strlen (lnk));
+   *(p++) = '/';
+-  memset (p, 'a', path_len - (path - p) - 2);
+-  p[path_len - (path - p) - 1] = '\0';
++  p[path_len - (p - path) - 1] = '\0';
+ 
+   /* This call crashes before the fix for bz22786 on 32-bit platforms.  */
+   p = realpath (path, NULL);
+@@ -81,7 +71,9 @@ do_test (void)
+ 
+   /* Cleanup.  */
+   unlink (lnk);
+-  rmdir (dir);
++  support_blob_repeat_free (&repeat);
++  free (lnk);
++  free (dir);
+ 
+   return 0;
+ }
 diff --git a/stdlib/tst-setcontext9.c b/stdlib/tst-setcontext9.c
 index 4636ce9030..009928235d 100644
 --- a/stdlib/tst-setcontext9.c
@@ -1724,6 +1853,49 @@ index 4636ce9030..009928235d 100644
    puts ("swap contexts");
    if (swapcontext (&ctx[3], &ctx[1]) != 0)
      {
+diff --git a/stdlib/tst-strtod-overflow.c b/stdlib/tst-strtod-overflow.c
+index d14638d68e..dc53c1e521 100644
+--- a/stdlib/tst-strtod-overflow.c
++++ b/stdlib/tst-strtod-overflow.c
+@@ -19,6 +19,8 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <support/blob_repeat.h>
++#include <support/test-driver.h>
+ 
+ #define EXPONENT "e-2147483649"
+ #define SIZE 214748364
+@@ -26,21 +28,23 @@
+ static int
+ do_test (void)
+ {
+-  char *p = malloc (1 + SIZE + sizeof (EXPONENT));
+-  if (p == NULL)
++  struct support_blob_repeat repeat = support_blob_repeat_allocate
++    ("0", 1, 1 + SIZE + sizeof (EXPONENT));
++  if (repeat.size == 0)
+     {
+-      puts ("malloc failed, cannot test for overflow");
+-      return 0;
++      puts ("warning: memory allocation failed, cannot test for overflow");
++      return EXIT_UNSUPPORTED;
+     }
++  char *p = repeat.start;
+   p[0] = '1';
+-  memset (p + 1, '0', SIZE);
+   memcpy (p + 1 + SIZE, EXPONENT, sizeof (EXPONENT));
+   double d = strtod (p, NULL);
+   if (d != 0)
+     {
+-      printf ("strtod returned wrong value: %a\n", d);
++      printf ("error: strtod returned wrong value: %a\n", d);
+       return 1;
+     }
++  support_blob_repeat_free (&repeat);
+   return 0;
+ }
+ 
 diff --git a/string/strcasestr.c b/string/strcasestr.c
 index 5909fe3cdb..421764bd1b 100644
 --- a/string/strcasestr.c
@@ -1811,6 +1983,455 @@ index 8d99716ff3..5861b01b73 100644
        }
  
    do_test (0, 0, page_size - 1, 16, 0);
+diff --git a/support/Makefile b/support/Makefile
+index 652d2cdf69..50470fb749 100644
+--- a/support/Makefile
++++ b/support/Makefile
+@@ -25,6 +25,7 @@ extra-libs-others = $(extra-libs)
+ extra-libs-noinstall := $(extra-libs)
+ 
+ libsupport-routines = \
++  blob_repeat \
+   check \
+   check_addrinfo \
+   check_dns_packet \
+@@ -154,6 +155,7 @@ endif
+ tests = \
+   README-testing \
+   tst-support-namespace \
++  tst-support_blob_repeat \
+   tst-support_capture_subprocess \
+   tst-support_format_dns_packet \
+   tst-support_quote_blob \
+diff --git a/support/blob_repeat.c b/support/blob_repeat.c
+new file mode 100644
+index 0000000000..16c1e448b9
+--- /dev/null
++++ b/support/blob_repeat.c
+@@ -0,0 +1,282 @@
++/* Repeating a memory blob, with alias mapping optimization.
++   Copyright (C) 2018 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <fcntl.h>
++#include <stdbool.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/blob_repeat.h>
++#include <support/check.h>
++#include <support/test-driver.h>
++#include <support/support.h>
++#include <support/xunistd.h>
++#include <sys/mman.h>
++#include <unistd.h>
++#include <wchar.h>
++
++/* Small allocations should use malloc directly instead of the mmap
++   optimization because mappings carry a lot of overhead.  */
++static const size_t maximum_small_size = 4 * 1024 * 1024;
++
++/* Internal helper for fill.  */
++static void
++fill0 (char *target, const char *element, size_t element_size,
++       size_t count)
++{
++  while (count > 0)
++    {
++      memcpy (target, element, element_size);
++      target += element_size;
++      --count;
++    }
++}
++
++/* Fill the buffer at TARGET with COUNT copies of the ELEMENT_SIZE
++   bytes starting at ELEMENT.  */
++static void
++fill (char *target, const char *element, size_t element_size,
++      size_t count)
++{
++  if (element_size == 0 || count == 0)
++    return;
++  else if (element_size == 1)
++    memset (target, element[0], count);
++  else if (element_size == sizeof (wchar_t))
++    {
++      wchar_t wc;
++      memcpy (&wc, element, sizeof (wc));
++      wmemset ((wchar_t *) target, wc, count);
++    }
++  else if (element_size < 1024 && count > 4096)
++    {
++      /* Use larger copies for really small element sizes.  */
++      char buffer[8192];
++      size_t buffer_count = sizeof (buffer) / element_size;
++      fill0 (buffer, element, element_size, buffer_count);
++      while (count > 0)
++        {
++          size_t copy_count = buffer_count;
++          if (copy_count > count)
++            copy_count = count;
++          size_t copy_bytes = copy_count * element_size;
++          memcpy (target, buffer, copy_bytes);
++          target += copy_bytes;
++          count -= copy_count;
++        }
++    }
++  else
++    fill0 (target, element, element_size, count);
++}
++
++/* Use malloc instead of mmap for small allocations and unusual size
++   combinations.  */
++static struct support_blob_repeat
++allocate_malloc (size_t total_size, const void *element, size_t element_size,
++                 size_t count)
++{
++  void *buffer = malloc (total_size);
++  if (buffer == NULL)
++    return (struct support_blob_repeat) { 0 };
++  fill (buffer, element, element_size, count);
++  return (struct support_blob_repeat)
++    {
++      .start = buffer,
++      .size = total_size,
++      .use_malloc = true
++    };
++}
++
++/* Return the least common multiple of PAGE_SIZE and ELEMENT_SIZE,
++   avoiding overflow.  This assumes that PAGE_SIZE is a power of
++   two.  */
++static size_t
++minimum_stride_size (size_t page_size, size_t element_size)
++{
++  TEST_VERIFY_EXIT (page_size > 0);
++  TEST_VERIFY_EXIT (element_size > 0);
++
++  /* Compute the number of trailing zeros common to both sizes.  */
++  unsigned int common_zeros = __builtin_ctzll (page_size | element_size);
++
++  /* In the product, this power of two appears twice, but in the least
++     common multiple, it appears only once.  Therefore, shift one
++     factor.  */
++  size_t multiple;
++  if (__builtin_mul_overflow (page_size >> common_zeros, element_size,
++                              &multiple))
++    return 0;
++  return multiple;
++}
++
++/* Allocations larger than maximum_small_size potentially use mmap
++   with alias mappings.  */
++static struct support_blob_repeat
++allocate_big (size_t total_size, const void *element, size_t element_size,
++              size_t count)
++{
++  unsigned long page_size = xsysconf (_SC_PAGESIZE);
++  size_t stride_size = minimum_stride_size (page_size, element_size);
++  if (stride_size == 0)
++    {
++      errno = EOVERFLOW;
++      return (struct support_blob_repeat) { 0 };
++    }
++
++  /* Ensure that the stride size is at least maximum_small_size.  This
++     is necessary to reduce the number of distinct mappings.  */
++  if (stride_size < maximum_small_size)
++    stride_size
++      = ((maximum_small_size + stride_size - 1) / stride_size) * stride_size;
++
++  if (stride_size > total_size)
++    /* The mmap optimization would not save anything.  */
++    return allocate_malloc (total_size, element, element_size, count);
++
++  /* Reserve the memory region.  If we cannot create the mapping,
++     there is no reason to set up the backing file.  */
++  void *target = mmap (NULL, total_size, PROT_NONE,
++                       MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
++  if (target == MAP_FAILED)
++    return (struct support_blob_repeat) { 0 };
++
++  /* Create the backing file for the repeated mapping.  Call mkstemp
++     directly to remove the resources backing the temporary file
++     immediately, once support_blob_repeat_free is called.  Using
++     create_temp_file would result in a warning during post-test
++     cleanup.  */
++  int fd;
++  {
++    char *temppath = xasprintf ("%s/support_blob_repeat-XXXXXX", test_dir);
++    fd = mkstemp (temppath);
++    if (fd < 0)
++      FAIL_EXIT1 ("mkstemp (\"%s\"): %m", temppath);
++    xunlink (temppath);
++    free (temppath);
++  }
++
++  /* Make sure that there is backing storage, so that the fill
++     operation will not fault.  */
++  if (posix_fallocate (fd, 0, stride_size) != 0)
++    FAIL_EXIT1 ("posix_fallocate (%zu): %m", stride_size);
++
++  /* The stride size must still be a multiple of the page size and
++     element size.  */
++  TEST_VERIFY_EXIT ((stride_size % page_size) == 0);
++  TEST_VERIFY_EXIT ((stride_size % element_size) == 0);
++
++  /* Fill the backing store.  */
++  {
++    void *ptr = mmap (target, stride_size, PROT_READ | PROT_WRITE,
++                      MAP_FIXED | MAP_FILE | MAP_SHARED, fd, 0);
++    if (ptr == MAP_FAILED)
++      {
++        int saved_errno = errno;
++        xmunmap (target, total_size);
++        xclose (fd);
++        errno = saved_errno;
++        return (struct support_blob_repeat) { 0 };
++      }
++    if (ptr != target)
++      FAIL_EXIT1 ("mapping of %zu bytes moved from %p to %p",
++                  stride_size, target, ptr);
++
++    /* Write the repeating data.  */
++    fill (target, element, element_size, stride_size / element_size);
++
++    /* Return to a PROT_NONE mapping, just to be on the safe side.  */
++    ptr = mmap (target, stride_size, PROT_NONE,
++                MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
++    if (ptr == MAP_FAILED)
++      FAIL_EXIT1 ("Failed to reinstate PROT_NONE mapping: %m");
++    if (ptr != target)
++      FAIL_EXIT1 ("PROT_NONE mapping of %zu bytes moved from %p to %p",
++                  stride_size, target, ptr);
++  }
++
++  /* Create the alias mappings.  */
++  {
++    size_t remaining_size = total_size;
++    char *current = target;
++    int flags = MAP_FIXED | MAP_FILE | MAP_PRIVATE;
++#ifdef MAP_NORESERVE
++    flags |= MAP_NORESERVE;
++#endif
++    while (remaining_size > 0)
++      {
++        size_t to_map = stride_size;
++        if (to_map > remaining_size)
++          to_map = remaining_size;
++        void *ptr = mmap (current, to_map, PROT_READ | PROT_WRITE,
++                          flags, fd, 0);
++        if (ptr == MAP_FAILED)
++          {
++            int saved_errno = errno;
++            xmunmap (target, total_size);
++            xclose (fd);
++            errno = saved_errno;
++            return (struct support_blob_repeat) { 0 };
++          }
++        if (ptr != current)
++          FAIL_EXIT1 ("MAP_PRIVATE mapping of %zu bytes moved from %p to %p",
++                      to_map, target, ptr);
++        remaining_size -= to_map;
++        current += to_map;
++      }
++  }
++
++  xclose (fd);
++
++  return (struct support_blob_repeat)
++    {
++      .start = target,
++      .size = total_size,
++      .use_malloc = false
++    };
++}
++
++struct support_blob_repeat
++support_blob_repeat_allocate (const void *element, size_t element_size,
++                              size_t count)
++{
++  size_t total_size;
++  if (__builtin_mul_overflow (element_size, count, &total_size))
++    {
++      errno = EOVERFLOW;
++      return (struct support_blob_repeat) { 0 };
++    }
++  if (total_size <= maximum_small_size)
++    return allocate_malloc (total_size, element, element_size, count);
++  else
++    return allocate_big (total_size, element, element_size, count);
++}
++
++void
++support_blob_repeat_free (struct support_blob_repeat *blob)
++{
++  if (blob->size > 0)
++    {
++      int saved_errno = errno;
++      if (blob->use_malloc)
++        free (blob->start);
++      else
++        xmunmap (blob->start, blob->size);
++      errno = saved_errno;
++    }
++  *blob = (struct support_blob_repeat) { 0 };
++}
+diff --git a/support/blob_repeat.h b/support/blob_repeat.h
+new file mode 100644
+index 0000000000..8e9d7ff5f1
+--- /dev/null
++++ b/support/blob_repeat.h
+@@ -0,0 +1,44 @@
++/* Repeating a memory blob, with alias mapping optimization.
++   Copyright (C) 2018 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifndef SUPPORT_BLOB_REPEAT_H
++#define SUPPORT_BLOB_REPEAT_H
++
++#include <stdbool.h>
++#include <stddef.h>
++
++struct support_blob_repeat
++{
++  void *start;
++  size_t size;
++  bool use_malloc;
++};
++
++/* Return an allocation of COUNT elements, each of ELEMENT_SIZE bytes,
++   initialized with the bytes starting at ELEMENT.  The memory is
++   writable (and thus counts towards the commit charge).  In case of
++   on error, all members of the return struct are zero-initialized,
++   and errno is set accordingly.  */
++struct support_blob_repeat support_blob_repeat_allocate (const void *element,
++                                                         size_t element_size,
++                                                         size_t count);
++
++/* Deallocate the blob created by support_blob_repeat_allocate.  */
++void support_blob_repeat_free (struct support_blob_repeat *);
++
++#endif /* SUPPORT_BLOB_REPEAT_H */
+diff --git a/support/tst-support_blob_repeat.c b/support/tst-support_blob_repeat.c
+new file mode 100644
+index 0000000000..1978c14488
+--- /dev/null
++++ b/support/tst-support_blob_repeat.c
+@@ -0,0 +1,85 @@
++/* Tests for <support/blob_repeat.h>
++   Copyright (C) 2018 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++#include <support/blob_repeat.h>
++#include <support/check.h>
++
++static int
++do_test (void)
++{
++  struct support_blob_repeat repeat
++    = support_blob_repeat_allocate ("5", 1, 5);
++  TEST_COMPARE_BLOB (repeat.start, repeat.size, "55555", 5);
++  support_blob_repeat_free (&repeat);
++
++  repeat = support_blob_repeat_allocate ("ABC", 3, 3);
++  TEST_COMPARE_BLOB (repeat.start, repeat.size, "ABCABCABC", 9);
++  support_blob_repeat_free (&repeat);
++
++  repeat = support_blob_repeat_allocate ("abc", 4, 3);
++  TEST_COMPARE_BLOB (repeat.start, repeat.size, "abc\0abc\0abc", 12);
++  support_blob_repeat_free (&repeat);
++
++  size_t gigabyte = 1U << 30;
++  repeat = support_blob_repeat_allocate ("X", 1, gigabyte + 1);
++  if (repeat.start == NULL)
++    puts ("warning: not enough memory for 1 GiB mapping");
++  else
++    {
++      TEST_COMPARE (repeat.size, gigabyte + 1);
++      {
++        unsigned char *p = repeat.start;
++        for (size_t i = 0; i < gigabyte + 1; ++i)
++          if (p[i] != 'X')
++            FAIL_EXIT1 ("invalid byte 0x%02x at %zu", p[i], i);
++
++        /* Check that there is no sharing across the mapping.  */
++        p[0] = 'Y';
++        p[1U << 24] = 'Z';
++        for (size_t i = 0; i < gigabyte + 1; ++i)
++          if (i == 0)
++            TEST_COMPARE (p[i], 'Y');
++          else if (i == 1U << 24)
++            TEST_COMPARE (p[i], 'Z');
++          else if (p[i] != 'X')
++            FAIL_EXIT1 ("invalid byte 0x%02x at %zu", p[i], i);
++      }
++    }
++  support_blob_repeat_free (&repeat);
++
++  repeat = support_blob_repeat_allocate ("012345678", 9, 10 * 1000 * 1000);
++  if (repeat.start == NULL)
++    puts ("warning: not enough memory for large mapping");
++  else
++    {
++      unsigned char *p = repeat.start;
++      for (int i = 0; i < 10 * 1000 * 1000; ++i)
++        for (int j = 0; j <= 8; ++j)
++          if (p[i * 9 + j] != '0' + j)
++            {
++              printf ("error: element %d index %d\n", i, j);
++              TEST_COMPARE (p[i * 9 + j], '0' + j);
++            }
++    }
++  support_blob_repeat_free (&repeat);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/sysdeps/htl/pt-getspecific.c b/sysdeps/htl/pt-getspecific.c
 index a0227a67f6..64ddf9551a 100644
 --- a/sysdeps/htl/pt-getspecific.c
@@ -2693,3 +3314,21 @@ index dd659c908f..61282d6678 100644
 +	  s;								\
 +	}								\
      }
+diff --git a/sysdeps/x86/cpu-features.c b/sysdeps/x86/cpu-features.c
+index ea0b64fdb9..4695ac80d4 100644
+--- a/sysdeps/x86/cpu-features.c
++++ b/sysdeps/x86/cpu-features.c
+@@ -316,7 +316,13 @@ init_cpu_features (struct cpu_features *cpu_features)
+ 		    | bit_arch_Fast_Unaligned_Copy
+ 		    | bit_arch_Prefer_PMINUB_for_stringop);
+ 	      break;
++	    }
+ 
++	 /* Disable TSX on some Haswell processors to avoid TSX on kernels that
++	    weren't updated with the latest microcode package (which disables
++	    broken feature by default).  */
++	 switch (model)
++	    {
+ 	    case 0x3f:
+ 	      /* Xeon E7 v3 with stepping >= 4 has working TSX.  */
+ 	      if (stepping >= 4)
