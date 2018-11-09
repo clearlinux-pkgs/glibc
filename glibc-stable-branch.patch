@@ -1,8 +1,13 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..86bdf17989 100644
+index 08b42bd2f5..d020aff979 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,274 @@
+@@ -1,3 +1,279 @@
++2018-11-08  Alexandra Hájková  <ahajkova@redhat.com>
++
++	[BZ #17630]
++	* resolv/tst-resolv-network.c: Add test for getnetbyname.
++
 +2018-11-08  H.J. Lu  <hongjiu.lu@intel.com>
 +
 +	[BZ #23509]
@@ -1722,6 +1727,30 @@ index e7c3b63cc5..80a2cff835 100644
  	      requests_tail = lastp;
  
  	      newp->next = freelist;
+diff --git a/resolv/tst-resolv-network.c b/resolv/tst-resolv-network.c
+index 4b862d57e6..735e38d0f8 100644
+--- a/resolv/tst-resolv-network.c
++++ b/resolv/tst-resolv-network.c
+@@ -149,6 +149,9 @@ handle_code (const struct resolv_response_context *ctx,
+           resolv_response_add_data (b, &rrtype, sizeof (rrtype));
+         }
+       break;
++    case 104:
++      send_ptr (b, qname, qclass, qtype, "host.example");
++      break;
+     default:
+       FAIL_EXIT1 ("invalid QNAME: %s (code %d)", qname, code);
+     }
+@@ -257,6 +260,9 @@ do_test (void)
+                 "error: TRY_AGAIN\n");
+   check_netent ("code103.example", getnetbyname ("code103.example"),
+                 "error: NO_RECOVERY\n");
++  /* Test bug #17630.  */
++  check_netent ("code104.example", getnetbyname ("code104.example"),
++                "error: TRY_AGAIN\n");
+ 
+   /* Lookup by address, success cases.  */
+   check_reverse (1,
 diff --git a/stdlib/test-bz22786.c b/stdlib/test-bz22786.c
 index e7837f98c1..8035e8a394 100644
 --- a/stdlib/test-bz22786.c
