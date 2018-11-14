@@ -8,7 +8,7 @@ License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        http://ftp.gnu.org/gnu/glibc/glibc-2.28.tar.gz
+Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.28.tar.gz
 Source1:        langs.txt
 
 Patch1:		glibc-stable-branch.patch
