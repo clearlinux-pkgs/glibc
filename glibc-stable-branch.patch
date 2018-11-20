@@ -1,8 +1,19 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..f2e0f1ffd7 100644
+index 08b42bd2f5..8c92ee7764 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,341 @@
+@@ -1,3 +1,352 @@
++2018-11-19  Florian Weimer  <fweimer@redhat.com>
++
++	support: Print timestamps in timeout handler.
++	* support/support_test_main.c (print_timestamp): New function.
++	(signal_handler): Use it to print the termination time and the
++	time of the last write to standard output.
++
++2018-10-09  Szabolcs Nagy  <szabolcs.nagy@arm.com>
++
++	* libio/tst-readline.c (TIMEOUT): Define.
++
 +2018-10-22  Joseph Myers  <joseph@codesourcery.com>
 +
 +	* sysdeps/unix/sysv/linux/syscall-names.list: Update kernel
@@ -445,6 +456,17 @@ index 9162d4e247..7a5c09089f 100644
  extern void __libc_fatal (const char *__message)
       __attribute__ ((__noreturn__));
  extern void __libc_message (enum __libc_message_action action,
+diff --git a/libio/tst-readline.c b/libio/tst-readline.c
+index 9322ef68da..63f5227760 100644
+--- a/libio/tst-readline.c
++++ b/libio/tst-readline.c
+@@ -232,5 +232,6 @@ do_test (void)
+   return 0;
+ }
+ 
++#define TIMEOUT 100
+ #define PREPARE prepare
+ #include <support/test-driver.c>
 diff --git a/localedata/locales/kl_GL b/localedata/locales/kl_GL
 index 5ab14a31aa..5723ce7dcf 100644
 --- a/localedata/locales/kl_GL
@@ -2711,6 +2733,66 @@ index 0000000000..8e9d7ff5f1
 +void support_blob_repeat_free (struct support_blob_repeat *);
 +
 +#endif /* SUPPORT_BLOB_REPEAT_H */
+diff --git a/support/support_test_main.c b/support/support_test_main.c
+index 23429779ac..fa3c2e06de 100644
+--- a/support/support_test_main.c
++++ b/support/support_test_main.c
+@@ -30,6 +30,7 @@
+ #include <string.h>
+ #include <sys/param.h>
+ #include <sys/resource.h>
++#include <sys/time.h>
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <time.h>
+@@ -86,6 +87,19 @@ static pid_t test_pid;
+ /* The cleanup handler passed to test_main.  */
+ static void (*cleanup_function) (void);
+ 
++static void
++print_timestamp (const char *what, struct timeval tv)
++{
++  struct tm tm;
++  if (gmtime_r (&tv.tv_sec, &tm) == NULL)
++    printf ("%s: %lld.%06d\n",
++            what, (long long int) tv.tv_sec, (int) tv.tv_usec);
++  else
++    printf ("%s: %04d-%02d-%02dT%02d:%02d:%02d.%06d\n",
++            what, 1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday,
++            tm.tm_hour, tm.tm_min, tm.tm_sec, (int) tv.tv_usec);
++}
++
+ /* Timeout handler.  We kill the child and exit with an error.  */
+ static void
+ __attribute__ ((noreturn))
+@@ -94,6 +108,13 @@ signal_handler (int sig)
+   int killed;
+   int status;
+ 
++  /* Do this first to avoid further interference from the
++     subprocess.  */
++  struct timeval now;
++  bool now_available = gettimeofday (&now, NULL) == 0;
++  struct stat64 st;
++  bool st_available = fstat64 (STDOUT_FILENO, &st) == 0 && st.st_mtime != 0;
++
+   assert (test_pid > 1);
+   /* Kill the whole process group.  */
+   kill (-test_pid, SIGKILL);
+@@ -144,6 +165,13 @@ signal_handler (int sig)
+     printf ("Timed out: killed the child process but it exited %d\n",
+             WEXITSTATUS (status));
+ 
++  if (now_available)
++    print_timestamp ("Termination time", now);
++  if (st_available)
++    print_timestamp ("Last write to standard output",
++                     (struct timeval) { st.st_mtim.tv_sec,
++                         st.st_mtim.tv_nsec / 1000 });
++
+   /* Exit with an error.  */
+   exit (1);
+ }
 diff --git a/support/tst-support_blob_repeat.c b/support/tst-support_blob_repeat.c
 new file mode 100644
 index 0000000000..1978c14488
