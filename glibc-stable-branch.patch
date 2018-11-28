@@ -1,8 +1,15 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..8c92ee7764 100644
+index 08b42bd2f5..a997003664 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,352 @@
+@@ -1,3 +1,359 @@
++2018-11-27  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #23927]
++	CVE-2018-19591
++	* sysdeps/unix/sysv/linux/if_index.c (__if_nametoindex): Avoid
++	descriptor leak in case of ENODEV error.
++
 +2018-11-19  Florian Weimer  <fweimer@redhat.com>
 +
 +	support: Print timestamps in timeout handler.
@@ -356,10 +363,10 @@ index 08b42bd2f5..8c92ee7764 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..e5ca5903ec 100644
+index 154ab22d7c..5290e21da9 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,28 @@ See the end for copying conditions.
+@@ -5,6 +5,34 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -383,7 +390,13 @@ index 154ab22d7c..e5ca5903ec 100644
 +  [23717] Fix stack overflow in stdlib/tst-setcontext9
 +  [23821] si_band in siginfo_t has wrong type long int on sparc64
 +  [23822] ia64 static libm.a is missing exp2f, log2f and powf symbols
++  [23927] Linux if_nametoindex() does not close descriptor (CVE-2018-19591)
 +
++Security related changes:
++
++  CVE-2018-19591: A file descriptor leak in if_nametoindex can lead to a
++  denial of service due to resource exhaustion when processing getaddrinfo
++  calls with crafted host names.  Reported by Guido Vranken.
 +
  Version 2.28
  
@@ -3521,6 +3534,35 @@ index 2e20f034dc..ee0190e7f9 100644
  	    {
  	      if (!scratch_buffer_grow (&tmpbuf))
  		return 0;
+diff --git a/sysdeps/unix/sysv/linux/if_index.c b/sysdeps/unix/sysv/linux/if_index.c
+index e3d08982d9..782fc5e175 100644
+--- a/sysdeps/unix/sysv/linux/if_index.c
++++ b/sysdeps/unix/sysv/linux/if_index.c
+@@ -38,11 +38,6 @@ __if_nametoindex (const char *ifname)
+   return 0;
+ #else
+   struct ifreq ifr;
+-  int fd = __opensock ();
+-
+-  if (fd < 0)
+-    return 0;
+-
+   if (strlen (ifname) >= IFNAMSIZ)
+     {
+       __set_errno (ENODEV);
+@@ -50,6 +45,12 @@ __if_nametoindex (const char *ifname)
+     }
+ 
+   strncpy (ifr.ifr_name, ifname, sizeof (ifr.ifr_name));
++
++  int fd = __opensock ();
++
++  if (fd < 0)
++    return 0;
++
+   if (__ioctl (fd, SIOCGIFINDEX, &ifr) < 0)
+     {
+       int saved_errno = errno;
 diff --git a/sysdeps/unix/sysv/linux/netlink_assert_response.c b/sysdeps/unix/sysv/linux/netlink_assert_response.c
 index f31ccb52ff..6afc3a17ce 100644
 --- a/sysdeps/unix/sysv/linux/netlink_assert_response.c
