@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.28
-Release:        218
+Release:        219
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -43,7 +43,6 @@ Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
 Patch53: 	nostackshrink.patch
 Patch54: 	strcpy-avx2.patch
-Patch55:    CVE-2018-19591.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -215,7 +214,6 @@ GNU C library extra components.
 %patch52 -p1
 %patch53 -p1
 %patch54 -p1
-%patch55 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
