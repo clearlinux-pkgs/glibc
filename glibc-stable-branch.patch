@@ -1,8 +1,18 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..fb57e61a22 100644
+index 08b42bd2f5..67213d487f 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,394 @@
+@@ -1,3 +1,404 @@
++2018-12-10  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #23972]
++	* sysdeps/unix/sysv/linux/getdents64.c (handle_overflow): Check
++	offset instead of count for clarity.  Fix typo in comment.
++	(__old_getdents64): Keep track of previous offset.  Use it to call
++	handle_overflow.
++	* sysdeps/unix/sysv/linux/tst-readdir64-compat.c (do_test): Check
++	that d_off is never zero.
++
 +2018-11-30  Tulio Magno Quites Machado Filho  <tuliom@linux.ibm.com>
 +
 +	[BZ #23690]
@@ -398,10 +408,10 @@ index 08b42bd2f5..fb57e61a22 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..5290e21da9 100644
+index 154ab22d7c..4d4a5a1911 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,34 @@ See the end for copying conditions.
+@@ -5,6 +5,35 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -426,6 +436,7 @@ index 154ab22d7c..5290e21da9 100644
 +  [23821] si_band in siginfo_t has wrong type long int on sparc64
 +  [23822] ia64 static libm.a is missing exp2f, log2f and powf symbols
 +  [23927] Linux if_nametoindex() does not close descriptor (CVE-2018-19591)
++  [23972] __old_getdents64 uses wrong d_off value on overflow
 +
 +Security related changes:
 +
@@ -4093,10 +4104,10 @@ index 33766d1813..43c4e009a4 100644
  	  } _sigpoll;
  
 diff --git a/sysdeps/unix/sysv/linux/getdents64.c b/sysdeps/unix/sysv/linux/getdents64.c
-index 3bde0cf4f0..bc140b5a7f 100644
+index 3bde0cf4f0..46eb5f4419 100644
 --- a/sysdeps/unix/sysv/linux/getdents64.c
 +++ b/sysdeps/unix/sysv/linux/getdents64.c
-@@ -33,41 +33,80 @@ strong_alias (__getdents64, __getdents)
+@@ -33,41 +33,90 @@ strong_alias (__getdents64, __getdents)
  # include <shlib-compat.h>
  
  # if SHLIB_COMPAT(libc, GLIBC_2_1, GLIBC_2_2)
@@ -4118,14 +4129,14 @@ index 3bde0cf4f0..bc140b5a7f 100644
 -};
 +  /* If this is the first entry in the buffer, we can report the
 +     error.  */
-+  if (count == 0)
++  if (offset == 0)
 +    {
 +      __set_errno (EOVERFLOW);
 +      return -1;
 +    }
 +
 +  /* Otherwise, seek to the overflowing entry, so that the next call
-+     will report the error, and return the data read so far..  */
++     will report the error, and return the data read so far.  */
 +  if (__lseek64 (fd, offset, SEEK_SET) != 0)
 +    return -1;
 +  return count;
@@ -4155,7 +4166,15 @@ index 3bde0cf4f0..bc140b5a7f 100644
 -	struct compat_linux_dirent k;
 -	struct dirent u;
 -      } *kbuf = (void *) buf;
--
++      /* This is the marker for the first entry.  Offset 0 is reserved
++	 for the first entry (see rewinddir).  Here, we use it as a
++	 marker for the first entry in the buffer.  We never actually
++	 seek to offset 0 because handle_overflow reports the error
++	 directly, so it does not matter that the offset is incorrect
++	 if entries have been read from the descriptor before (so that
++	 the descriptor is not actually at offset 0).  */
++      __off64_t previous_offset = 0;
+ 
 -      while ((char *) kbuf < buf + retval)
 +      char *p = buf;
 +      char *end = buf + retval;
@@ -4175,7 +4194,7 @@ index 3bde0cf4f0..bc140b5a7f 100644
 +
 +	  /* Check for ino_t overflow.  */
 +	  if (__glibc_unlikely (ino != source->d_ino))
-+	    return handle_overflow (fd, offset, p - buf);
++	    return handle_overflow (fd, previous_offset, p - buf);
 +
 +	  /* Convert to the target layout.  Use a separate struct and
 +	     memcpy to side-step aliasing issues.  */
@@ -4199,6 +4218,7 @@ index 3bde0cf4f0..bc140b5a7f 100644
  
 -	  kbuf = (void *) ((char *) kbuf + kbuf->k.d_reclen);
 +	  p += reclen;
++	  previous_offset = offset;
  	}
       }
    return retval;
@@ -4506,10 +4526,10 @@ index 5306d538e6..f88001c9c3 100644
  rt_sigprocmask
 diff --git a/sysdeps/unix/sysv/linux/tst-readdir64-compat.c b/sysdeps/unix/sysv/linux/tst-readdir64-compat.c
 new file mode 100644
-index 0000000000..43c4a8477c
+index 0000000000..cb78bc9be4
 --- /dev/null
 +++ b/sysdeps/unix/sysv/linux/tst-readdir64-compat.c
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,115 @@
 +/* Test readdir64 compatibility symbol.
 +   Copyright (C) 2018 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -4599,6 +4619,10 @@ index 0000000000..43c4a8477c
 +        }
 +      else
 +        TEST_VERIFY_EXIT (entry_test != NULL);
++
++      /* d_off is never zero because it is the offset of the next
++         entry (not the current entry).  */
++      TEST_VERIFY (entry_reference->d_off > 0);
 +
 +      /* Check that the entries are the same.  */
 +      TEST_COMPARE_BLOB (entry_reference->d_name,
