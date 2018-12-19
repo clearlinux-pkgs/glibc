@@ -1,8 +1,45 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..c12b5995a3 100644
+index 08b42bd2f5..739fe56d73 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,465 @@
+@@ -1,3 +1,502 @@
++2018-12-18  Adhemerval Zanella  <adhemerval.zanella@linaro.org>
++	    James Clarke  <jrtc27@jrtc27.com>
++
++	[BZ #23967]
++	* sysdeps/unix/sysv/linux/kernel_sigaction.h (HAS_SA_RESTORER):
++	Define if SA_RESTORER is defined.
++	(kernel_sigaction): Define sa_restorer if HAS_SA_RESTORER is defined.
++	(SET_SA_RESTORER, RESET_SA_RESTORER): Define iff the macro are not
++	already defined.
++	* sysdeps/unix/sysv/linux/m68k/kernel_sigaction.h (SA_RESTORER,
++	kernel_sigaction, SET_SA_RESTORER, RESET_SA_RESTORER): Remove
++	definitions.
++	(HAS_SA_RESTORER): Define.
++	* sysdeps/unix/sysv/linux/sparc/kernel_sigaction.h (SA_RESTORER,
++	SET_SA_RESTORER, RESET_SA_RESTORER): Remove definition.
++	(HAS_SA_RESTORER): Define.
++	* sysdeps/unix/sysv/linux/nios2/kernel_sigaction.h: Include generic
++	kernel_sigaction after define SET_SA_RESTORER and RESET_SA_RESTORER.
++	* sysdeps/unix/sysv/linux/powerpc/kernel_sigaction.h: Likewise.
++	* sysdeps/unix/sysv/linux/s390/kernel_sigaction.h: Likewise.
++	* sysdeps/unix/sysv/linux/x86_64/sigaction.c: Likewise.
++
++2018-10-30  Andreas Schwab  <schwab@suse.de>
++
++	[BZ #23125]
++	* sysdeps/riscv/start.S (ENTRY_POINT): Mark ra as undefined.
++	Don't use tail call.
++	* elf/tst-unwind-main.c: New file.
++	* elf/Makefile (tests): Add tst-unwind-main.
++	(CFLAGS-tst-unwind-main.c): Define.
++
++2018-12-15  Florian Weimer  <fweimer@redhat.com>
++
++	* support/blob_repeat.c (check_mul_overflow_size_t): New function.
++	(minimum_stride_size): Use it.
++	(support_blob_repeat_allocate): Likewise.
++
 +2018-12-13  Andreas Schwab  <schwab@suse.de>
 +
 +	[BZ #23861]
@@ -553,6 +590,26 @@ index 33574faab6..96bf925333 100644
      }
  }
  
+diff --git a/elf/Makefile b/elf/Makefile
+index cd0771307f..43f625af05 100644
+--- a/elf/Makefile
++++ b/elf/Makefile
+@@ -186,7 +186,8 @@ tests += restest1 preloadtest loadfail multiload origtest resolvfail \
+ 	 tst-tlsalign tst-tlsalign-extern tst-nodelete-opened \
+ 	 tst-nodelete2 tst-audit11 tst-audit12 tst-dlsym-error tst-noload \
+ 	 tst-latepthread tst-tls-manydynamic tst-nodelete-dlclose \
+-	 tst-debug1 tst-main1 tst-absolute-sym tst-absolute-zero tst-big-note
++	 tst-debug1 tst-main1 tst-absolute-sym tst-absolute-zero tst-big-note \
++	 tst-unwind-main
+ #	 reldep9
+ tests-internal += loadtest unload unload2 circleload1 \
+ 	 neededtest neededtest2 neededtest3 neededtest4 \
+@@ -1484,3 +1485,5 @@ tst-libc_dlvsym-static-ENV = \
+ $(objpfx)tst-libc_dlvsym-static.out: $(objpfx)tst-libc_dlvsym-dso.so
+ 
+ $(objpfx)tst-big-note: $(objpfx)tst-big-note-lib.so
++
++CFLAGS-tst-unwind-main.c += -funwind-tables
 diff --git a/elf/dl-runtime.c b/elf/dl-runtime.c
 index 63bbc89776..3d2f4a7a76 100644
 --- a/elf/dl-runtime.c
@@ -631,6 +688,50 @@ index 63bbc89776..3d2f4a7a76 100644
        ElfW(Sym) *defsym = ((ElfW(Sym) *) D_PTR (reloc_result->bound,
  						l_info[DT_SYMTAB])
  			   + reloc_result->boundndx);
+diff --git a/elf/tst-unwind-main.c b/elf/tst-unwind-main.c
+new file mode 100644
+index 0000000000..d1236032d7
+--- /dev/null
++++ b/elf/tst-unwind-main.c
+@@ -0,0 +1,38 @@
++/* Test unwinding through main.
++   Copyright (C) 2018 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <unwind.h>
++#include <unistd.h>
++#include <support/test-driver.h>
++
++static _Unwind_Reason_Code
++callback (struct _Unwind_Context *ctx, void *arg)
++{
++  return _URC_NO_REASON;
++}
++
++int
++main (void)
++{
++  /* Arrange for this test to be killed if _Unwind_Backtrace runs into an
++     endless loop.  We cannot use the test driver because the complete
++     call chain needs to be compiled with -funwind-tables so that
++     _Unwind_Backtrace is able to reach _start.  */
++  alarm (DEFAULT_TIMEOUT);
++  _Unwind_Backtrace (callback, 0);
++}
 diff --git a/grp/initgroups.c b/grp/initgroups.c
 index f056fbf5aa..93e7f5814d 100644
 --- a/grp/initgroups.c
@@ -3451,10 +3552,10 @@ index 652d2cdf69..550fdba0f7 100644
    tst-test_compare_blob \
 diff --git a/support/blob_repeat.c b/support/blob_repeat.c
 new file mode 100644
-index 0000000000..16c1e448b9
+index 0000000000..718846d81d
 --- /dev/null
 +++ b/support/blob_repeat.c
-@@ -0,0 +1,282 @@
+@@ -0,0 +1,302 @@
 +/* Repeating a memory blob, with alias mapping optimization.
 +   Copyright (C) 2018 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -3490,6 +3591,26 @@ index 0000000000..16c1e448b9
 +/* Small allocations should use malloc directly instead of the mmap
 +   optimization because mappings carry a lot of overhead.  */
 +static const size_t maximum_small_size = 4 * 1024 * 1024;
++
++/* Set *RESULT to LEFT * RIGHT.  Return true if the multiplication
++   overflowed.  See <malloc/malloc-internal.h>.  */
++static inline bool
++check_mul_overflow_size_t (size_t left, size_t right, size_t *result)
++{
++#if __GNUC__ >= 5
++  return __builtin_mul_overflow (left, right, result);
++#else
++  /* size_t is unsigned so the behavior on overflow is defined.  */
++  *result = left * right;
++  size_t half_size_t = ((size_t) 1) << (8 * sizeof (size_t) / 2);
++  if (__glibc_unlikely ((left | right) >= half_size_t))
++    {
++      if (__glibc_unlikely (right != 0 && *result / right != left))
++        return true;
++    }
++  return false;
++#endif
++}
 +
 +/* Internal helper for fill.  */
 +static void
@@ -3575,8 +3696,8 @@ index 0000000000..16c1e448b9
 +     common multiple, it appears only once.  Therefore, shift one
 +     factor.  */
 +  size_t multiple;
-+  if (__builtin_mul_overflow (page_size >> common_zeros, element_size,
-+                              &multiple))
++  if (check_mul_overflow_size_t (page_size >> common_zeros, element_size,
++                                 &multiple))
 +    return 0;
 +  return multiple;
 +}
@@ -3712,7 +3833,7 @@ index 0000000000..16c1e448b9
 +                              size_t count)
 +{
 +  size_t total_size;
-+  if (__builtin_mul_overflow (element_size, count, &total_size))
++  if (check_mul_overflow_size_t (element_size, count, &total_size))
 +    {
 +      errno = EOVERFLOW;
 +      return (struct support_blob_repeat) { 0 };
@@ -5207,6 +5328,31 @@ index cdb7858fc8..ca587620cb 100644
  }
  
  #define libc_feholdexcept_setround  libc_feholdexcept_setround_riscv
+diff --git a/sysdeps/riscv/start.S b/sysdeps/riscv/start.S
+index 4635ddb5eb..2d6f06e630 100644
+--- a/sysdeps/riscv/start.S
++++ b/sysdeps/riscv/start.S
+@@ -43,6 +43,10 @@
+    __libc_start_main wants this in a5.  */
+ 
+ ENTRY (ENTRY_POINT)
++	/* Terminate call stack by noting ra is undefined.  Use a dummy
++	   .cfi_label to force starting the FDE.  */
++	.cfi_label .Ldummy
++	cfi_undefined (ra)
+ 	call  .Lload_gp
+ 	mv    a5, a0  /* rtld_fini.  */
+ 	/* main may be in a shared library.  */
+@@ -54,7 +58,8 @@ ENTRY (ENTRY_POINT)
+ 	lla   a4, __libc_csu_fini
+ 	mv    a6, sp  /* stack_end.  */
+ 
+-	tail  __libc_start_main@plt
++	call  __libc_start_main@plt
++	ebreak
+ END (ENTRY_POINT)
+ 
+ /* Dynamic links need the global pointer to be initialized prior to calling
 diff --git a/sysdeps/s390/dl-irel.h b/sysdeps/s390/dl-irel.h
 index d8ba7ba427..ecb24f0a9b 100644
 --- a/sysdeps/s390/dl-irel.h
@@ -5438,6 +5584,71 @@ index e3d08982d9..782fc5e175 100644
    if (__ioctl (fd, SIOCGIFINDEX, &ifr) < 0)
      {
        int saved_errno = errno;
+diff --git a/sysdeps/unix/sysv/linux/kernel_sigaction.h b/sysdeps/unix/sysv/linux/kernel_sigaction.h
+index 2dbec08099..1c36146d46 100644
+--- a/sysdeps/unix/sysv/linux/kernel_sigaction.h
++++ b/sysdeps/unix/sysv/linux/kernel_sigaction.h
+@@ -1,19 +1,27 @@
+ #ifndef _KERNEL_SIGACTION_H
+ # define _KERNEL_SIGACTION_H
+ 
++#ifdef SA_RESTORER
++# define HAS_SA_RESTORER 1
++#endif
++
+ /* This is the sigaction structure from the Linux 3.2 kernel.  */
+ struct kernel_sigaction
+ {
+   __sighandler_t k_sa_handler;
+   unsigned long sa_flags;
+-#ifdef SA_RESTORER
++#ifdef HAS_SA_RESTORER
+   void (*sa_restorer) (void);
+ #endif
++  /* glibc sigset is larger than kernel expected one, however sigaction
++     passes the kernel expected size on rt_sigaction syscall.  */
+   sigset_t sa_mask;
+ };
+ 
+-#ifndef SA_RESTORER
++#ifndef SET_SA_RESTORER
+ # define SET_SA_RESTORER(kact, act)
++#endif
++#ifndef RESET_SA_RESTORER
+ # define RESET_SA_RESTORER(act, kact)
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/m68k/kernel_sigaction.h b/sysdeps/unix/sysv/linux/m68k/kernel_sigaction.h
+index 54972feb13..464b351d6d 100644
+--- a/sysdeps/unix/sysv/linux/m68k/kernel_sigaction.h
++++ b/sysdeps/unix/sysv/linux/m68k/kernel_sigaction.h
+@@ -1,22 +1,4 @@
+-#ifndef _KERNEL_SIGACTION_H
+-# define _KERNEL_SIGACTION_H
+-
+-#include <signal.h>
+-
+-#define SA_RESTORER 0x04000000
+-
+-/* This is the sigaction structure from the Linux 3.2 kernel.  */
+-struct kernel_sigaction
+-{
+-  __sighandler_t k_sa_handler;
+-  sigset_t sa_mask;
+-  unsigned long sa_flags;
+-  void (*sa_restorer) (void);
+-};
+-
+-#define SET_SA_RESTORER(kact, act)			\
+-  (kact)->sa_restorer = (act)->sa_restorer
+-#define RESET_SA_RESTORER(act, kact)			\
+-  (act)->sa_restorer = (kact)->sa_restorer
+-
+-#endif
++/* m68k does not define SA_RESTORER, but does have sa_restorer member
++   on kernel sigaction struct.  */
++#define HAS_SA_RESTORER 1
++#include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
 diff --git a/sysdeps/unix/sysv/linux/netlink_assert_response.c b/sysdeps/unix/sysv/linux/netlink_assert_response.c
 index f31ccb52ff..6afc3a17ce 100644
 --- a/sysdeps/unix/sysv/linux/netlink_assert_response.c
@@ -5457,6 +5668,21 @@ index f31ccb52ff..6afc3a17ce 100644
                          error_code, fd, family);
            __libc_fatal (message);
          }
+diff --git a/sysdeps/unix/sysv/linux/nios2/kernel_sigaction.h b/sysdeps/unix/sysv/linux/nios2/kernel_sigaction.h
+index 4ada322104..89f9bcedfd 100644
+--- a/sysdeps/unix/sysv/linux/nios2/kernel_sigaction.h
++++ b/sysdeps/unix/sysv/linux/nios2/kernel_sigaction.h
+@@ -1,8 +1,9 @@
+ /* NIOS2 uses the generic Linux UAPI but defines SA_RESTORER.  */
+ #define SA_RESTORER 0x04000000
+-#include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
+ 
+ #define SET_SA_RESTORER(kact, act)             \
+   (kact)->sa_restorer = (act)->sa_restorer
+ #define RESET_SA_RESTORER(act, kact)           \
+   (act)->sa_restorer = (kact)->sa_restorer
++
++#include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
 diff --git a/sysdeps/unix/sysv/linux/powerpc/force-elision.h b/sysdeps/unix/sysv/linux/powerpc/force-elision.h
 index fe5d6ceade..d8f5a4b1c7 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/force-elision.h
@@ -5511,6 +5737,22 @@ index fe5d6ceade..d8f5a4b1c7 100644
 +	  s;								\
 +	}								\
      }
+diff --git a/sysdeps/unix/sysv/linux/powerpc/kernel_sigaction.h b/sysdeps/unix/sysv/linux/powerpc/kernel_sigaction.h
+index aef3d5a3b3..bac03ee45d 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/kernel_sigaction.h
++++ b/sysdeps/unix/sysv/linux/powerpc/kernel_sigaction.h
+@@ -1,9 +1,10 @@
+ /* powerpc kernel sigaction is similar to generic Linux UAPI one,
+    but the architecture also defines SA_RESTORER.  */
+ #define SA_RESTORER 0x04000000
+-#include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
+ 
+ #define SET_SA_RESTORER(kact, act)             \
+   (kact)->sa_restorer = (act)->sa_restorer
+ #define RESET_SA_RESTORER(act, kact)           \
+   (act)->sa_restorer = (kact)->sa_restorer
++
++#include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
 diff --git a/sysdeps/unix/sysv/linux/preadv2.c b/sysdeps/unix/sysv/linux/preadv2.c
 index c8bf0764ef..bb08cbc5fd 100644
 --- a/sysdeps/unix/sysv/linux/preadv2.c
@@ -5617,6 +5859,21 @@ index d8a1b9972f..71f32367dd 100644
 +	  s;								\
 +	}								\
      }
+diff --git a/sysdeps/unix/sysv/linux/sh/kernel_sigaction.h b/sysdeps/unix/sysv/linux/sh/kernel_sigaction.h
+index 7ebcd08d62..c8dc77a02b 100644
+--- a/sysdeps/unix/sysv/linux/sh/kernel_sigaction.h
++++ b/sysdeps/unix/sysv/linux/sh/kernel_sigaction.h
+@@ -1,8 +1,9 @@
+ /* SH uses the generic Linux UAPI but defines SA_RESTORER.  */
+ #define SA_RESTORER 0x04000000
+-#include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
+ 
+ #define SET_SA_RESTORER(kact, act)             \
+   (kact)->sa_restorer = (act)->sa_restorer
+ #define RESET_SA_RESTORER(act, kact)           \
+   (act)->sa_restorer = (kact)->sa_restorer
++
++#include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
 diff --git a/sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h b/sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h
 index 9f79715ebe..4dd35237f6 100644
 --- a/sysdeps/unix/sysv/linux/sparc/bits/siginfo-arch.h
@@ -5635,6 +5892,22 @@ index 9f79715ebe..4dd35237f6 100644
  
  #define __SI_SIGFAULT_ADDL \
    int _si_trapno;
+diff --git a/sysdeps/unix/sysv/linux/sparc/kernel_sigaction.h b/sysdeps/unix/sysv/linux/sparc/kernel_sigaction.h
+index bee7e9cd03..eb4a522453 100644
+--- a/sysdeps/unix/sysv/linux/sparc/kernel_sigaction.h
++++ b/sysdeps/unix/sysv/linux/sparc/kernel_sigaction.h
+@@ -1,10 +1,5 @@
+ /* SPARC 'struct __new_sigaction' is similar to generic Linux UAPI with
+    a sa_restorer field, even though function is passed as an argument
+    to rt_sigaction syscall.  */
+-#define SA_RESTORER 0x04000000
++#define HAS_SA_RESTORER 1
+ #include <sysdeps/unix/sysv/linux/kernel_sigaction.h>
+-
+-#define SET_SA_RESTORER(kact, act)             \
+-  (kact)->sa_restorer = NULL
+-#define RESET_SA_RESTORER(act, kact)           \
+-  (act)->sa_restorer = (kact)->sa_restorer
 diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/Makefile b/sysdeps/unix/sysv/linux/sparc/sparc64/Makefile
 index 715af3df7b..218c246f16 100644
 --- a/sysdeps/unix/sysv/linux/sparc/sparc64/Makefile
@@ -5867,6 +6140,27 @@ index dd659c908f..61282d6678 100644
 +	  s;								\
 +	}								\
      }
+diff --git a/sysdeps/unix/sysv/linux/x86_64/sigaction.c b/sysdeps/unix/sysv/linux/x86_64/sigaction.c
+index 4e6d9cc32e..9aa2c7f860 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/sigaction.c
++++ b/sysdeps/unix/sysv/linux/x86_64/sigaction.c
+@@ -18,7 +18,6 @@
+ 
+ #include <signal.h>
+ #define SA_RESTORER 0x04000000
+-#include <kernel_sigaction.h>
+ 
+ extern void restore_rt (void) asm ("__restore_rt") attribute_hidden;
+ 
+@@ -29,6 +28,8 @@ extern void restore_rt (void) asm ("__restore_rt") attribute_hidden;
+ #define RESET_SA_RESTORER(act, kact) 			\
+   (act)->sa_restorer = (kact)->sa_restorer
+ 
++#include <kernel_sigaction.h>
++
+ #include <sysdeps/unix/sysv/linux/sigaction.c>
+ 
+ /* NOTE: Please think twice before making any changes to the bits of
 diff --git a/sysdeps/x86/cpu-features.c b/sysdeps/x86/cpu-features.c
 index ea0b64fdb9..4695ac80d4 100644
 --- a/sysdeps/x86/cpu-features.c
