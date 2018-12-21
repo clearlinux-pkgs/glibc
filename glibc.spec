@@ -44,6 +44,10 @@ Patch52:	spin-smarter.patch
 Patch53: 	nostackshrink.patch
 Patch54: 	strcpy-avx2.patch
 
+# Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
+# Required for linux-steam-integration
+Patch61: 	fix-ld-audit-performance.patch
+
 BuildRequires:	grep
 BuildRequires:	texinfo
 BuildRequires:	linux-libc-headers
@@ -214,6 +218,7 @@ GNU C library extra components.
 %patch52 -p1
 %patch53 -p1
 %patch54 -p1
+%patch61 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
