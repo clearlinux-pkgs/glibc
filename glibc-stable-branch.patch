@@ -1,8 +1,15 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..c7a04d8717 100644
+index 08b42bd2f5..ec7dcc67b2 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,506 @@
+@@ -1,3 +1,513 @@
++2018-12-31  Florian Weimer  <fw@deneb.enyo.de>
++
++	[BZ #24027]
++	* malloc/malloc.c (_int_realloc): Always call memcpy for the
++	copying operation.  (ncopies had the wrong type, resulting in an
++	integer wraparound and too few elements being copied.)
++
 +2018-12-28  Aurelien Jarno  <aurelien@aurel32.net>
 +
 +	* sysdeps/alpha/fpu/libm-test-ulps: Regenerated.
@@ -510,10 +517,10 @@ index 08b42bd2f5..c7a04d8717 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..05f7342fcb 100644
+index 154ab22d7c..d350d4666a 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,36 @@ See the end for copying conditions.
+@@ -5,6 +5,37 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -540,6 +547,7 @@ index 154ab22d7c..05f7342fcb 100644
 +  [23822] ia64 static libm.a is missing exp2f, log2f and powf symbols
 +  [23927] Linux if_nametoindex() does not close descriptor (CVE-2018-19591)
 +  [23972] __old_getdents64 uses wrong d_off value on overflow
++  [24027] malloc: Integer overflow in realloc
 +
 +Security related changes:
 +
@@ -913,7 +921,7 @@ index 7d54bad866..388cf7e9ee 100644
  tests-static := \
  	 tst-interpose-static-nothread \
 diff --git a/malloc/malloc.c b/malloc/malloc.c
-index e247c77b7d..dad0e73735 100644
+index e247c77b7d..27cf6137c2 100644
 --- a/malloc/malloc.c
 +++ b/malloc/malloc.c
 @@ -2888,6 +2888,8 @@ mremap_chunk (mchunkptr p, size_t new_size)
@@ -1040,6 +1048,63 @@ index e247c77b7d..dad0e73735 100644
  	  unlink(av, p, bck, fwd);
  	}
  
+@@ -4498,11 +4544,6 @@ _int_realloc(mstate av, mchunkptr oldp, INTERNAL_SIZE_T oldsize,
+   mchunkptr        bck;             /* misc temp for linking */
+   mchunkptr        fwd;             /* misc temp for linking */
+ 
+-  unsigned long    copysize;        /* bytes to copy */
+-  unsigned int     ncopies;         /* INTERNAL_SIZE_T words to copy */
+-  INTERNAL_SIZE_T* s;               /* copy source */
+-  INTERNAL_SIZE_T* d;               /* copy destination */
+-
+   /* oldmem size */
+   if (__builtin_expect (chunksize_nomask (oldp) <= 2 * SIZE_SZ, 0)
+       || __builtin_expect (oldsize >= av->system_mem, 0))
+@@ -4570,43 +4611,7 @@ _int_realloc(mstate av, mchunkptr oldp, INTERNAL_SIZE_T oldsize,
+             }
+           else
+             {
+-              /*
+-                 Unroll copy of <= 36 bytes (72 if 8byte sizes)
+-                 We know that contents have an odd number of
+-                 INTERNAL_SIZE_T-sized words; minimally 3.
+-               */
+-
+-              copysize = oldsize - SIZE_SZ;
+-              s = (INTERNAL_SIZE_T *) (chunk2mem (oldp));
+-              d = (INTERNAL_SIZE_T *) (newmem);
+-              ncopies = copysize / sizeof (INTERNAL_SIZE_T);
+-              assert (ncopies >= 3);
+-
+-              if (ncopies > 9)
+-                memcpy (d, s, copysize);
+-
+-              else
+-                {
+-                  *(d + 0) = *(s + 0);
+-                  *(d + 1) = *(s + 1);
+-                  *(d + 2) = *(s + 2);
+-                  if (ncopies > 4)
+-                    {
+-                      *(d + 3) = *(s + 3);
+-                      *(d + 4) = *(s + 4);
+-                      if (ncopies > 6)
+-                        {
+-                          *(d + 5) = *(s + 5);
+-                          *(d + 6) = *(s + 6);
+-                          if (ncopies > 8)
+-                            {
+-                              *(d + 7) = *(s + 7);
+-                              *(d + 8) = *(s + 8);
+-                            }
+-                        }
+-                    }
+-                }
+-
++	      memcpy (newmem, chunk2mem (oldp), oldsize - SIZE_SZ);
+               _int_free (av, oldp, 1);
+               check_inuse_chunk (av, newp);
+               return chunk2mem (newp);
 diff --git a/malloc/tst-tcfree1.c b/malloc/tst-tcfree1.c
 new file mode 100644
 index 0000000000..bc29375ce7
