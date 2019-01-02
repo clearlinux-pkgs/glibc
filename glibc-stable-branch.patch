@@ -1,8 +1,14 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..ec7dcc67b2 100644
+index 08b42bd2f5..8de81aa559 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,513 @@
+@@ -1,3 +1,519 @@
++2019-01-02  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #24018]
++	* intl/dcigettext.c (DCIGETTEXT): Do not return NULL on asprintf
++	failure.
++
 +2018-12-31  Florian Weimer  <fw@deneb.enyo.de>
 +
 +	[BZ #24027]
@@ -517,10 +523,10 @@ index 08b42bd2f5..ec7dcc67b2 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..d350d4666a 100644
+index 154ab22d7c..865c075c82 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,37 @@ See the end for copying conditions.
+@@ -5,6 +5,38 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -547,6 +553,7 @@ index 154ab22d7c..d350d4666a 100644
 +  [23822] ia64 static libm.a is missing exp2f, log2f and powf symbols
 +  [23927] Linux if_nametoindex() does not close descriptor (CVE-2018-19591)
 +  [23972] __old_getdents64 uses wrong d_off value on overflow
++  [24018] gettext may return NULL
 +  [24027] malloc: Integer overflow in realloc
 +
 +Security related changes:
@@ -879,6 +886,19 @@ index 0000000000..3dc74874e5
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/intl/dcigettext.c b/intl/dcigettext.c
+index 2a50369948..25f47c5bd3 100644
+--- a/intl/dcigettext.c
++++ b/intl/dcigettext.c
+@@ -631,7 +631,7 @@ DCIGETTEXT (const char *domainname, const char *msgid1, const char *msgid2,
+ 	  int ret = __asprintf (&xdirname, "%s/%s", cwd, dirname);
+ 	  free (cwd);
+ 	  if (ret < 0)
+-	      return NULL;
++	    goto return_untranslated;
+ 	  dirname = xdirname;
+ 	}
+ #ifndef IN_LIBGLOCALE
 diff --git a/libio/tst-readline.c b/libio/tst-readline.c
 index 9322ef68da..63f5227760 100644
 --- a/libio/tst-readline.c
