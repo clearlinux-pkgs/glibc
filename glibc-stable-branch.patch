@@ -1,8 +1,28 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..8de81aa559 100644
+index 08b42bd2f5..feca77e0b5 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,519 @@
+@@ -1,3 +1,539 @@
++2019-01-03  Martin Jansa  <Martin.Jansa@gmail.com>
++
++	[BZ #19444]
++	* sysdeps/ieee754/soft-fp/s_fdiv.c: Include <libc-diag.h> and use
++	DIAG_PUSH_NEEDS_COMMENT, DIAG_IGNORE_NEEDS_COMMENT and
++	DIAG_POP_NEEDS_COMMENT to disable -Wmaybe-uninitialized.
++
++2019-01-02  Aurelien Jarno  <aurelien@aurel32.net>
++
++	[BZ #24034]
++	* sysdeps/unix/sysv/linux/arm/atomic-machine.h
++	(__arm_assisted_compare_and_exchange_val_32_acq): Use uint32_t rather
++	than __typeof (...) for the a_ptr variable.
++
++2018-12-31  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24022]
++	* sysdeps/unix/sysv/linux/riscv/flush-icache.c: Check if
++	<asm/syscalls.h> exists with __has_include__ before including it.
++
 +2019-01-02  Florian Weimer  <fweimer@redhat.com>
 +
 +	[BZ #24018]
@@ -523,10 +543,10 @@ index 08b42bd2f5..8de81aa559 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..865c075c82 100644
+index 154ab22d7c..af2be85488 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,38 @@ See the end for copying conditions.
+@@ -5,6 +5,41 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -534,6 +554,7 @@ index 154ab22d7c..865c075c82 100644
 +
 +The following bugs are resolved with this release:
 +
++  [19444] build failures with -O1 due to -Wmaybe-uninitialized
 +  [20209] localedata: Spelling mistake for Sunday in Greenlandic kl_GL
 +  [22927] libanl: properly cleanup if first helper thread creation failed
 +  [23400] stdlib/test-bz22786.c creates temporary files in glibc source tree
@@ -554,7 +575,9 @@ index 154ab22d7c..865c075c82 100644
 +  [23927] Linux if_nametoindex() does not close descriptor (CVE-2018-19591)
 +  [23972] __old_getdents64 uses wrong d_off value on overflow
 +  [24018] gettext may return NULL
++  [24022] riscv may lack <asm/syscalls.h>
 +  [24027] malloc: Integer overflow in realloc
++  [24034] tst-cancel21-static fails with SIGBUS on pre-ARMv7 when using GCC 8
 +
 +Security related changes:
 +
@@ -5200,6 +5223,34 @@ index 7449f8c7d5..945d5cdf28 100644
  .weak __powf_compat
  .set __powf_compat,__powf
  .symver __powf_compat,powf@GLIBC_2.2
+diff --git a/sysdeps/ieee754/soft-fp/s_fdiv.c b/sysdeps/ieee754/soft-fp/s_fdiv.c
+index 341339f5ed..7a15cbeee6 100644
+--- a/sysdeps/ieee754/soft-fp/s_fdiv.c
++++ b/sysdeps/ieee754/soft-fp/s_fdiv.c
+@@ -25,6 +25,16 @@
+ #undef fdivl
+ 
+ #include <math-narrow.h>
++#include <libc-diag.h>
++
++/* R_f[01] are not set in cases where they are not used in packing,
++   but the compiler does not see that they are set in all cases where
++   they are used, resulting in warnings that they may be used
++   uninitialized.  The location of the warning differs in different
++   versions of GCC, it may be where R is defined using a macro or it
++   may be where the macro is defined.  This happens only with -O1.  */
++DIAG_PUSH_NEEDS_COMMENT;
++DIAG_IGNORE_NEEDS_COMMENT (8, "-Wmaybe-uninitialized");
+ #include <soft-fp.h>
+ #include <single.h>
+ #include <double.h>
+@@ -53,4 +63,6 @@ __fdiv (double x, double y)
+   CHECK_NARROW_DIV (ret, x, y);
+   return ret;
+ }
++DIAG_POP_NEEDS_COMMENT;
++
+ libm_alias_float_double (div)
 diff --git a/sysdeps/nptl/bits/thread-shared-types.h b/sysdeps/nptl/bits/thread-shared-types.h
 index 1e2092a05d..05c94e7a71 100644
 --- a/sysdeps/nptl/bits/thread-shared-types.h
@@ -5537,6 +5588,52 @@ index f71cc39c7e..773aaea0e9 100644
  endif
  
  ifeq ($(subdir),nis)
+diff --git a/sysdeps/unix/sysv/linux/arm/atomic-machine.h b/sysdeps/unix/sysv/linux/arm/atomic-machine.h
+index ad165274d8..a5d244e65e 100644
+--- a/sysdeps/unix/sysv/linux/arm/atomic-machine.h
++++ b/sysdeps/unix/sysv/linux/arm/atomic-machine.h
+@@ -49,16 +49,23 @@
+    declarations of A_OLDVAL et al because when NEWVAL or OLDVAL is of the
+    form *PTR and PTR has a 'volatile ... *' type, then __typeof (*PTR) has
+    a 'volatile ...' type and this triggers -Wvolatile-register-var to
+-   complain about 'register volatile ... asm ("reg")'.  */
++   complain about 'register volatile ... asm ("reg")'.
++
++   We use the same union trick in the declaration of A_PTR because when
++   MEM is of the from *PTR and PTR has a 'const ... *' type, then __typeof
++   (*PTR) has a 'const ...' type and this enables the compiler to substitute
++   the variable with its initializer in asm statements, which may cause the
++   corresponding operand to appear in a different register.  */
+ #ifdef __thumb2__
+ /* Thumb-2 has ldrex/strex.  However it does not have barrier instructions,
+    so we still need to use the kernel helper.  */
+ # define __arm_assisted_compare_and_exchange_val_32_acq(mem, newval, oldval) \
+-  ({ union { __typeof (oldval) a; uint32_t v; } oldval_arg = { .a = (oldval) };\
++  ({ union { __typeof (mem) a; uint32_t v; } mem_arg = { .a = (mem) };       \
++     union { __typeof (oldval) a; uint32_t v; } oldval_arg = { .a = (oldval) };\
+      union { __typeof (newval) a; uint32_t v; } newval_arg = { .a = (newval) };\
+      register uint32_t a_oldval asm ("r0");				      \
+      register uint32_t a_newval asm ("r1") = newval_arg.v;		      \
+-     register __typeof (mem) a_ptr asm ("r2") = (mem);			      \
++     register uint32_t a_ptr asm ("r2") = mem_arg.v;			      \
+      register uint32_t a_tmp asm ("r3");				      \
+      register uint32_t a_oldval2 asm ("r4") = oldval_arg.v;		      \
+      __asm__ __volatile__						      \
+@@ -79,11 +86,12 @@
+      (__typeof (oldval)) a_tmp; })
+ #else
+ # define __arm_assisted_compare_and_exchange_val_32_acq(mem, newval, oldval) \
+-  ({ union { __typeof (oldval) a; uint32_t v; } oldval_arg = { .a = (oldval) };\
++  ({ union { __typeof (mem) a; uint32_t v; } mem_arg = { .a = (mem) };       \
++     union { __typeof (oldval) a; uint32_t v; } oldval_arg = { .a = (oldval) };\
+      union { __typeof (newval) a; uint32_t v; } newval_arg = { .a = (newval) };\
+      register uint32_t a_oldval asm ("r0");				      \
+      register uint32_t a_newval asm ("r1") = newval_arg.v;		      \
+-     register __typeof (mem) a_ptr asm ("r2") = (mem);			      \
++     register uint32_t a_ptr asm ("r2") = mem_arg.v;			      \
+      register uint32_t a_tmp asm ("r3");				      \
+      register uint32_t a_oldval2 asm ("r4") = oldval_arg.v;		      \
+      __asm__ __volatile__						      \
 diff --git a/sysdeps/unix/sysv/linux/bits/types/siginfo_t.h b/sysdeps/unix/sysv/linux/bits/types/siginfo_t.h
 index 33766d1813..43c4e009a4 100644
 --- a/sysdeps/unix/sysv/linux/bits/types/siginfo_t.h
@@ -5938,6 +6035,23 @@ index 42da321149..17ea905aa6 100644
      return result;
  #endif
    /* Trying to emulate the pwritev2 syscall flags is troublesome:
+diff --git a/sysdeps/unix/sysv/linux/riscv/flush-icache.c b/sysdeps/unix/sysv/linux/riscv/flush-icache.c
+index d612ef4c6c..0b2042620b 100644
+--- a/sysdeps/unix/sysv/linux/riscv/flush-icache.c
++++ b/sysdeps/unix/sysv/linux/riscv/flush-icache.c
+@@ -21,7 +21,11 @@
+ #include <stdlib.h>
+ #include <atomic.h>
+ #include <sys/cachectl.h>
+-#include <asm/syscalls.h>
++#if __has_include__ (<asm/syscalls.h>)
++# include <asm/syscalls.h>
++#else
++# include <asm/unistd.h>
++#endif
+ 
+ typedef int (*func_type) (void *, void *, unsigned long int);
+ 
 diff --git a/sysdeps/unix/sysv/linux/s390/force-elision.h b/sysdeps/unix/sysv/linux/s390/force-elision.h
 index d8a1b9972f..71f32367dd 100644
 --- a/sysdeps/unix/sysv/linux/s390/force-elision.h
