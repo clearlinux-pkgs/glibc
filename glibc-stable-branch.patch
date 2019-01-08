@@ -1,8 +1,17 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..feca77e0b5 100644
+index 08b42bd2f5..1c82ee2834 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,539 @@
+@@ -1,3 +1,548 @@
++2019-01-07  Aurelien Jarno  <aurelien@aurel32.net>
++
++	[BZ #24024]
++	* Makeconfig: Build libm with -fno-math-errno but build the remaining
++	code with -fmath-errno.
++	* string/Makefile [$(build-shared)] (tests): Add test-strerror-errno.
++	[$(build-shared)] (LDLIBS-test-strerror-errno): New variable.
++	* string/test-strerror-errno.c: New file.
++
 +2019-01-03  Martin Jansa  <Martin.Jansa@gmail.com>
 +
 +	[BZ #19444]
@@ -542,11 +551,28 @@ index 08b42bd2f5..feca77e0b5 100644
  2018-08-01  Carlos O'Donel  <carlos@redhat.com>
  
  	* version.h (RELEASE): Set to "stable".
+diff --git a/Makeconfig b/Makeconfig
+index 608ffe648c..f5e81bdf5d 100644
+--- a/Makeconfig
++++ b/Makeconfig
+@@ -831,8 +831,10 @@ endif
+ # disable any optimization that assume default rounding mode.
+ +math-flags = -frounding-math
+ 
+-# Build libc/libm using -fno-math-errno, but run testsuite with -fmath-errno.
+-+extra-math-flags = $(if $(filter libnldbl nonlib testsuite,$(in-module)),-fmath-errno,-fno-math-errno)
++# Logically only "libnldbl", "nonlib" and "testsuite" should be using
++# -fno-math-errno. However due to GCC bug #88576, only "libm" can use
++# -fno-math-errno.
+++extra-math-flags = $(if $(filter libm,$(in-module)),-fno-math-errno,-fmath-errno)
+ 
+ # We might want to compile with some stack-protection flag.
+ ifneq ($(stack-protector),)
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..af2be85488 100644
+index 154ab22d7c..50a5e9f1c1 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,41 @@ See the end for copying conditions.
+@@ -5,6 +5,42 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -576,6 +602,7 @@ index 154ab22d7c..af2be85488 100644
 +  [23972] __old_getdents64 uses wrong d_off value on overflow
 +  [24018] gettext may return NULL
 +  [24022] riscv may lack <asm/syscalls.h>
++  [24024] strerror() might set errno to ENOMEM due to -fno-math-error
 +  [24027] malloc: Integer overflow in realloc
 +  [24034] tst-cancel21-static fails with SIGBUS on pre-ARMv7 when using GCC 8
 +
@@ -3534,6 +3561,23 @@ index d14638d68e..dc53c1e521 100644
    return 0;
  }
  
+diff --git a/string/Makefile b/string/Makefile
+index 680431f921..aa2da9ca72 100644
+--- a/string/Makefile
++++ b/string/Makefile
+@@ -64,6 +64,12 @@ tests		:= tester inl-tester noinl-tester testcopy test-ffs	\
+ # This test allocates a lot of memory and can run for a long time.
+ xtests = tst-strcoll-overflow
+ 
++# This test needs libdl.
++ifeq (yes,$(build-shared))
++tests += test-strerror-errno
++LDLIBS-test-strerror-errno = $(libdl)
++endif
++
+ ifeq ($(run-built-tests),yes)
+ tests-special += $(objpfx)tst-svc-cmp.out
+ endif
 diff --git a/string/strcasestr.c b/string/strcasestr.c
 index 5909fe3cdb..421764bd1b 100644
 --- a/string/strcasestr.c
@@ -3566,6 +3610,73 @@ index 265e9f310c..79ebcc7532 100644
  #define CHECK_EOL (1)
  #define RET0_IF_0(a) if (!a) goto ret0
  #define FASTSEARCH(S,C,N) (void*) strchr ((void*)(S), (C))
+diff --git a/string/test-strerror-errno.c b/string/test-strerror-errno.c
+new file mode 100644
+index 0000000000..8e744e7ed9
+--- /dev/null
++++ b/string/test-strerror-errno.c
+@@ -0,0 +1,61 @@
++/* BZ #24024 strerror and errno test.
++
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <dlfcn.h>
++#include <errno.h>
++#include <string.h>
++
++#include <support/check.h>
++#include <support/support.h>
++
++/* malloc is allowed to change errno to a value different than 0, even when
++   there is no actual error.  This happens for example when the memory
++   allocation through sbrk fails.  Simulate this by interposing our own
++   malloc implementation which sets errno to ENOMEM and calls the original
++   malloc.  */
++void
++*malloc (size_t size)
++{
++  static void *(*real_malloc) (size_t size);
++
++  if (!real_malloc)
++    real_malloc = dlsym (RTLD_NEXT, "malloc");
++
++  errno = ENOMEM;
++
++  return (*real_malloc) (size);
++}
++
++/* strerror must not change the value of errno.  Unfortunately due to GCC bug
++   #88576, this happens when -fmath-errno is used.  This simple test checks
++   that it doesn't happen.  */
++static int
++do_test (void)
++{
++  char *msg;
++
++  errno = 0;
++  msg = strerror (-3);
++  (void) msg;
++  TEST_COMPARE (errno, 0);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/string/test-strstr.c b/string/test-strstr.c
 index 8d99716ff3..5861b01b73 100644
 --- a/string/test-strstr.c
