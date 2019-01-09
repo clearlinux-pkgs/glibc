@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.28
-Release:        231
+Release:        232
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -47,6 +47,7 @@ Patch54: 	strcpy-avx2.patch
 # Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
 # Required for linux-steam-integration
 Patch61: 	fix-ld-audit-performance.patch
+Patch62:	c-utf8-locale.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -219,6 +220,7 @@ GNU C library extra components.
 %patch53 -p1
 %patch54 -p1
 %patch61 -p1
+%patch62 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
@@ -527,6 +529,7 @@ popd
 
 %files -n libc6
 %dir /usr/share/locale
+/usr/share/locale/C.UTF-8
 /usr/share/locale/en_US.UTF-8
 /usr/lib64/audit/sotruss-lib.so
 /usr/lib64/gconv/ANSI_X3.110.so
@@ -708,6 +711,7 @@ popd
 # TODO: SPLIT!
 %files locale
 /usr/share/locale
+%exclude /usr/share/locale/C.UTF-8
 # NOTE: en_US.UTF-8 locale files are installed by libc6; avoid installing them
 # in the -locale subpackage, because it triggers a bug in librpm that can
 # corrupt file permissions and therefore lead to corrupt swupd update content...
