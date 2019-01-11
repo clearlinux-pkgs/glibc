@@ -229,7 +229,7 @@ export LANG=C
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 "
+export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
@@ -277,7 +277,7 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 "
+export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC "
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -325,7 +325,7 @@ popd
 mkdir ../glibc-buildroot-avx512
 pushd ../glibc-buildroot-avx512
 
-export CFLAGS="-O3 -march=skylake-avx512 -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 "
+export CFLAGS="-O3 -march=skylake-avx512 -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC "
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -494,6 +494,9 @@ ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/share/locale/locale-ar
 
 mkdir -p %{buildroot}/usr/lib
 ln -s ../lib32/ld-linux.so.2  %{buildroot}/usr/lib/ld-linux.so.2
+
+# for oracle db installer (compat link)
+ln -sf libpthread.a %{buildroot}/usr/lib64/libpthread_nonshared.a
 
 
 %check
@@ -946,6 +949,7 @@ popd
 /usr/lib64/libmcheck.a
 /usr/lib64/libnsl.a
 /usr/lib64/libpthread.a
+/usr/lib64/libpthread_nonshared.a
 /usr/lib64/libresolv.a
 /usr/lib64/librpcsvc.a
 /usr/lib64/librt.a
