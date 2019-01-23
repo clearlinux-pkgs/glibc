@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.28
-Release:        235
+Release:        236
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -51,6 +51,7 @@ Patch62:	c-utf8-locale.patch
 
 # cves
 Patch101:   CVE-2016-10739.patch
+Patch102:   CVE-2019-6488.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -226,6 +227,7 @@ GNU C library extra components.
 %patch62 -p1
 
 %patch101 -p1
+%patch102 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
