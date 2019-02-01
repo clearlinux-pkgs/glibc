@@ -1,11 +1,10 @@
---- glibc-2.27/sysdeps/x86_64/atomic-machine.h~	2018-02-01 16:17:18.000000000 +0000
-+++ glibc-2.27/sysdeps/x86_64/atomic-machine.h	2018-04-28 14:19:06.374119197 +0000
-@@ -409,7 +409,7 @@
-      __result; })
+--- glibc-2.29/sysdeps/x86/atomic-machine.h~	2019-01-31 16:45:36.000000000 +0000
++++ glibc-2.29/sysdeps/x86/atomic-machine.h	2019-01-31 22:21:32.316611237 +0000
+@@ -566,6 +566,6 @@
+ #define atomic_read_barrier() __asm ("" ::: "memory")
+ #define atomic_write_barrier() __asm ("" ::: "memory")
  
+-#define atomic_spin_nop() __asm ("pause")
++#define atomic_spin_nop() __asm ("lfence")
  
--#define atomic_spin_nop() asm ("rep; nop")
-+#define atomic_spin_nop() asm ("lfence")
- 
- 
- #define __arch_and_body(lock, mem, mask) \
+ #endif /* atomic-machine.h */

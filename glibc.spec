@@ -2,13 +2,13 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.28
+Version:        2.29
 Release:        238
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.28.tar.gz
+Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.29.tar.gz
 Source1:        langs.txt
 
 Patch1:		glibc-stable-branch.patch
@@ -42,7 +42,6 @@ Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
 Patch53: 	nostackshrink.patch
-Patch54: 	strcpy-avx2.patch
 
 # Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
 # Required for linux-steam-integration
@@ -50,8 +49,6 @@ Patch61: 	fix-ld-audit-performance.patch
 Patch62:	c-utf8-locale.patch
 
 # cves
-Patch101:   CVE-2016-10739.patch
-Patch102:   CVE-2019-6488.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -196,7 +193,7 @@ GNU C library extra components.
 %prep
 %setup -q
 
-%patch1 -p1
+#%patch1 -p1
 %patch4 -p1
 %patch6 -p1
 %patch7 -p1
@@ -222,12 +219,9 @@ GNU C library extra components.
 %patch51 -p1
 %patch52 -p1
 %patch53 -p1
-%patch54 -p1
 %patch61 -p1
 %patch62 -p1
 
-%patch101 -p1
-%patch102 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
@@ -240,7 +234,7 @@ export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.28/configure \
+../glibc-2.29/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -289,7 +283,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.28/configure \
+../glibc-2.29/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -337,7 +331,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.28/configure \
+../glibc-2.29/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -385,7 +379,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -g2  -Wl,-z,max-page-size
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.28/configure \
+../glibc-2.29/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -442,22 +436,22 @@ popd
 
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.28.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.28.so
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.28.so
-cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.28.so
-ln -s libm-2.28.so %{buildroot}/usr/lib64/haswell/libm.so.6
-ln -s libmvec-2.28.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-ln -s libcrypt-2.28.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
-ln -s libc-2.28.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.29.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.29.so
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.29.so
+cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.29.so
+ln -s libm-2.29.so %{buildroot}/usr/lib64/haswell/libm.so.6
+ln -s libmvec-2.29.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+ln -s libcrypt-2.29.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+ln -s libc-2.29.so  %{buildroot}/usr/lib64/haswell/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
 mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
-cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.28.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.28.so
-ln -s libm-2.28.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
-ln -s libmvec-2.28.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.29.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.29.so
+ln -s libm-2.29.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
+ln -s libmvec-2.29.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
 popd
 
 
@@ -664,50 +658,50 @@ popd
 /usr/lib64/gconv/VISCII.so
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
-/usr/lib64/ld-2.28.so
+/usr/lib64/ld-2.29.so
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/libBrokenLocale-2.28.so
+/usr/lib64/libBrokenLocale-2.29.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
-/usr/lib64/libanl-2.28.so
+/usr/lib64/libanl-2.29.so
 /usr/lib64/libanl.so.1
-/usr/lib64/libc-2.28.so
+/usr/lib64/libc-2.29.so
 /usr/lib64/libc.so.6
-/usr/lib64/libcrypt-2.28.so
+/usr/lib64/libcrypt-2.29.so
 /usr/lib64/libcrypt.so.1
-/usr/lib64/libdl-2.28.so
+/usr/lib64/libdl-2.29.so
 /usr/lib64/libdl.so.2
-/usr/lib64/libm-2.28.so
+/usr/lib64/libm-2.29.so
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
-/usr/lib64/libnsl-2.28.so
+/usr/lib64/libnsl-2.29.so
 /usr/lib64/libnsl.so.1
-/usr/lib64/libnss_dns-2.28.so
+/usr/lib64/libnss_dns-2.29.so
 /usr/lib64/libnss_dns.so.2
-/usr/lib64/libnss_files-2.28.so
+/usr/lib64/libnss_files-2.29.so
 /usr/lib64/libnss_files.so.2
-/usr/lib64/libnss_hesiod-2.28.so
+/usr/lib64/libnss_hesiod-2.29.so
 /usr/lib64/libnss_hesiod.so.2
-/usr/lib64/libnss_compat-2.28.so
+/usr/lib64/libnss_compat-2.29.so
 /usr/lib64/libnss_compat.so
 /usr/lib64/libnss_compat.so.2
 /usr/lib64/libpcprofile.so
-/usr/lib64/libpthread-2.28.so
+/usr/lib64/libpthread-2.29.so
 /usr/lib64/libpthread.so.0
-/usr/lib64/libresolv-2.28.so
+/usr/lib64/libresolv-2.29.so
 /usr/lib64/libresolv.so.2
-/usr/lib64/librt-2.28.so
+/usr/lib64/librt-2.29.so
 /usr/lib64/librt.so.1
 /usr/lib64/libthread_db-1.0.so
 /usr/lib64/libthread_db.so.1
-/usr/lib64/libutil-2.28.so
+/usr/lib64/libutil-2.29.so
 /usr/lib64/libutil.so.1
-/usr/lib64/libmvec-2.28.so
+/usr/lib64/libmvec-2.29.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm-2.28.so
+/usr/lib64/haswell/libm-2.29.so
 /usr/lib64/haswell/libm.so.6
 
 /sbin/ldconfig
@@ -961,7 +955,7 @@ popd
 /usr/lib64/librpcsvc.a
 /usr/lib64/librt.a
 /usr/lib64/libutil.a
-/usr/lib64/libm-2.28.a
+/usr/lib64/libm-2.29.a
 /usr/lib64/libmvec.a
 
 
@@ -970,13 +964,13 @@ popd
 
 %files extras
 /usr/bin/makedb
-/usr/lib64/libnss_db-2.28.so
+/usr/lib64/libnss_db-2.29.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
-/usr/lib64/libnss_nis-2.28.so
+/usr/lib64/libnss_nis-2.29.so
 /usr/lib64/libnss_nis.so
 /usr/lib64/libnss_nis.so.2
-/usr/lib64/libnss_nisplus-2.28.so
+/usr/lib64/libnss_nisplus-2.29.so
 /usr/lib64/libnss_nisplus.so
 /usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
