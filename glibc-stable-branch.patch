@@ -1,8 +1,104 @@
 diff --git a/ChangeLog b/ChangeLog
-index 08b42bd2f5..7ed2d0fbec 100644
+index 08b42bd2f5..2662d44da0 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,553 @@
+@@ -1,3 +1,649 @@
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/multiarch/strlen-avx2.S: Use RSI_LP for length.
++	Clear the upper 32 bits of RSI register.
++	* sysdeps/x86_64/strlen.S: Use RSI_LP for length.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-strnlen
++	and tst-size_t-wcsnlen.
++	* sysdeps/x86_64/x32/tst-size_t-strnlen.c: New file.
++	* sysdeps/x86_64/x32/tst-size_t-wcsnlen.c: Likewise.
++
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/multiarch/strcpy-sse2-unaligned.S: Use RDX_LP
++	for length.
++	* sysdeps/x86_64/multiarch/strcpy-ssse3.S: Likewise.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-strncpy.
++	* sysdeps/x86_64/x32/tst-size_t-strncpy.c: New file.
++
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/multiarch/strcmp-avx2.S: Use RDX_LP for length.
++	* sysdeps/x86_64/multiarch/strcmp-sse42.S: Likewise.
++	* sysdeps/x86_64/strcmp.S: Likewise.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-strncasecmp,
++	tst-size_t-strncmp and tst-size_t-wcsncmp.
++	* sysdeps/x86_64/x32/tst-size_t-strncasecmp.c: New file.
++	* sysdeps/x86_64/x32/tst-size_t-strncmp.c: Likewise.
++	* sysdeps/x86_64/x32/tst-size_t-wcsncmp.c: Likewise.
++
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S: Use
++	RDX_LP for length.  Clear the upper 32 bits of RDX register.
++	* sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S: Likewise.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-wmemset.
++	* sysdeps/x86_64/x32/tst-size_t-memset.c: New file.
++	* sysdeps/x86_64/x32/tst-size_t-wmemset.c: Likewise.
++
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/memrchr.S: Use RDX_LP for length.
++	* sysdeps/x86_64/multiarch/memrchr-avx2.S: Likewise.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-memrchr.
++	* sysdeps/x86_64/x32/tst-size_t-memrchr.c: New file.
++
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/multiarch/memcpy-ssse3-back.S: Use RDX_LP for
++	length.  Clear the upper 32 bits of RDX register.
++	* sysdeps/x86_64/multiarch/memcpy-ssse3.S: Likewise.
++	* sysdeps/x86_64/multiarch/memmove-avx512-no-vzeroupper.S:
++	Likewise.
++	* sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:
++	Likewise.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-memcpy.
++	tst-size_t-wmemchr.
++	* sysdeps/x86_64/x32/tst-size_t-memcpy.c: New file.
++
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S: Use RDX_LP for
++	length.  Clear the upper 32 bits of RDX register.
++	* sysdeps/x86_64/multiarch/memcmp-sse4.S: Likewise.
++	* sysdeps/x86_64/multiarch/memcmp-ssse3.S: Likewise.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-memcmp and
++	tst-size_t-wmemcmp.
++	* sysdeps/x86_64/x32/tst-size_t-memcmp.c: New file.
++	* sysdeps/x86_64/x32/tst-size_t-wmemcmp.c: Likewise.
++
++2019-02-01  H.J. Lu  <hongjiu.lu@intel.com>
++
++	[BZ #24097]
++	CVE-2019-6488
++	* sysdeps/x86_64/memchr.S: Use RDX_LP for length.  Clear the
++	upper 32 bits of RDX register.
++	* sysdeps/x86_64/multiarch/memchr-avx2.S: Likewise.
++	* sysdeps/x86_64/x32/Makefile (tests): Add tst-size_t-memchr and
++	tst-size_t-wmemchr.
++	* sysdeps/x86_64/x32/test-size_t.h: New file.
++	* sysdeps/x86_64/x32/tst-size_t-memchr.c: Likewise.
++	* sysdeps/x86_64/x32/tst-size_t-wmemchr.c: Likewise.
++
 +2019-01-16  Tulio Magno Quites Machado Filho  <tuliom@linux.ibm.com>
 +
 +	* math/libm-test-fma.inc (fma_test_data): Set
@@ -574,10 +670,10 @@ index 608ffe648c..f5e81bdf5d 100644
  # We might want to compile with some stack-protection flag.
  ifneq ($(stack-protector),)
 diff --git a/NEWS b/NEWS
-index 154ab22d7c..50a5e9f1c1 100644
+index 154ab22d7c..4c50500e95 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,42 @@ See the end for copying conditions.
+@@ -5,6 +5,50 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -610,12 +706,20 @@ index 154ab22d7c..50a5e9f1c1 100644
 +  [24024] strerror() might set errno to ENOMEM due to -fno-math-error
 +  [24027] malloc: Integer overflow in realloc
 +  [24034] tst-cancel21-static fails with SIGBUS on pre-ARMv7 when using GCC 8
++  [24097] Can't use 64-bit register for size_t in assembly codes for x32 (CVE-2019-6488)
 +
 +Security related changes:
 +
 +  CVE-2018-19591: A file descriptor leak in if_nametoindex can lead to a
 +  denial of service due to resource exhaustion when processing getaddrinfo
 +  calls with crafted host names.  Reported by Guido Vranken.
++
++  CVE-2019-6488: On x32, the size_t parameter may be passed in the lower
++  32 bits of a 64-bit register with with non-zero upper 32 bit.  When it
++  happened, accessing the 32-bit size_t value as the full 64-bit register
++  in the assembly string/memory functions would cause a buffer overflow.
++  Reported by H.J. Lu.
++
 +
  Version 2.28
  
@@ -6720,6 +6824,1557 @@ index 6ecc50fb42..33f100d8b1 100644
  }
  
  #endif /* dl-irel.h */
+diff --git a/sysdeps/x86_64/memchr.S b/sysdeps/x86_64/memchr.S
+index feef5d4f24..cb320257a2 100644
+--- a/sysdeps/x86_64/memchr.S
++++ b/sysdeps/x86_64/memchr.S
+@@ -34,12 +34,16 @@ ENTRY(MEMCHR)
+ 	mov	%edi, %ecx
+ 
+ #ifdef USE_AS_WMEMCHR
+-	test	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	jz	L(return_null)
+-	shl	$2, %rdx
++	shl	$2, %RDX_LP
+ #else
++# ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	movl	%edx, %edx
++# endif
+ 	punpcklbw %xmm1, %xmm1
+-	test	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	jz	L(return_null)
+ 	punpcklbw %xmm1, %xmm1
+ #endif
+diff --git a/sysdeps/x86_64/memrchr.S b/sysdeps/x86_64/memrchr.S
+index b8e3fa1d87..dc82f8f73d 100644
+--- a/sysdeps/x86_64/memrchr.S
++++ b/sysdeps/x86_64/memrchr.S
+@@ -24,13 +24,13 @@
+ ENTRY (__memrchr)
+ 	movd	%esi, %xmm1
+ 
+-	sub	$16, %rdx
++	sub	$16, %RDX_LP
+ 	jbe	L(length_less16)
+ 
+ 	punpcklbw	%xmm1, %xmm1
+ 	punpcklbw	%xmm1, %xmm1
+ 
+-	add	%rdx, %rdi
++	add	%RDX_LP, %RDI_LP
+ 	pshufd	$0, %xmm1, %xmm1
+ 
+ 	movdqu	(%rdi), %xmm0
+diff --git a/sysdeps/x86_64/multiarch/memchr-avx2.S b/sysdeps/x86_64/multiarch/memchr-avx2.S
+index 5f5e772554..c81da19bf0 100644
+--- a/sysdeps/x86_64/multiarch/memchr-avx2.S
++++ b/sysdeps/x86_64/multiarch/memchr-avx2.S
+@@ -40,16 +40,20 @@
+ ENTRY (MEMCHR)
+ # ifndef USE_AS_RAWMEMCHR
+ 	/* Check for zero length.  */
+-	testq	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	jz	L(null)
+ # endif
+ 	movl	%edi, %ecx
+ 	/* Broadcast CHAR to YMM0.  */
+ 	vmovd	%esi, %xmm0
+ # ifdef USE_AS_WMEMCHR
+-	shl	$2, %rdx
++	shl	$2, %RDX_LP
+ 	vpbroadcastd %xmm0, %ymm0
+ # else
++#  ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	movl	%edx, %edx
++#  endif
+ 	vpbroadcastb %xmm0, %ymm0
+ # endif
+ 	/* Check if we may cross page boundary with one vector load.  */
+diff --git a/sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S b/sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S
+index 30f764c393..e3a35b899e 100644
+--- a/sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S
++++ b/sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S
+@@ -58,9 +58,12 @@
+ 	.section .text.avx,"ax",@progbits
+ ENTRY (MEMCMP)
+ # ifdef USE_AS_WMEMCMP
+-	shl	$2, %rdx
++	shl	$2, %RDX_LP
++# elif defined __ILP32__
++	/* Clear the upper 32 bits.  */
++	movl	%edx, %edx
+ # endif
+-	cmpq	$VEC_SIZE, %rdx
++	cmp	$VEC_SIZE, %RDX_LP
+ 	jb	L(less_vec)
+ 
+ 	/* From VEC to 2 * VEC.  No branch when size == VEC_SIZE.  */
+diff --git a/sysdeps/x86_64/multiarch/memcmp-sse4.S b/sysdeps/x86_64/multiarch/memcmp-sse4.S
+index 8e164f2cb6..302900f5b8 100644
+--- a/sysdeps/x86_64/multiarch/memcmp-sse4.S
++++ b/sysdeps/x86_64/multiarch/memcmp-sse4.S
+@@ -42,13 +42,16 @@
+ 	.section .text.sse4.1,"ax",@progbits
+ ENTRY (MEMCMP)
+ # ifdef USE_AS_WMEMCMP
+-	shl	$2, %rdx
++	shl	$2, %RDX_LP
++# elif defined __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
+ # endif
+ 	pxor	%xmm0, %xmm0
+-	cmp	$79, %rdx
++	cmp	$79, %RDX_LP
+ 	ja	L(79bytesormore)
+ # ifndef USE_AS_WMEMCMP
+-	cmp	$1, %rdx
++	cmp	$1, %RDX_LP
+ 	je	L(firstbyte)
+ # endif
+ 	add	%rdx, %rsi
+diff --git a/sysdeps/x86_64/multiarch/memcmp-ssse3.S b/sysdeps/x86_64/multiarch/memcmp-ssse3.S
+index 6f76c64123..69d030fc00 100644
+--- a/sysdeps/x86_64/multiarch/memcmp-ssse3.S
++++ b/sysdeps/x86_64/multiarch/memcmp-ssse3.S
+@@ -33,9 +33,12 @@
+ 	atom_text_section
+ ENTRY (MEMCMP)
+ # ifdef USE_AS_WMEMCMP
+-	shl	$2, %rdx
+-	test	%rdx, %rdx
++	shl	$2, %RDX_LP
++	test	%RDX_LP, %RDX_LP
+ 	jz	L(equal)
++# elif defined __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
+ # endif
+ 	mov	%rdx, %rcx
+ 	mov	%rdi, %rdx
+diff --git a/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S b/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S
+index 3cd1123326..568eebd3ae 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S
++++ b/sysdeps/x86_64/multiarch/memcpy-ssse3-back.S
+@@ -45,28 +45,33 @@
+ 	.section .text.ssse3,"ax",@progbits
+ #if !defined USE_AS_MEMPCPY && !defined USE_AS_MEMMOVE
+ ENTRY (MEMPCPY_CHK)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMPCPY_CHK)
+ 
+ ENTRY (MEMPCPY)
+-	movq	%rdi, %rax
+-	addq	%rdx, %rax
++	mov	%RDI_LP, %RAX_LP
++	add	%RDX_LP, %RAX_LP
+ 	jmp	L(start)
+ END (MEMPCPY)
+ #endif
+ 
+ #if !defined USE_AS_BCOPY
+ ENTRY (MEMCPY_CHK)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMCPY_CHK)
+ #endif
+ 
+ ENTRY (MEMCPY)
+-	mov	%rdi, %rax
++	mov	%RDI_LP, %RAX_LP
+ #ifdef USE_AS_MEMPCPY
+-	add	%rdx, %rax
++	add	%RDX_LP, %RAX_LP
++#endif
++
++#ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
+ #endif
+ 
+ #ifdef USE_AS_MEMMOVE
+diff --git a/sysdeps/x86_64/multiarch/memcpy-ssse3.S b/sysdeps/x86_64/multiarch/memcpy-ssse3.S
+index 0240bfa309..0bd5ee999a 100644
+--- a/sysdeps/x86_64/multiarch/memcpy-ssse3.S
++++ b/sysdeps/x86_64/multiarch/memcpy-ssse3.S
+@@ -45,28 +45,33 @@
+ 	.section .text.ssse3,"ax",@progbits
+ #if !defined USE_AS_MEMPCPY && !defined USE_AS_MEMMOVE
+ ENTRY (MEMPCPY_CHK)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMPCPY_CHK)
+ 
+ ENTRY (MEMPCPY)
+-	movq	%rdi, %rax
+-	addq	%rdx, %rax
++	mov	%RDI_LP, %RAX_LP
++	add	%RDX_LP, %RAX_LP
+ 	jmp	L(start)
+ END (MEMPCPY)
+ #endif
+ 
+ #if !defined USE_AS_BCOPY
+ ENTRY (MEMCPY_CHK)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMCPY_CHK)
+ #endif
+ 
+ ENTRY (MEMCPY)
+-	mov	%rdi, %rax
++	mov	%RDI_LP, %RAX_LP
+ #ifdef USE_AS_MEMPCPY
+-	add	%rdx, %rax
++	add	%RDX_LP, %RAX_LP
++#endif
++
++#ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
+ #endif
+ 
+ #ifdef USE_AS_MEMMOVE
+diff --git a/sysdeps/x86_64/multiarch/memmove-avx512-no-vzeroupper.S b/sysdeps/x86_64/multiarch/memmove-avx512-no-vzeroupper.S
+index effc3ac2de..6ca2bbc91a 100644
+--- a/sysdeps/x86_64/multiarch/memmove-avx512-no-vzeroupper.S
++++ b/sysdeps/x86_64/multiarch/memmove-avx512-no-vzeroupper.S
+@@ -24,27 +24,31 @@
+ 
+ 	.section .text.avx512,"ax",@progbits
+ ENTRY (__mempcpy_chk_avx512_no_vzeroupper)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (__mempcpy_chk_avx512_no_vzeroupper)
+ 
+ ENTRY (__mempcpy_avx512_no_vzeroupper)
+-	movq	%rdi, %rax
+-	addq	%rdx, %rax
++	mov	%RDI_LP, %RAX_LP
++	add	%RDX_LP, %RAX_LP
+ 	jmp	L(start)
+ END (__mempcpy_avx512_no_vzeroupper)
+ 
+ ENTRY (__memmove_chk_avx512_no_vzeroupper)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (__memmove_chk_avx512_no_vzeroupper)
+ 
+ ENTRY (__memmove_avx512_no_vzeroupper)
+-	mov	%rdi, %rax
++	mov	%RDI_LP, %RAX_LP
+ # ifdef USE_AS_MEMPCPY
+-	add	%rdx, %rax
++	add	%RDX_LP, %RAX_LP
+ # endif
+ L(start):
++# ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
++# endif
+ 	lea	(%rsi, %rdx), %rcx
+ 	lea	(%rdi, %rdx), %r9
+ 	cmp	$512, %rdx
+diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+index e2ede45e9f..9bab1147d5 100644
+--- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+@@ -106,20 +106,20 @@
+ 	.section SECTION(.text),"ax",@progbits
+ #if defined SHARED && IS_IN (libc)
+ ENTRY (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned))
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned))
+ #endif
+ 
+ ENTRY (MEMPCPY_SYMBOL (__mempcpy, unaligned))
+-	movq	%rdi, %rax
+-	addq	%rdx, %rax
++	mov	%RDI_LP, %RAX_LP
++	add	%RDX_LP, %RAX_LP
+ 	jmp	L(start)
+ END (MEMPCPY_SYMBOL (__mempcpy, unaligned))
+ 
+ #if defined SHARED && IS_IN (libc)
+ ENTRY (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned))
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned))
+ #endif
+@@ -127,9 +127,13 @@ END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned))
+ ENTRY (MEMMOVE_SYMBOL (__memmove, unaligned))
+ 	movq	%rdi, %rax
+ L(start):
+-	cmpq	$VEC_SIZE, %rdx
++# ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	movl	%edx, %edx
++# endif
++	cmp	$VEC_SIZE, %RDX_LP
+ 	jb	L(less_vec)
+-	cmpq	$(VEC_SIZE * 2), %rdx
++	cmp	$(VEC_SIZE * 2), %RDX_LP
+ 	ja	L(more_2x_vec)
+ #if !defined USE_MULTIARCH || !IS_IN (libc)
+ L(last_2x_vec):
+@@ -149,38 +153,38 @@ END (MEMMOVE_SYMBOL (__memmove, unaligned))
+ 
+ # if VEC_SIZE == 16
+ ENTRY (__mempcpy_chk_erms)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (__mempcpy_chk_erms)
+ 
+ /* Only used to measure performance of REP MOVSB.  */
+ ENTRY (__mempcpy_erms)
+-	movq	%rdi, %rax
++	mov	%RDI_LP, %RAX_LP
+ 	/* Skip zero length.  */
+-	testq	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	jz	2f
+-	addq	%rdx, %rax
++	add	%RDX_LP, %RAX_LP
+ 	jmp	L(start_movsb)
+ END (__mempcpy_erms)
+ 
+ ENTRY (__memmove_chk_erms)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (__memmove_chk_erms)
+ 
+ ENTRY (__memmove_erms)
+ 	movq	%rdi, %rax
+ 	/* Skip zero length.  */
+-	testq	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	jz	2f
+ L(start_movsb):
+-	movq	%rdx, %rcx
+-	cmpq	%rsi, %rdi
++	mov	%RDX_LP, %RCX_LP
++	cmp	%RSI_LP, %RDI_LP
+ 	jb	1f
+ 	/* Source == destination is less common.  */
+ 	je	2f
+-	leaq	(%rsi,%rcx), %rdx
+-	cmpq	%rdx, %rdi
++	lea	(%rsi,%rcx), %RDX_LP
++	cmp	%RDX_LP, %RDI_LP
+ 	jb	L(movsb_backward)
+ 1:
+ 	rep movsb
+@@ -200,20 +204,20 @@ strong_alias (__memmove_chk_erms, __memcpy_chk_erms)
+ 
+ # ifdef SHARED
+ ENTRY (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned_erms))
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMMOVE_CHK_SYMBOL (__mempcpy_chk, unaligned_erms))
+ # endif
+ 
+ ENTRY (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
+-	movq	%rdi, %rax
+-	addq	%rdx, %rax
++	mov	%RDI_LP, %RAX_LP
++	add	%RDX_LP, %RAX_LP
+ 	jmp	L(start_erms)
+ END (MEMMOVE_SYMBOL (__mempcpy, unaligned_erms))
+ 
+ # ifdef SHARED
+ ENTRY (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
+ # endif
+@@ -221,9 +225,13 @@ END (MEMMOVE_CHK_SYMBOL (__memmove_chk, unaligned_erms))
+ ENTRY (MEMMOVE_SYMBOL (__memmove, unaligned_erms))
+ 	movq	%rdi, %rax
+ L(start_erms):
+-	cmpq	$VEC_SIZE, %rdx
++# ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	movl	%edx, %edx
++# endif
++	cmp	$VEC_SIZE, %RDX_LP
+ 	jb	L(less_vec)
+-	cmpq	$(VEC_SIZE * 2), %rdx
++	cmp	$(VEC_SIZE * 2), %RDX_LP
+ 	ja	L(movsb_more_2x_vec)
+ L(last_2x_vec):
+ 	/* From VEC and to 2 * VEC.  No branch when size == VEC_SIZE. */
+@@ -250,7 +258,7 @@ L(movsb):
+ # endif
+ 	jb	L(more_8x_vec_backward)
+ 1:
+-	movq	%rdx, %rcx
++	mov	%RDX_LP, %RCX_LP
+ 	rep movsb
+ L(nop):
+ 	ret
+diff --git a/sysdeps/x86_64/multiarch/memrchr-avx2.S b/sysdeps/x86_64/multiarch/memrchr-avx2.S
+index b41a58bcba..ce488dd9e8 100644
+--- a/sysdeps/x86_64/multiarch/memrchr-avx2.S
++++ b/sysdeps/x86_64/multiarch/memrchr-avx2.S
+@@ -32,10 +32,10 @@ ENTRY (__memrchr_avx2)
+ 	vmovd	%esi, %xmm0
+ 	vpbroadcastb %xmm0, %ymm0
+ 
+-	subq	$VEC_SIZE, %rdx
++	sub	$VEC_SIZE, %RDX_LP
+ 	jbe	L(last_vec_or_less)
+ 
+-	addq	%rdx, %rdi
++	add	%RDX_LP, %RDI_LP
+ 
+ 	/* Check the last VEC_SIZE bytes.  */
+ 	vpcmpeqb (%rdi), %ymm0, %ymm1
+diff --git a/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S b/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S
+index 689cc1199c..99e255195a 100644
+--- a/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S
++++ b/sysdeps/x86_64/multiarch/memset-avx512-no-vzeroupper.S
+@@ -29,12 +29,16 @@
+ 	.section .text.avx512,"ax",@progbits
+ #if defined PIC
+ ENTRY (MEMSET_CHK)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (MEMSET_CHK)
+ #endif
+ 
+ ENTRY (MEMSET)
++# ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
++# endif
+ 	vpxor	%xmm0, %xmm0, %xmm0
+ 	vmovd	%esi, %xmm1
+ 	lea	(%rdi, %rdx), %rsi
+diff --git a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+index dc9cb88b37..a44f1bc3b2 100644
+--- a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+@@ -75,8 +75,8 @@
+ 	.section SECTION(.text),"ax",@progbits
+ #if VEC_SIZE == 16 && IS_IN (libc)
+ ENTRY (__bzero)
+-	movq	%rdi, %rax /* Set return value.  */
+-	movq	%rsi, %rdx /* Set n.  */
++	mov	%RDI_LP, %RAX_LP /* Set return value.  */
++	mov	%RSI_LP, %RDX_LP /* Set n.  */
+ 	pxor	%xmm0, %xmm0
+ 	jmp	L(entry_from_bzero)
+ END (__bzero)
+@@ -86,13 +86,13 @@ weak_alias (__bzero, bzero)
+ #if IS_IN (libc)
+ # if defined SHARED
+ ENTRY_CHK (WMEMSET_CHK_SYMBOL (__wmemset_chk, unaligned))
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END_CHK (WMEMSET_CHK_SYMBOL (__wmemset_chk, unaligned))
+ # endif
+ 
+ ENTRY (WMEMSET_SYMBOL (__wmemset, unaligned))
+-	shlq	$2, %rdx
++	shl	$2, %RDX_LP
+ 	WMEMSET_VDUP_TO_VEC0_AND_SET_RETURN (%esi, %rdi)
+ 	jmp	L(entry_from_bzero)
+ END (WMEMSET_SYMBOL (__wmemset, unaligned))
+@@ -100,13 +100,17 @@ END (WMEMSET_SYMBOL (__wmemset, unaligned))
+ 
+ #if defined SHARED && IS_IN (libc)
+ ENTRY_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned))
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned))
+ #endif
+ 
+ ENTRY (MEMSET_SYMBOL (__memset, unaligned))
+ 	MEMSET_VDUP_TO_VEC0_AND_SET_RETURN (%esi, %rdi)
++# ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
++# endif
+ L(entry_from_bzero):
+ 	cmpq	$VEC_SIZE, %rdx
+ 	jb	L(less_vec)
+@@ -122,14 +126,14 @@ END (MEMSET_SYMBOL (__memset, unaligned))
+ 
+ # if VEC_SIZE == 16
+ ENTRY (__memset_chk_erms)
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END (__memset_chk_erms)
+ 
+ /* Only used to measure performance of REP STOSB.  */
+ ENTRY (__memset_erms)
+ 	/* Skip zero length.  */
+-	testq	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	jnz	 L(stosb)
+ 	movq	%rdi, %rax
+ 	ret
+@@ -141,11 +145,11 @@ ENTRY (MEMSET_SYMBOL (__memset, erms))
+ L(stosb):
+ 	/* Issue vzeroupper before rep stosb.  */
+ 	VZEROUPPER
+-	movq	%rdx, %rcx
++	mov	%RDX_LP, %RCX_LP
+ 	movzbl	%sil, %eax
+-	movq	%rdi, %rdx
++	mov	%RDI_LP, %RDX_LP
+ 	rep stosb
+-	movq	%rdx, %rax
++	mov	%RDX_LP, %RAX_LP
+ 	ret
+ # if VEC_SIZE == 16
+ END (__memset_erms)
+@@ -155,16 +159,20 @@ END (MEMSET_SYMBOL (__memset, erms))
+ 
+ # if defined SHARED && IS_IN (libc)
+ ENTRY_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned_erms))
+-	cmpq	%rdx, %rcx
++	cmp	%RDX_LP, %RCX_LP
+ 	jb	HIDDEN_JUMPTARGET (__chk_fail)
+ END_CHK (MEMSET_CHK_SYMBOL (__memset_chk, unaligned_erms))
+ # endif
+ 
+ ENTRY (MEMSET_SYMBOL (__memset, unaligned_erms))
+ 	MEMSET_VDUP_TO_VEC0_AND_SET_RETURN (%esi, %rdi)
+-	cmpq	$VEC_SIZE, %rdx
++# ifdef __ILP32__
++	/* Clear the upper 32 bits.  */
++	mov	%edx, %edx
++# endif
++	cmp	$VEC_SIZE, %RDX_LP
+ 	jb	L(less_vec)
+-	cmpq	$(VEC_SIZE * 2), %rdx
++	cmp	$(VEC_SIZE * 2), %RDX_LP
+ 	ja	L(stosb_more_2x_vec)
+ 	/* From VEC and to 2 * VEC.  No branch when size == VEC_SIZE.  */
+ 	VMOVU	%VEC(0), -VEC_SIZE(%rdi,%rdx)
+diff --git a/sysdeps/x86_64/multiarch/strcmp-avx2.S b/sysdeps/x86_64/multiarch/strcmp-avx2.S
+index e8397f3b05..78fc116877 100644
+--- a/sysdeps/x86_64/multiarch/strcmp-avx2.S
++++ b/sysdeps/x86_64/multiarch/strcmp-avx2.S
+@@ -79,15 +79,15 @@
+ ENTRY (STRCMP)
+ # ifdef USE_AS_STRNCMP
+ 	/* Check for simple cases (0 or 1) in offset.  */
+-	cmp	$1, %rdx
++	cmp	$1, %RDX_LP
+ 	je	L(char0)
+ 	jb	L(zero)
+ #  ifdef USE_AS_WCSCMP
+ 	/* Convert units: from wide to byte char.  */
+-	shl	$2, %rdx
++	shl	$2, %RDX_LP
+ #  endif
+ 	/* Register %r11 tracks the maximum offset.  */
+-	movq	%rdx, %r11
++	mov	%RDX_LP, %R11_LP
+ # endif
+ 	movl	%edi, %eax
+ 	xorl	%edx, %edx
+diff --git a/sysdeps/x86_64/multiarch/strcmp-sse42.S b/sysdeps/x86_64/multiarch/strcmp-sse42.S
+index d3c07bd292..a1ebea46fe 100644
+--- a/sysdeps/x86_64/multiarch/strcmp-sse42.S
++++ b/sysdeps/x86_64/multiarch/strcmp-sse42.S
+@@ -156,11 +156,11 @@ STRCMP_SSE42:
+ #endif
+ 
+ #if defined USE_AS_STRNCMP || defined USE_AS_STRNCASECMP_L
+-	test	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	je	LABEL(strcmp_exitz)
+-	cmp	$1, %rdx
++	cmp	$1, %RDX_LP
+ 	je	LABEL(Byte0)
+-	mov	%rdx, %r11
++	mov	%RDX_LP, %R11_LP
+ #endif
+ 	mov	%esi, %ecx
+ 	mov	%edi, %eax
+diff --git a/sysdeps/x86_64/multiarch/strcpy-sse2-unaligned.S b/sysdeps/x86_64/multiarch/strcpy-sse2-unaligned.S
+index 72bf7e8586..50aca22d2e 100644
+--- a/sysdeps/x86_64/multiarch/strcpy-sse2-unaligned.S
++++ b/sysdeps/x86_64/multiarch/strcpy-sse2-unaligned.S
+@@ -40,8 +40,8 @@
+ .text
+ ENTRY (STRCPY)
+ #  ifdef USE_AS_STRNCPY
+-	mov	%rdx, %r8
+-	test	%r8, %r8
++	mov	%RDX_LP, %R8_LP
++	test	%R8_LP, %R8_LP
+ 	jz	L(ExitZero)
+ #  endif
+ 	mov	%rsi, %rcx
+diff --git a/sysdeps/x86_64/multiarch/strcpy-ssse3.S b/sysdeps/x86_64/multiarch/strcpy-ssse3.S
+index 9858d0c4d5..0a62814a06 100644
+--- a/sysdeps/x86_64/multiarch/strcpy-ssse3.S
++++ b/sysdeps/x86_64/multiarch/strcpy-ssse3.S
+@@ -31,13 +31,13 @@ ENTRY (STRCPY)
+ 
+ 	mov	%rsi, %rcx
+ #  ifdef USE_AS_STRNCPY
+-	mov	%rdx, %r8
++	mov	%RDX_LP, %R8_LP
+ #  endif
+ 	mov	%rdi, %rdx
+ #  ifdef USE_AS_STRNCPY
+-	test	%r8, %r8
++	test	%R8_LP, %R8_LP
+ 	jz	L(Exit0)
+-	cmp	$8, %r8
++	cmp	$8, %R8_LP
+ 	jbe	L(StrncpyExit8Bytes)
+ # endif
+ 	cmpb	$0, (%rcx)
+diff --git a/sysdeps/x86_64/multiarch/strlen-avx2.S b/sysdeps/x86_64/multiarch/strlen-avx2.S
+index fb2418cddc..645e04461f 100644
+--- a/sysdeps/x86_64/multiarch/strlen-avx2.S
++++ b/sysdeps/x86_64/multiarch/strlen-avx2.S
+@@ -42,12 +42,15 @@
+ ENTRY (STRLEN)
+ # ifdef USE_AS_STRNLEN
+ 	/* Check for zero length.  */
+-	testq	%rsi, %rsi
++	test	%RSI_LP, %RSI_LP
+ 	jz	L(zero)
+ #  ifdef USE_AS_WCSLEN
+-	shl	$2, %rsi
++	shl	$2, %RSI_LP
++#  elif defined __ILP32__
++	/* Clear the upper 32 bits.  */
++	movl	%esi, %esi
+ #  endif
+-	movq	%rsi, %r8
++	mov	%RSI_LP, %R8_LP
+ # endif
+ 	movl	%edi, %ecx
+ 	movq	%rdi, %rdx
+diff --git a/sysdeps/x86_64/strcmp.S b/sysdeps/x86_64/strcmp.S
+index e16945b961..f47c8ad45c 100644
+--- a/sysdeps/x86_64/strcmp.S
++++ b/sysdeps/x86_64/strcmp.S
+@@ -135,11 +135,11 @@ ENTRY (STRCMP)
+  * This implementation uses SSE to compare up to 16 bytes at a time.
+  */
+ #if defined USE_AS_STRNCMP || defined USE_AS_STRNCASECMP_L
+-	test	%rdx, %rdx
++	test	%RDX_LP, %RDX_LP
+ 	je	LABEL(strcmp_exitz)
+-	cmp	$1, %rdx
++	cmp	$1, %RDX_LP
+ 	je	LABEL(Byte0)
+-	mov	%rdx, %r11
++	mov	%RDX_LP, %R11_LP
+ #endif
+ 	mov	%esi, %ecx
+ 	mov	%edi, %eax
+diff --git a/sysdeps/x86_64/strlen.S b/sysdeps/x86_64/strlen.S
+index 01cb5fa846..f845f3d46e 100644
+--- a/sysdeps/x86_64/strlen.S
++++ b/sysdeps/x86_64/strlen.S
+@@ -59,21 +59,21 @@ ENTRY(strlen)
+ 
+ #ifdef AS_STRNLEN
+ /* Do not read anything when n==0.  */
+-	test	%rsi, %rsi
++	test	%RSI_LP, %RSI_LP
+ 	jne	L(n_nonzero)
+ 	xor	%rax, %rax
+ 	ret
+ L(n_nonzero):
+ # ifdef AS_WCSLEN
+-	shlq	$2, %rsi
++	shl	$2, %RSI_LP
+ # endif
+ 
+ /* Initialize long lived registers.  */
+ 
+-	add	%rdi, %rsi
+-	mov	%rsi, %r10
+-	and	$-64, %r10
+-	mov	%rsi, %r11
++	add	%RDI_LP, %RSI_LP
++	mov	%RSI_LP, %R10_LP
++	and	$-64, %R10_LP
++	mov	%RSI_LP, %R11_LP
+ #endif
+ 
+ 	pxor	%xmm0, %xmm0
+diff --git a/sysdeps/x86_64/x32/Makefile b/sysdeps/x86_64/x32/Makefile
+index f2ebc24fb0..1557724b0c 100644
+--- a/sysdeps/x86_64/x32/Makefile
++++ b/sysdeps/x86_64/x32/Makefile
+@@ -4,3 +4,14 @@ ifeq ($(subdir),math)
+ # 64-bit llround.  Add -fno-builtin-lround to silence the compiler.
+ CFLAGS-s_llround.c += -fno-builtin-lround
+ endif
++
++ifeq ($(subdir),string)
++tests += tst-size_t-memchr tst-size_t-memcmp tst-size_t-memcpy \
++	 tst-size_t-memrchr tst-size_t-memset tst-size_t-strncasecmp \
++	 tst-size_t-strncmp tst-size_t-strncpy tst-size_t-strnlen
++endif
++
++ifeq ($(subdir),wcsmbs)
++tests += tst-size_t-wmemchr tst-size_t-wmemcmp tst-size_t-wmemset \
++	 tst-size_t-wcsncmp tst-size_t-wcsnlen
++endif
+diff --git a/sysdeps/x86_64/x32/test-size_t.h b/sysdeps/x86_64/x32/test-size_t.h
+new file mode 100644
+index 0000000000..78a940863e
+--- /dev/null
++++ b/sysdeps/x86_64/x32/test-size_t.h
+@@ -0,0 +1,35 @@
++/* Test string/memory functions with size_t in the lower 32 bits of
++   64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define TEST_MAIN
++#include <string/test-string.h>
++
++/* On x32, parameter_t may be passed in a 64-bit register with the LEN
++   field in the lower 32 bits.  When the LEN field of 64-bit register
++   is passed to string/memory function as the size_t parameter, only
++   the lower 32 bits can be used.  */
++typedef struct
++{
++  union
++    {
++      size_t len;
++      void (*fn) (void);
++    };
++  void *p;
++} parameter_t;
+diff --git a/sysdeps/x86_64/x32/tst-size_t-memchr.c b/sysdeps/x86_64/x32/tst-size_t-memchr.c
+new file mode 100644
+index 0000000000..29a3daf102
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-memchr.c
+@@ -0,0 +1,72 @@
++/* Test memchr with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifndef WIDE
++# define TEST_NAME "memchr"
++#else
++# define TEST_NAME "wmemchr"
++#endif /* WIDE */
++#include "test-size_t.h"
++
++#ifndef WIDE
++# define MEMCHR memchr
++# define CHAR char
++# define UCHAR unsigned char
++#else
++# include <wchar.h>
++# define MEMCHR wmemchr
++# define CHAR wchar_t
++# define UCHAR wchar_t
++#endif /* WIDE */
++
++IMPL (MEMCHR, 1)
++
++typedef CHAR * (*proto_t) (const CHAR*, int, size_t);
++
++static CHAR *
++__attribute__ ((noinline, noclone))
++do_memchr (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, (uintptr_t) b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  parameter_t src = { { page_size / sizeof (CHAR) }, buf2 };
++  parameter_t c = { { 0 }, (void *) (uintptr_t) 0x12 };
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      c.fn = impl->fn;
++      CHAR *res = do_memchr (src, c);
++      if (res)
++	{
++	  error (0, 0, "Wrong result in function %s: %p != NULL",
++		 impl->name, res);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-memcmp.c b/sysdeps/x86_64/x32/tst-size_t-memcmp.c
+new file mode 100644
+index 0000000000..9bd6fdb45a
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-memcmp.c
+@@ -0,0 +1,76 @@
++/* Test memcmp with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define TEST_MAIN
++#ifdef WIDE
++# define TEST_NAME "wmemcmp"
++#else
++# define TEST_NAME "memcmp"
++#endif
++
++#include "test-size_t.h"
++
++#ifdef WIDE
++# include <inttypes.h>
++# include <wchar.h>
++
++# define MEMCMP wmemcmp
++# define CHAR wchar_t
++#else
++# define MEMCMP memcmp
++# define CHAR char
++#endif
++
++IMPL (MEMCMP, 1)
++
++typedef int (*proto_t) (const CHAR *, const CHAR *, size_t);
++
++static int
++__attribute__ ((noinline, noclone))
++do_memcmp (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  parameter_t dest = { { page_size / sizeof (CHAR) }, buf1 };
++  parameter_t src = { { 0 }, buf2 };
++
++  memcpy (buf1, buf2, page_size);
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      src.fn = impl->fn;
++      int res = do_memcmp (dest, src);
++      if (res)
++	{
++	  error (0, 0, "Wrong result in function %s: %i != 0",
++		 impl->name, res);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-memcpy.c b/sysdeps/x86_64/x32/tst-size_t-memcpy.c
+new file mode 100644
+index 0000000000..66b71e1749
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-memcpy.c
+@@ -0,0 +1,58 @@
++/* Test memcpy with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define TEST_NAME "memcpy"
++#include "test-size_t.h"
++
++IMPL (memcpy, 1)
++
++typedef void *(*proto_t) (void *, const void *, size_t);
++
++static void *
++__attribute__ ((noinline, noclone))
++do_memcpy (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  parameter_t dest = { { page_size }, buf1 };
++  parameter_t src = { { 0 }, buf2 };
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      src.fn = impl->fn;
++      do_memcpy (dest, src);
++      int res = memcmp (dest.p, src.p, dest.len);
++      if (res)
++	{
++	  error (0, 0, "Wrong result in function %s: %i != 0",
++		 impl->name, res);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-memrchr.c b/sysdeps/x86_64/x32/tst-size_t-memrchr.c
+new file mode 100644
+index 0000000000..c83699c097
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-memrchr.c
+@@ -0,0 +1,57 @@
++/* Test memrchr with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define TEST_NAME "memrchr"
++#include "test-size_t.h"
++
++IMPL (memchr, 1)
++
++typedef void * (*proto_t) (const void *, int, size_t);
++
++static void *
++__attribute__ ((noinline, noclone))
++do_memrchr (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, (uintptr_t) b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  parameter_t src = { { page_size }, buf2 };
++  parameter_t c = { { 0 }, (void *) (uintptr_t) 0x12 };
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      c.fn = impl->fn;
++      void * res = do_memrchr (src, c);
++      if (res)
++	{
++	  error (0, 0, "Wrong result in function %s: %p != NULL",
++		 impl->name, res);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-memset.c b/sysdeps/x86_64/x32/tst-size_t-memset.c
+new file mode 100644
+index 0000000000..2c367af6cd
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-memset.c
+@@ -0,0 +1,73 @@
++/* Test memset with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifdef WIDE
++# define TEST_NAME "wmemset"
++#else
++# define TEST_NAME "memset"
++#endif /* WIDE */
++
++#include "test-size_t.h"
++
++#ifdef WIDE
++# include <wchar.h>
++# define MEMSET wmemset
++# define CHAR wchar_t
++#else
++# define MEMSET memset
++# define CHAR char
++#endif /* WIDE */
++
++IMPL (MEMSET, 1)
++
++typedef CHAR *(*proto_t) (CHAR *, int, size_t);
++
++static void *
++__attribute__ ((noinline, noclone))
++do_memset (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, (uintptr_t) b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  CHAR ch = 0x23;
++  parameter_t src = { { page_size / sizeof (CHAR) }, buf2 };
++  parameter_t c = { { 0 }, (void *) (uintptr_t) ch };
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      c.fn = impl->fn;
++      CHAR *p = (CHAR *) do_memset (src, c);
++      size_t i;
++      for (i = 0; i < src.len; i++)
++	if (p[i] != ch)
++	  {
++	    error (0, 0, "Wrong result in function %s", impl->name);
++	    ret = 1;
++	  }
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-strncasecmp.c b/sysdeps/x86_64/x32/tst-size_t-strncasecmp.c
+new file mode 100644
+index 0000000000..862335937b
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-strncasecmp.c
+@@ -0,0 +1,59 @@
++/* Test strncaecmp with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define TEST_NAME "strncasecmp"
++#include "test-size_t.h"
++
++IMPL (strncasecmp, 1)
++
++typedef int (*proto_t) (const char *, const char *, size_t);
++
++static int
++__attribute__ ((noinline, noclone))
++do_strncasecmp (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  parameter_t dest = { { page_size }, buf1 };
++  parameter_t src = { { 0 }, buf2 };
++
++  strncpy ((char *) buf1, (const char *) buf2, page_size);
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      src.fn = impl->fn;
++      int res = do_strncasecmp (dest, src);
++      if (res)
++	{
++	  error (0, 0, "Wrong result in function %s: %i != 0",
++		 impl->name, res);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-strncmp.c b/sysdeps/x86_64/x32/tst-size_t-strncmp.c
+new file mode 100644
+index 0000000000..54e6bd83ef
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-strncmp.c
+@@ -0,0 +1,78 @@
++/* Test strncmp with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifdef WIDE
++# define TEST_NAME "wcsncmp"
++#else
++# define TEST_NAME "strncmp"
++#endif
++
++#include "test-size_t.h"
++
++#ifdef WIDE
++# include <wchar.h>
++
++# define STRNCMP wcsncmp
++# define STRNCPY wcsncpy
++# define CHAR wchar_t
++#else
++# define STRNCMP strncmp
++# define STRNCPY strncpy
++# define CHAR char
++#endif
++
++IMPL (STRNCMP, 1)
++
++typedef int (*proto_t) (const CHAR *, const CHAR *, size_t);
++
++
++static int
++__attribute__ ((noinline, noclone))
++do_strncmp (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  size_t size = page_size / sizeof (CHAR);
++  parameter_t dest = { { size }, buf1 };
++  parameter_t src = { { 0 }, buf2 };
++
++  STRNCPY ((CHAR *) buf1, (const CHAR *) buf2, size);
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      src.fn = impl->fn;
++      int res = do_strncmp (dest, src);
++      if (res)
++	{
++	  error (0, 0, "Wrong result in function %s: %i != 0",
++		 impl->name, res);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-strncpy.c b/sysdeps/x86_64/x32/tst-size_t-strncpy.c
+new file mode 100644
+index 0000000000..4dec71e6b3
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-strncpy.c
+@@ -0,0 +1,58 @@
++/* Test strncpy with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define TEST_NAME "strncpy"
++#include "test-size_t.h"
++
++IMPL (strncpy, 1)
++
++typedef char *(*proto_t) (char *, const char*, size_t);
++
++static void *
++__attribute__ ((noinline, noclone))
++do_strncpy (parameter_t a, parameter_t b)
++{
++  return CALL (&b, a.p, b.p, a.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  parameter_t dest = { { page_size }, buf1 };
++  parameter_t src = { { 0 }, buf2 };
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      src.fn = impl->fn;
++      do_strncpy (dest, src);
++      int res = strncmp (dest.p, src.p, dest.len);
++      if (res)
++	{
++	  error (0, 0, "Wrong result in function %s: %i != 0",
++		 impl->name, res);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-strnlen.c b/sysdeps/x86_64/x32/tst-size_t-strnlen.c
+new file mode 100644
+index 0000000000..690a4a8a31
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-strnlen.c
+@@ -0,0 +1,72 @@
++/* Test strnlen with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifdef WIDE
++# define TEST_NAME "wcsnlen"
++#else
++# define TEST_NAME "strnlen"
++#endif /* WIDE */
++
++#include "test-size_t.h"
++
++#ifdef WIDE
++# include <wchar.h>
++# define STRNLEN wcsnlen
++# define CHAR wchar_t
++#else
++# define STRNLEN strnlen
++# define CHAR char
++#endif /* WIDE */
++
++IMPL (STRNLEN, 1)
++
++typedef size_t (*proto_t) (const CHAR *, size_t);
++
++static size_t
++__attribute__ ((noinline, noclone))
++do_strnlen (parameter_t a, parameter_t b)
++{
++  return CALL (&a, a.p, b.len);
++}
++
++static int
++test_main (void)
++{
++  test_init ();
++
++  size_t size = page_size / sizeof (CHAR);
++  parameter_t src = { { 0 }, buf2 };
++  parameter_t c = { { size }, (void *) (uintptr_t) 'a' };
++
++  int ret = 0;
++  FOR_EACH_IMPL (impl, 0)
++    {
++      src.fn = impl->fn;
++      size_t res = do_strnlen (src, c);
++      if (res != size)
++	{
++	  error (0, 0, "Wrong result in function %s: 0x%x != 0x%x",
++		 impl->name, res, size);
++	  ret = 1;
++	}
++    }
++
++  return ret ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/x86_64/x32/tst-size_t-wcsncmp.c b/sysdeps/x86_64/x32/tst-size_t-wcsncmp.c
+new file mode 100644
+index 0000000000..4829647c19
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-wcsncmp.c
+@@ -0,0 +1,20 @@
++/* Test wcsncmp with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define WIDE 1
++#include "tst-size_t-strncmp.c"
+diff --git a/sysdeps/x86_64/x32/tst-size_t-wcsnlen.c b/sysdeps/x86_64/x32/tst-size_t-wcsnlen.c
+new file mode 100644
+index 0000000000..093b4bbe1b
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-wcsnlen.c
+@@ -0,0 +1,20 @@
++/* Test wcsnlen with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define WIDE 1
++#include "tst-size_t-strnlen.c"
+diff --git a/sysdeps/x86_64/x32/tst-size_t-wmemchr.c b/sysdeps/x86_64/x32/tst-size_t-wmemchr.c
+new file mode 100644
+index 0000000000..877801d646
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-wmemchr.c
+@@ -0,0 +1,20 @@
++/* Test wmemchr with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define WIDE 1
++#include "tst-size_t-memchr.c"
+diff --git a/sysdeps/x86_64/x32/tst-size_t-wmemcmp.c b/sysdeps/x86_64/x32/tst-size_t-wmemcmp.c
+new file mode 100644
+index 0000000000..e8b5ffd0d5
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-wmemcmp.c
+@@ -0,0 +1,20 @@
++/* Test wmemcmp with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define WIDE 1
++#include "tst-size_t-memcmp.c"
+diff --git a/sysdeps/x86_64/x32/tst-size_t-wmemset.c b/sysdeps/x86_64/x32/tst-size_t-wmemset.c
+new file mode 100644
+index 0000000000..955eb488c2
+--- /dev/null
++++ b/sysdeps/x86_64/x32/tst-size_t-wmemset.c
+@@ -0,0 +1,20 @@
++/* Test wmemset with size_t in the lower 32 bits of 64-bit register.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#define WIDE 1
++#include "tst-size_t-memset.c"
 diff --git a/time/tzfile.c b/time/tzfile.c
 index 2a385b92bc..ea6e940303 100644
 --- a/time/tzfile.c
