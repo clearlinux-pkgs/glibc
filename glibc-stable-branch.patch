@@ -1,8 +1,14 @@
 diff --git a/ChangeLog b/ChangeLog
-index 59dab18463..d363be4620 100644
+index 59dab18463..a6a0ce19ed 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,58 @@
+@@ -1,3 +1,64 @@
++2019-02-15  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #24211]
++	* nptl/pthread_join_common.c (__pthread_timedjoin_ex): Do not read
++	pd->result after the thread descriptor has been freed.
++
 +2019-02-08  Florian Weimer  <fweimer@redhat.com>
 +
 +	[BZ #24161]
@@ -62,10 +68,10 @@ index 59dab18463..d363be4620 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 912a9bdc0f..dbcdd48502 100644
+index 912a9bdc0f..340e06d0f4 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,25 @@ See the end for copying conditions.
+@@ -5,6 +5,26 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -76,6 +82,7 @@ index 912a9bdc0f..dbcdd48502 100644
 +  [24155] x32 memcmp can treat positive length as 0 (if sign bit in RDX is set) (CVE-2019-7309)
 +  [24164] Systemtap probes need to use "nr" constraint on 32-bit Arm
 +  [24161] __run_fork_handlers self-deadlocks in malloc/tst-mallocfork2
++  [24211] Use-after-free in Systemtap probe in pthread_join
 +
 +Security related changes:
 +
@@ -117,6 +124,36 @@ index 340282c6cb..0e316edfac 100644
  
  tests-internal := tst-rwlock19 tst-rwlock20 \
  		  tst-sem11 tst-sem12 tst-sem13 \
+diff --git a/nptl/pthread_join_common.c b/nptl/pthread_join_common.c
+index ecb78ffba5..366feb376b 100644
+--- a/nptl/pthread_join_common.c
++++ b/nptl/pthread_join_common.c
+@@ -86,6 +86,7 @@ __pthread_timedjoin_ex (pthread_t threadid, void **thread_return,
+       pthread_cleanup_pop (0);
+     }
+ 
++  void *pd_result = pd->result;
+   if (__glibc_likely (result == 0))
+     {
+       /* We mark the thread as terminated and as joined.  */
+@@ -93,7 +94,7 @@ __pthread_timedjoin_ex (pthread_t threadid, void **thread_return,
+ 
+       /* Store the return value if the caller is interested.  */
+       if (thread_return != NULL)
+-	*thread_return = pd->result;
++	*thread_return = pd_result;
+ 
+       /* Free the TCB.  */
+       __free_tcb (pd);
+@@ -101,7 +102,7 @@ __pthread_timedjoin_ex (pthread_t threadid, void **thread_return,
+   else
+     pd->joinid = NULL;
+ 
+-  LIBC_PROBE (pthread_join_ret, 3, threadid, result, pd->result);
++  LIBC_PROBE (pthread_join_ret, 3, threadid, result, pd_result);
+ 
+   return result;
+ }
 diff --git a/nptl/pthread_mutex_trylock.c b/nptl/pthread_mutex_trylock.c
 index 8fe43b8f0f..bf2869eca2 100644
 --- a/nptl/pthread_mutex_trylock.c
