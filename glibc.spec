@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.29
-Release:        246
+Release:        247
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -49,6 +49,7 @@ Patch61: 	fix-ld-audit-performance.patch
 Patch62:	c-utf8-locale.patch
 
 # cves
+Patch101:       CVE-2019-7309.nopatch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
