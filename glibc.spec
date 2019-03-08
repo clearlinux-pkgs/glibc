@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.29
-Release:        250
+Release:        251
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -416,6 +416,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-tunables \
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
+    --enable-cet \
     libc_cv_slibdir=/usr/lib32 \
     libc_cv_complocaledir=/usr/share/locale \
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
