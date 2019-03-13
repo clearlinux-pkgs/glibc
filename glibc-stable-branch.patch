@@ -1,8 +1,22 @@
 diff --git a/ChangeLog b/ChangeLog
-index 59dab18463..a6a0ce19ed 100644
+index 59dab18463..90558e434c 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,64 @@
+@@ -1,3 +1,78 @@
++2019-03-13  Stefan Liebler  <stli@linux.ibm.com>
++
++	* elf/dl-sysdep.c (_dl_show_auxv): Remove condition and always
++	call _dl_procinfo.
++	* sysdeps/unix/sysv/linux/s390/dl-procinfo.h (_dl_procinfo):
++	Ignore types other than AT_HWCAP.
++	* sysdeps/sparc/dl-procinfo.h (_dl_procinfo): Likewise.
++	* sysdeps/unix/sysv/linux/i386/dl-procinfo.h (_dl_procinfo):
++	Likewise.
++	* sysdeps/powerpc/dl-procinfo.h (_dl_procinfo): Adjust comment
++	in the case of falling back to generic output mechanism.
++	* sysdeps/unix/sysv/linux/arm/dl-procinfo.h (_dl_procinfo):
++	Likewise.
++
 +2019-02-15  Florian Weimer  <fweimer@redhat.com>
 +
 +	[BZ #24211]
@@ -98,6 +112,28 @@ index 912a9bdc0f..340e06d0f4 100644
  Version 2.29
  
  Major new features:
+diff --git a/elf/dl-sysdep.c b/elf/dl-sysdep.c
+index 5f6c679a3f..5d19b100b2 100644
+--- a/elf/dl-sysdep.c
++++ b/elf/dl-sysdep.c
+@@ -328,14 +328,9 @@ _dl_show_auxv (void)
+       assert (AT_NULL == 0);
+       assert (AT_IGNORE == 1);
+ 
+-      if (av->a_type == AT_HWCAP || av->a_type == AT_HWCAP2
+-	  || AT_L1I_CACHEGEOMETRY || AT_L1D_CACHEGEOMETRY
+-	  || AT_L2_CACHEGEOMETRY || AT_L3_CACHEGEOMETRY)
+-	{
+-	  /* These are handled in a special way per platform.  */
+-	  if (_dl_procinfo (av->a_type, av->a_un.a_val) == 0)
+-	    continue;
+-	}
++      /* Some entries are handled in a special way per platform.  */
++      if (_dl_procinfo (av->a_type, av->a_un.a_val) == 0)
++	continue;
+ 
+       if (idx < sizeof (auxvars) / sizeof (auxvars[0])
+ 	  && auxvars[idx].form != unknown)
 diff --git a/include/stap-probe.h b/include/stap-probe.h
 index c53dd86592..8c26292edd 100644
 --- a/include/stap-probe.h
@@ -1043,6 +1079,77 @@ index a1c3b26b68..99ed76034b 100644
  
  /* C library side function to register new fork handlers.  */
  extern int __register_atfork (void (*__prepare) (void),
+diff --git a/sysdeps/powerpc/dl-procinfo.h b/sysdeps/powerpc/dl-procinfo.h
+index f542f7318f..dfc3b33a72 100644
+--- a/sysdeps/powerpc/dl-procinfo.h
++++ b/sysdeps/powerpc/dl-procinfo.h
+@@ -225,7 +225,7 @@ _dl_procinfo (unsigned int type, unsigned long int word)
+ 	break;
+       }
+     default:
+-      /* This should not happen.  */
++      /* Fallback to generic output mechanism.  */
+       return -1;
+     }
+    _dl_printf ("\n");
+diff --git a/sysdeps/sparc/dl-procinfo.h b/sysdeps/sparc/dl-procinfo.h
+index 282b8c5117..64ee267fc7 100644
+--- a/sysdeps/sparc/dl-procinfo.h
++++ b/sysdeps/sparc/dl-procinfo.h
+@@ -31,8 +31,8 @@ _dl_procinfo (unsigned int type, unsigned long int word)
+ {
+   int i;
+ 
+-  /* Fallback to unknown output mechanism.  */
+-  if (type == AT_HWCAP2)
++  /* Fallback to generic output mechanism.  */
++  if (type != AT_HWCAP)
+     return -1;
+ 
+   _dl_printf ("AT_HWCAP:   ");
+diff --git a/sysdeps/unix/sysv/linux/arm/dl-procinfo.h b/sysdeps/unix/sysv/linux/arm/dl-procinfo.h
+index 66c00297b7..05c62c8687 100644
+--- a/sysdeps/unix/sysv/linux/arm/dl-procinfo.h
++++ b/sysdeps/unix/sysv/linux/arm/dl-procinfo.h
+@@ -67,7 +67,7 @@ _dl_procinfo (unsigned int type, unsigned long int word)
+ 	break;
+       }
+     default:
+-      /* This should not happen.  */
++      /* Fallback to generic output mechanism.  */
+       return -1;
+     }
+   _dl_printf ("\n");
+diff --git a/sysdeps/unix/sysv/linux/i386/dl-procinfo.h b/sysdeps/unix/sysv/linux/i386/dl-procinfo.h
+index 22b43431bc..0585cdaa9c 100644
+--- a/sysdeps/unix/sysv/linux/i386/dl-procinfo.h
++++ b/sysdeps/unix/sysv/linux/i386/dl-procinfo.h
+@@ -30,8 +30,8 @@ _dl_procinfo (unsigned int type, unsigned long int word)
+      in the kernel sources.  */
+   int i;
+ 
+-  /* Fallback to unknown output mechanism.  */
+-  if (type == AT_HWCAP2)
++  /* Fallback to generic output mechanism.  */
++  if (type != AT_HWCAP)
+     return -1;
+ 
+   _dl_printf ("AT_HWCAP:   ");
+diff --git a/sysdeps/unix/sysv/linux/s390/dl-procinfo.h b/sysdeps/unix/sysv/linux/s390/dl-procinfo.h
+index 19329a335b..d67fde368f 100644
+--- a/sysdeps/unix/sysv/linux/s390/dl-procinfo.h
++++ b/sysdeps/unix/sysv/linux/s390/dl-procinfo.h
+@@ -32,8 +32,8 @@ _dl_procinfo (unsigned int type, unsigned long int word)
+      in the kernel sources.  */
+   int i;
+ 
+-  /* Fallback to unknown output mechanism.  */
+-  if (type == AT_HWCAP2)
++  /* Fallback to generic output mechanism.  */
++  if (type != AT_HWCAP)
+     return -1;
+ 
+   _dl_printf ("AT_HWCAP:   ");
 diff --git a/sysdeps/x86_64/memcmp.S b/sysdeps/x86_64/memcmp.S
 index 1fc487caa5..1322bb3b92 100644
 --- a/sysdeps/x86_64/memcmp.S
