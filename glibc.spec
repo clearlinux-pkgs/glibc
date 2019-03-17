@@ -50,7 +50,6 @@ Patch62:	c-utf8-locale.patch
 
 # cves
 Patch101:       CVE-2019-7309.nopatch
-Patch102:       CVE-2019-9169.patch
 
 BuildRequires:	grep
 BuildRequires:	texinfo
@@ -224,7 +223,6 @@ GNU C library extra components.
 %patch61 -p1
 %patch62 -p1
 
-%patch102 -p1
 
 %build
 export SOURCE_DATE_EPOCH=1484361909
