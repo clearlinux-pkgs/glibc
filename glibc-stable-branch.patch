@@ -1,8 +1,13 @@
 diff --git a/ChangeLog b/ChangeLog
-index 59dab18463..80413dd560 100644
+index 59dab18463..7111aeb149 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,87 @@
+@@ -1,3 +1,92 @@
++2019-03-21  Stefan Liebler  <stli@linux.ibm.com>
++
++	* sysdeps/s390/dl-procinfo.h (HWCAP_IMPORTANT):
++	Add HWCAP_S390_VX and HWCAP_S390_VXE.
++
 +2019-01-31  Paul Eggert  <eggert@cs.ucla.edu>
 +
 +	CVE-2019-9169
@@ -1122,6 +1127,20 @@ index f542f7318f..dfc3b33a72 100644
        return -1;
      }
     _dl_printf ("\n");
+diff --git a/sysdeps/s390/dl-procinfo.h b/sysdeps/s390/dl-procinfo.h
+index b4b81fc70a..99697ae649 100644
+--- a/sysdeps/s390/dl-procinfo.h
++++ b/sysdeps/s390/dl-procinfo.h
+@@ -57,7 +57,8 @@ enum
+ };
+ 
+ #define HWCAP_IMPORTANT (HWCAP_S390_ZARCH | HWCAP_S390_LDISP \
+-			  | HWCAP_S390_EIMM | HWCAP_S390_DFP)
++			 | HWCAP_S390_EIMM | HWCAP_S390_DFP  \
++			 | HWCAP_S390_VX | HWCAP_S390_VXE)
+ 
+ /* We cannot provide a general printing function.  */
+ #define _dl_procinfo(type, word) -1
 diff --git a/sysdeps/sparc/dl-procinfo.h b/sysdeps/sparc/dl-procinfo.h
 index 282b8c5117..64ee267fc7 100644
 --- a/sysdeps/sparc/dl-procinfo.h
