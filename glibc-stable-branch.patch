@@ -1,8 +1,43 @@
 diff --git a/ChangeLog b/ChangeLog
-index 59dab18463..077d0dae29 100644
+index 59dab18463..5af8e27ab9 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,119 @@
+@@ -1,3 +1,154 @@
++2019-04-23  Adhemerval Zanella  <adhemerval.zanella@linaro.org>
++
++	[BZ #18035]
++	* elf/Makefile (tests-container): Add tst-pldd.
++	* elf/pldd-xx.c: Use _Static_assert in of pldd_assert.
++	(E(find_maps)): Avoid use alloca, use default read file operations
++	instead of explicit LFS names, and fix infinite loop.
++	* elf/pldd.c: Explicit set _FILE_OFFSET_BITS, cleanup headers.
++	(get_process_info): Use _Static_assert instead of assert, use default
++	directory operations instead of explicit LFS names, and free some
++	leadek pointers.
++	* elf/tst-pldd.c: New file.
++
++2019-04-17  Adhemerval Zanella  <adhemerval.zanella@linaro.org>
++
++	* support/Makefile (libsupport-routines): Add support_subprocess,
++	xposix_spawn, xposix_spawn_file_actions_addclose, and
++	xposix_spawn_file_actions_adddup2.
++	(tst-support_capture_subprocess-ARGS): New rule.
++	* support/capture_subprocess.h (support_capture_subprogram): New
++	prototype.
++	* support/support_capture_subprocess.c (support_capture_subprocess):
++	Refactor to use support_subprocess and support_capture_poll.
++	(support_capture_subprogram): New function.
++	* support/tst-support_capture_subprocess.c (write_mode_to_str,
++	str_to_write_mode, test_common, parse_int, handle_restart,
++	do_subprocess, do_subprogram, do_multiple_tests): New functions.
++	(do_test): Add support_capture_subprogram tests.
++	* support/subprocess.h: New file.
++	* support/support_subprocess.c: Likewise.
++	* support/xposix_spawn.c: Likewise.
++	* support/xposix_spawn_file_actions_addclose.c: Likewise.
++	* support/xposix_spawn_file_actions_adddup2.c: Likewise.
++	* support/xspawn.h: Likewise.
++
 +2019-04-09  Carlos O'Donell  <carlos@redhat.com>
 +	    Kwok Cheung Yeung  <kcy@codesourcery.com>
 +
@@ -123,10 +158,10 @@ index 59dab18463..077d0dae29 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 912a9bdc0f..117646df7b 100644
+index 912a9bdc0f..b39a0ccf91 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,35 @@ See the end for copying conditions.
+@@ -5,6 +5,36 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -139,6 +174,7 @@ index 912a9bdc0f..117646df7b 100644
 +The following bugs are resolved with this release:
 +
 +  [16573] malloc: Set and reset all hooks for tracing
++  [18035] Fix pldd hang
 +  [24155] x32 memcmp can treat positive length as 0 (if sign bit in RDX is set) (CVE-2019-7309)
 +  [24164] Systemtap probes need to use "nr" constraint on 32-bit Arm
 +  [24161] __run_fork_handlers self-deadlocks in malloc/tst-mallocfork2
@@ -162,6 +198,18 @@ index 912a9bdc0f..117646df7b 100644
  Version 2.29
  
  Major new features:
+diff --git a/elf/Makefile b/elf/Makefile
+index 9cf5cd8dfd..e7457e809f 100644
+--- a/elf/Makefile
++++ b/elf/Makefile
+@@ -194,6 +194,7 @@ tests-internal += loadtest unload unload2 circleload1 \
+ 	 tst-tls3 tst-tls6 tst-tls7 tst-tls8 tst-dlmopen2 \
+ 	 tst-ptrguard1 tst-stackguard1 tst-libc_dlvsym \
+ 	 tst-create_format1
++tests-container += tst-pldd
+ ifeq ($(build-hardcoded-path-in-tests),yes)
+ tests += tst-dlopen-aout
+ tst-dlopen-aout-no-pie = yes
 diff --git a/elf/dl-sysdep.c b/elf/dl-sysdep.c
 index 5f6c679a3f..5d19b100b2 100644
 --- a/elf/dl-sysdep.c
@@ -184,6 +232,512 @@ index 5f6c679a3f..5d19b100b2 100644
  
        if (idx < sizeof (auxvars) / sizeof (auxvars[0])
  	  && auxvars[idx].form != unknown)
+diff --git a/elf/pldd-xx.c b/elf/pldd-xx.c
+index 547f840ee1..756f6d7a1c 100644
+--- a/elf/pldd-xx.c
++++ b/elf/pldd-xx.c
+@@ -23,10 +23,6 @@
+ #define EW_(e, w, t) EW__(e, w, _##t)
+ #define EW__(e, w, t) e##w##t
+ 
+-#define pldd_assert(name, exp) \
+-  typedef int __assert_##name[((exp) != 0) - 1]
+-
+-
+ struct E(link_map)
+ {
+   EW(Addr) l_addr;
+@@ -39,12 +35,12 @@ struct E(link_map)
+   EW(Addr) l_libname;
+ };
+ #if CLASS == __ELF_NATIVE_CLASS
+-pldd_assert (l_addr, (offsetof (struct link_map, l_addr)
+-			== offsetof (struct E(link_map), l_addr)));
+-pldd_assert (l_name, (offsetof (struct link_map, l_name)
+-			== offsetof (struct E(link_map), l_name)));
+-pldd_assert (l_next, (offsetof (struct link_map, l_next)
+-			== offsetof (struct E(link_map), l_next)));
++_Static_assert (offsetof (struct link_map, l_addr)
++		== offsetof (struct E(link_map), l_addr), "l_addr");
++_Static_assert (offsetof (struct link_map, l_name)
++		== offsetof (struct E(link_map), l_name), "l_name");
++_Static_assert (offsetof (struct link_map, l_next)
++		== offsetof (struct E(link_map), l_next), "l_next");
+ #endif
+ 
+ 
+@@ -54,10 +50,10 @@ struct E(libname_list)
+   EW(Addr) next;
+ };
+ #if CLASS == __ELF_NATIVE_CLASS
+-pldd_assert (name, (offsetof (struct libname_list, name)
+-		      == offsetof (struct E(libname_list), name)));
+-pldd_assert (next, (offsetof (struct libname_list, next)
+-		      == offsetof (struct E(libname_list), next)));
++_Static_assert (offsetof (struct libname_list, name)
++		== offsetof (struct E(libname_list), name), "name");
++_Static_assert (offsetof (struct libname_list, next)
++		== offsetof (struct E(libname_list), next), "next");
+ #endif
+ 
+ struct E(r_debug)
+@@ -69,16 +65,17 @@ struct E(r_debug)
+   EW(Addr) r_map;
+ };
+ #if CLASS == __ELF_NATIVE_CLASS
+-pldd_assert (r_version, (offsetof (struct r_debug, r_version)
+-			   == offsetof (struct E(r_debug), r_version)));
+-pldd_assert (r_map, (offsetof (struct r_debug, r_map)
+-		       == offsetof (struct E(r_debug), r_map)));
++_Static_assert (offsetof (struct r_debug, r_version)
++		== offsetof (struct E(r_debug), r_version), "r_version");
++_Static_assert (offsetof (struct r_debug, r_map)
++		== offsetof (struct E(r_debug), r_map), "r_map");
+ #endif
+ 
+ 
+ static int
+ 
+-E(find_maps) (pid_t pid, void *auxv, size_t auxv_size)
++E(find_maps) (const char *exe, int memfd, pid_t pid, void *auxv,
++	      size_t auxv_size)
+ {
+   EW(Addr) phdr = 0;
+   unsigned int phnum = 0;
+@@ -104,12 +101,9 @@ E(find_maps) (pid_t pid, void *auxv, size_t auxv_size)
+   if (phdr == 0 || phnum == 0 || phent == 0)
+     error (EXIT_FAILURE, 0, gettext ("cannot find program header of process"));
+ 
+-  EW(Phdr) *p = alloca (phnum * phent);
+-  if (pread64 (memfd, p, phnum * phent, phdr) != phnum * phent)
+-    {
+-      error (0, 0, gettext ("cannot read program header"));
+-      return EXIT_FAILURE;
+-    }
++  EW(Phdr) *p = xmalloc (phnum * phent);
++  if (pread (memfd, p, phnum * phent, phdr) != phnum * phent)
++    error (EXIT_FAILURE, 0, gettext ("cannot read program header"));
+ 
+   /* Determine the load offset.  We need this for interpreting the
+      other program header entries so we do this in a separate loop.
+@@ -129,24 +123,18 @@ E(find_maps) (pid_t pid, void *auxv, size_t auxv_size)
+     if (p[i].p_type == PT_DYNAMIC)
+       {
+ 	EW(Dyn) *dyn = xmalloc (p[i].p_filesz);
+-	if (pread64 (memfd, dyn, p[i].p_filesz, offset + p[i].p_vaddr)
++	if (pread (memfd, dyn, p[i].p_filesz, offset + p[i].p_vaddr)
+ 	    != p[i].p_filesz)
+-	  {
+-	    error (0, 0, gettext ("cannot read dynamic section"));
+-	    return EXIT_FAILURE;
+-	  }
++	  error (EXIT_FAILURE, 0, gettext ("cannot read dynamic section"));
+ 
+ 	/* Search for the DT_DEBUG entry.  */
+ 	for (unsigned int j = 0; j < p[i].p_filesz / sizeof (EW(Dyn)); ++j)
+ 	  if (dyn[j].d_tag == DT_DEBUG && dyn[j].d_un.d_ptr != 0)
+ 	    {
+ 	      struct E(r_debug) r;
+-	      if (pread64 (memfd, &r, sizeof (r), dyn[j].d_un.d_ptr)
++	      if (pread (memfd, &r, sizeof (r), dyn[j].d_un.d_ptr)
+ 		  != sizeof (r))
+-		{
+-		  error (0, 0, gettext ("cannot read r_debug"));
+-		  return EXIT_FAILURE;
+-		}
++		error (EXIT_FAILURE, 0, gettext ("cannot read r_debug"));
+ 
+ 	      if (r.r_map != 0)
+ 		{
+@@ -160,13 +148,10 @@ E(find_maps) (pid_t pid, void *auxv, size_t auxv_size)
+       }
+     else if (p[i].p_type == PT_INTERP)
+       {
+-	interp = alloca (p[i].p_filesz);
+-	if (pread64 (memfd, interp, p[i].p_filesz, offset + p[i].p_vaddr)
++	interp = xmalloc (p[i].p_filesz);
++	if (pread (memfd, interp, p[i].p_filesz, offset + p[i].p_vaddr)
+ 	    != p[i].p_filesz)
+-	  {
+-	    error (0, 0, gettext ("cannot read program interpreter"));
+-	    return EXIT_FAILURE;
+-	  }
++	  error (EXIT_FAILURE, 0, gettext ("cannot read program interpreter"));
+       }
+ 
+   if (list == 0)
+@@ -174,14 +159,16 @@ E(find_maps) (pid_t pid, void *auxv, size_t auxv_size)
+       if (interp == NULL)
+ 	{
+ 	  // XXX check whether the executable itself is the loader
+-	  return EXIT_FAILURE;
++	  exit (EXIT_FAILURE);
+ 	}
+ 
+       // XXX perhaps try finding ld.so and _r_debug in it
+-
+-      return EXIT_FAILURE;
++      exit (EXIT_FAILURE);
+     }
+ 
++  free (p);
++  free (interp);
++
+   /* Print the PID and program name first.  */
+   printf ("%lu:\t%s\n", (unsigned long int) pid, exe);
+ 
+@@ -192,47 +179,27 @@ E(find_maps) (pid_t pid, void *auxv, size_t auxv_size)
+   do
+     {
+       struct E(link_map) m;
+-      if (pread64 (memfd, &m, sizeof (m), list) != sizeof (m))
+-	{
+-	  error (0, 0, gettext ("cannot read link map"));
+-	  status = EXIT_FAILURE;
+-	  goto out;
+-	}
++      if (pread (memfd, &m, sizeof (m), list) != sizeof (m))
++	error (EXIT_FAILURE, 0, gettext ("cannot read link map"));
+ 
+       EW(Addr) name_offset = m.l_name;
+-    again:
+       while (1)
+ 	{
+-	  ssize_t n = pread64 (memfd, tmpbuf.data, tmpbuf.length, name_offset);
++	  ssize_t n = pread (memfd, tmpbuf.data, tmpbuf.length, name_offset);
+ 	  if (n == -1)
+-	    {
+-	      error (0, 0, gettext ("cannot read object name"));
+-	      status = EXIT_FAILURE;
+-	      goto out;
+-	    }
++	    error (EXIT_FAILURE, 0, gettext ("cannot read object name"));
+ 
+ 	  if (memchr (tmpbuf.data, '\0', n) != NULL)
+ 	    break;
+ 
+ 	  if (!scratch_buffer_grow (&tmpbuf))
+-	    {
+-	      error (0, 0, gettext ("cannot allocate buffer for object name"));
+-	      status = EXIT_FAILURE;
+-	      goto out;
+-	    }
++	    error (EXIT_FAILURE, 0,
++		   gettext ("cannot allocate buffer for object name"));
+ 	}
+ 
+-      if (((char *)tmpbuf.data)[0] == '\0' && name_offset == m.l_name
+-	  && m.l_libname != 0)
+-	{
+-	  /* Try the l_libname element.  */
+-	  struct E(libname_list) ln;
+-	  if (pread64 (memfd, &ln, sizeof (ln), m.l_libname) == sizeof (ln))
+-	    {
+-	      name_offset = ln.name;
+-	      goto again;
+-	    }
+-	}
++      /* The m.l_name and m.l_libname.name for loader linkmap points to same
++	 values (since BZ#387 fix).  Trying to use l_libname name as the
++	 shared object name might lead to an infinite loop (BZ#18035).  */
+ 
+       /* Skip over the executable.  */
+       if (((char *)tmpbuf.data)[0] != '\0')
+@@ -242,7 +209,6 @@ E(find_maps) (pid_t pid, void *auxv, size_t auxv_size)
+     }
+   while (list != 0);
+ 
+- out:
+   scratch_buffer_free (&tmpbuf);
+   return status;
+ }
+diff --git a/elf/pldd.c b/elf/pldd.c
+index f3fac4e487..69629bd5d2 100644
+--- a/elf/pldd.c
++++ b/elf/pldd.c
+@@ -17,23 +17,17 @@
+    License along with the GNU C Library; if not, see
+    <http://www.gnu.org/licenses/>.  */
+ 
+-#include <alloca.h>
++#define _FILE_OFFSET_BITS 64
++
+ #include <argp.h>
+-#include <assert.h>
+ #include <dirent.h>
+-#include <elf.h>
+-#include <errno.h>
+ #include <error.h>
+ #include <fcntl.h>
+ #include <libintl.h>
+-#include <link.h>
+-#include <stddef.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+-#include <string.h>
+ #include <unistd.h>
+ #include <sys/ptrace.h>
+-#include <sys/stat.h>
+ #include <sys/wait.h>
+ #include <scratch_buffer.h>
+ 
+@@ -76,14 +70,9 @@ static struct argp argp =
+   options, parse_opt, args_doc, doc, NULL, more_help, NULL
+ };
+ 
+-// File descriptor of /proc/*/mem file.
+-static int memfd;
+-
+-/* Name of the executable  */
+-static char *exe;
+ 
+ /* Local functions.  */
+-static int get_process_info (int dfd, long int pid);
++static int get_process_info (const char *exe, int dfd, long int pid);
+ static void wait_for_ptrace_stop (long int pid);
+ 
+ 
+@@ -102,8 +91,10 @@ main (int argc, char *argv[])
+       return 1;
+     }
+ 
+-  assert (sizeof (pid_t) == sizeof (int)
+-	  || sizeof (pid_t) == sizeof (long int));
++  _Static_assert (sizeof (pid_t) == sizeof (int)
++		  || sizeof (pid_t) == sizeof (long int),
++		  "sizeof (pid_t) != sizeof (int) or sizeof (long int)");
++
+   char *endp;
+   errno = 0;
+   long int pid = strtol (argv[remaining], &endp, 10);
+@@ -119,25 +110,24 @@ main (int argc, char *argv[])
+   if (dfd == -1)
+     error (EXIT_FAILURE, errno, gettext ("cannot open %s"), buf);
+ 
+-  struct scratch_buffer exebuf;
+-  scratch_buffer_init (&exebuf);
++  /* Name of the executable  */
++  struct scratch_buffer exe;
++  scratch_buffer_init (&exe);
+   ssize_t nexe;
+   while ((nexe = readlinkat (dfd, "exe",
+-			     exebuf.data, exebuf.length)) == exebuf.length)
++			     exe.data, exe.length)) == exe.length)
+     {
+-      if (!scratch_buffer_grow (&exebuf))
++      if (!scratch_buffer_grow (&exe))
+ 	{
+ 	  nexe = -1;
+ 	  break;
+ 	}
+     }
+   if (nexe == -1)
+-    exe = (char *) "<program name undetermined>";
++    /* Default stack allocation is at least 1024.  */
++    snprintf (exe.data, exe.length, "<program name undetermined>");
+   else
+-    {
+-      exe = exebuf.data;
+-      exe[nexe] = '\0';
+-    }
++    ((char*)exe.data)[nexe] = '\0';
+ 
+   /* Stop all threads since otherwise the list of loaded modules might
+      change while we are reading it.  */
+@@ -155,8 +145,8 @@ main (int argc, char *argv[])
+     error (EXIT_FAILURE, errno, gettext ("cannot prepare reading %s/task"),
+ 	   buf);
+ 
+-  struct dirent64 *d;
+-  while ((d = readdir64 (dir)) != NULL)
++  struct dirent *d;
++  while ((d = readdir (dir)) != NULL)
+     {
+       if (! isdigit (d->d_name[0]))
+ 	continue;
+@@ -182,7 +172,7 @@ main (int argc, char *argv[])
+ 
+       wait_for_ptrace_stop (tid);
+ 
+-      struct thread_list *newp = alloca (sizeof (*newp));
++      struct thread_list *newp = xmalloc (sizeof (*newp));
+       newp->tid = tid;
+       newp->next = thread_list;
+       thread_list = newp;
+@@ -190,17 +180,22 @@ main (int argc, char *argv[])
+ 
+   closedir (dir);
+ 
+-  int status = get_process_info (dfd, pid);
++  if (thread_list == NULL)
++    error (EXIT_FAILURE, 0, gettext ("no valid %s/task entries"), buf);
++
++  int status = get_process_info (exe.data, dfd, pid);
+ 
+-  assert (thread_list != NULL);
+   do
+     {
+       ptrace (PTRACE_DETACH, thread_list->tid, NULL, NULL);
++      struct thread_list *prev = thread_list;
+       thread_list = thread_list->next;
++      free (prev);
+     }
+   while (thread_list != NULL);
+ 
+   close (dfd);
++  scratch_buffer_free (&exe);
+ 
+   return status;
+ }
+@@ -281,9 +276,10 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\
+ 
+ 
+ static int
+-get_process_info (int dfd, long int pid)
++get_process_info (const char *exe, int dfd, long int pid)
+ {
+-  memfd = openat (dfd, "mem", O_RDONLY);
++  /* File descriptor of /proc/<pid>/mem file.  */
++  int memfd = openat (dfd, "mem", O_RDONLY);
+   if (memfd == -1)
+     goto no_info;
+ 
+@@ -333,9 +329,9 @@ get_process_info (int dfd, long int pid)
+ 
+   int retval;
+   if (e_ident[EI_CLASS] == ELFCLASS32)
+-    retval = find_maps32 (pid, auxv, auxv_size);
++    retval = find_maps32 (exe, memfd, pid, auxv, auxv_size);
+   else
+-    retval = find_maps64 (pid, auxv, auxv_size);
++    retval = find_maps64 (exe, memfd, pid, auxv, auxv_size);
+ 
+   free (auxv);
+   close (memfd);
+diff --git a/elf/tst-pldd.c b/elf/tst-pldd.c
+new file mode 100644
+index 0000000000..ed19cedd05
+--- /dev/null
++++ b/elf/tst-pldd.c
+@@ -0,0 +1,118 @@
++/* Basic tests for pldd program.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++#include <string.h>
++#include <unistd.h>
++#include <stdint.h>
++#include <libgen.h>
++#include <stdbool.h>
++
++#include <array_length.h>
++#include <gnu/lib-names.h>
++
++#include <support/subprocess.h>
++#include <support/capture_subprocess.h>
++#include <support/check.h>
++
++static void
++target_process (void *arg)
++{
++  pause ();
++}
++
++/* The test runs in a container because pldd does not support tracing
++   a binary started by the loader iself (as with testrun.sh).  */
++
++static int
++do_test (void)
++{
++  /* Create a copy of current test to check with pldd.  */
++  struct support_subprocess target = support_subprocess (target_process, NULL);
++
++  /* Run 'pldd' on test subprocess.  */
++  struct support_capture_subprocess pldd;
++  {
++    /* Three digits per byte plus null terminator.  */
++    char pid[3 * sizeof (uint32_t) + 1];
++    snprintf (pid, array_length (pid), "%d", target.pid);
++
++    const char prog[] = "/usr/bin/pldd";
++
++    pldd = support_capture_subprogram (prog,
++      (char *const []) { (char *) prog, pid, NULL });
++
++    support_capture_subprocess_check (&pldd, "pldd", 0, sc_allow_stdout);
++  }
++
++  /* Check 'pldd' output.  The test is expected to be linked against only
++     loader and libc.  */
++  {
++    pid_t pid;
++    char buffer[512];
++#define STRINPUT(size) "%" # size "s"
++
++    FILE *out = fmemopen (pldd.out.buffer, pldd.out.length, "r");
++    TEST_VERIFY (out != NULL);
++
++    /* First line is in the form of <pid>: <full path of executable>  */
++    TEST_COMPARE (fscanf (out, "%u: " STRINPUT (512), &pid, buffer), 2);
++
++    TEST_COMPARE (pid, target.pid);
++    TEST_COMPARE (strcmp (basename (buffer), "tst-pldd"), 0);
++
++    /* It expects only one loader and libc loaded by the program.  */
++    bool interpreter_found = false, libc_found = false;
++    while (fgets (buffer, array_length (buffer), out) != NULL)
++      {
++	/* Ignore vDSO.  */
++        if (buffer[0] != '/')
++	  continue;
++
++	/* Remove newline so baseline (buffer) can compare against the
++	   LD_SO and LIBC_SO macros unmodified.  */
++	if (buffer[strlen(buffer)-1] == '\n')
++	  buffer[strlen(buffer)-1] = '\0';
++
++	if (strcmp (basename (buffer), LD_SO) == 0)
++	  {
++	    TEST_COMPARE (interpreter_found, false);
++	    interpreter_found = true;
++	    continue;
++	  }
++
++	if (strcmp (basename (buffer), LIBC_SO) == 0)
++	  {
++	    TEST_COMPARE (libc_found, false);
++	    libc_found = true;
++	    continue;
++	  }
++      }
++    TEST_COMPARE (interpreter_found, true);
++    TEST_COMPARE (libc_found, true);
++
++    fclose (out);
++  }
++
++  support_capture_subprocess_free (&pldd);
++  support_process_terminate (&target);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/include/stap-probe.h b/include/stap-probe.h
 index c53dd86592..8c26292edd 100644
 --- a/include/stap-probe.h
@@ -1150,10 +1704,18 @@ index 91d5a797b8..084b1222d9 100644
  		}
  	    }
 diff --git a/support/Makefile b/support/Makefile
-index 432cf2fe6c..c15b93647c 100644
+index 432cf2fe6c..8d61de6c57 100644
 --- a/support/Makefile
 +++ b/support/Makefile
-@@ -129,6 +129,7 @@ libsupport-routines = \
+@@ -63,6 +63,7 @@ libsupport-routines = \
+   support_record_failure \
+   support_run_diff \
+   support_shared_allocate \
++  support_subprocess \
+   support_test_compare_blob \
+   support_test_compare_failure \
+   support_test_compare_string \
+@@ -129,6 +130,7 @@ libsupport-routines = \
    xpthread_mutexattr_settype \
    xpthread_once \
    xpthread_rwlock_init \
@@ -1161,6 +1723,719 @@ index 432cf2fe6c..c15b93647c 100644
    xpthread_rwlock_rdlock \
    xpthread_rwlock_unlock \
    xpthread_rwlock_wrlock \
+@@ -147,6 +149,9 @@ libsupport-routines = \
+   xsignal \
+   xsigstack \
+   xsocket \
++  xposix_spawn \
++  xposix_spawn_file_actions_addclose \
++  xposix_spawn_file_actions_adddup2 \
+   xstrdup \
+   xstrndup \
+   xsymlink \
+@@ -222,4 +227,6 @@ endif
+ 
+ $(objpfx)tst-support_format_dns_packet: $(common-objpfx)resolv/libresolv.so
+ 
++tst-support_capture_subprocess-ARGS = -- $(host-test-program-cmd)
++
+ include ../Rules
+diff --git a/support/capture_subprocess.h b/support/capture_subprocess.h
+index 2dce42e3a3..2832cfc635 100644
+--- a/support/capture_subprocess.h
++++ b/support/capture_subprocess.h
+@@ -35,6 +35,12 @@ struct support_capture_subprocess
+ struct support_capture_subprocess support_capture_subprocess
+   (void (*callback) (void *), void *closure);
+ 
++/* Issue FILE with ARGV arguments by using posix_spawn and capture standard
++   output, standard error, and the exit status.  The out.buffer and err.buffer
++   are handle as support_capture_subprocess.  */
++struct support_capture_subprocess support_capture_subprogram
++  (const char *file, char *const argv[]);
++
+ /* Deallocate the subprocess data captured by
+    support_capture_subprocess.  */
+ void support_capture_subprocess_free (struct support_capture_subprocess *);
+diff --git a/support/subprocess.h b/support/subprocess.h
+new file mode 100644
+index 0000000000..c031878d94
+--- /dev/null
++++ b/support/subprocess.h
+@@ -0,0 +1,49 @@
++/* Create a subprocess.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifndef SUPPORT_SUBPROCESS_H
++#define SUPPORT_SUBPROCESS_H
++
++#include <sys/types.h>
++
++struct support_subprocess
++{
++  int stdout_pipe[2];
++  int stderr_pipe[2];
++  pid_t pid;
++};
++
++/* Invoke CALLBACK (CLOSURE) in a subprocess created with fork and return
++   its PID, a pipe redirected to STDOUT, and a pipe redirected to STDERR.  */
++struct support_subprocess support_subprocess
++  (void (*callback) (void *), void *closure);
++
++/* Issue FILE with ARGV arguments by using posix_spawn and return is PID, a
++   pipe redirected to STDOUT, and a pipe redirected to STDERR.  */
++struct support_subprocess support_subprogram
++  (const char *file, char *const argv[]);
++
++/* Wait for the subprocess indicated by PROC::PID.  Return the status
++   indicate by waitpid call.  */
++int support_process_wait (struct support_subprocess *proc);
++
++/* Terminate the subprocess indicated by PROC::PID, first with a SIGTERM and
++   then with a SIGKILL.  Return the status as for waitpid call.  */
++int support_process_terminate (struct support_subprocess *proc);
++
++#endif
+diff --git a/support/support_capture_subprocess.c b/support/support_capture_subprocess.c
+index 167514faf1..948ce5a0c6 100644
+--- a/support/support_capture_subprocess.c
++++ b/support/support_capture_subprocess.c
+@@ -16,6 +16,7 @@
+    License along with the GNU C Library; if not, see
+    <http://www.gnu.org/licenses/>.  */
+ 
++#include <support/subprocess.h>
+ #include <support/capture_subprocess.h>
+ 
+ #include <errno.h>
+@@ -23,6 +24,7 @@
+ #include <support/check.h>
+ #include <support/xunistd.h>
+ #include <support/xsocket.h>
++#include <support/xspawn.h>
+ 
+ static void
+ transfer (const char *what, struct pollfd *pfd, struct xmemstream *stream)
+@@ -50,59 +52,53 @@ transfer (const char *what, struct pollfd *pfd, struct xmemstream *stream)
+     }
+ }
+ 
+-struct support_capture_subprocess
+-support_capture_subprocess (void (*callback) (void *), void *closure)
++static void
++support_capture_poll (struct support_capture_subprocess *result,
++		      struct support_subprocess *proc)
+ {
+-  struct support_capture_subprocess result;
+-  xopen_memstream (&result.out);
+-  xopen_memstream (&result.err);
+-
+-  int stdout_pipe[2];
+-  xpipe (stdout_pipe);
+-  TEST_VERIFY (stdout_pipe[0] > STDERR_FILENO);
+-  TEST_VERIFY (stdout_pipe[1] > STDERR_FILENO);
+-  int stderr_pipe[2];
+-  xpipe (stderr_pipe);
+-  TEST_VERIFY (stderr_pipe[0] > STDERR_FILENO);
+-  TEST_VERIFY (stderr_pipe[1] > STDERR_FILENO);
+-
+-  TEST_VERIFY (fflush (stdout) == 0);
+-  TEST_VERIFY (fflush (stderr) == 0);
+-
+-  pid_t pid = xfork ();
+-  if (pid == 0)
+-    {
+-      xclose (stdout_pipe[0]);
+-      xclose (stderr_pipe[0]);
+-      xdup2 (stdout_pipe[1], STDOUT_FILENO);
+-      xdup2 (stderr_pipe[1], STDERR_FILENO);
+-      xclose (stdout_pipe[1]);
+-      xclose (stderr_pipe[1]);
+-      callback (closure);
+-      _exit (0);
+-    }
+-  xclose (stdout_pipe[1]);
+-  xclose (stderr_pipe[1]);
+-
+   struct pollfd fds[2] =
+     {
+-      { .fd = stdout_pipe[0], .events = POLLIN },
+-      { .fd = stderr_pipe[0], .events = POLLIN },
++      { .fd = proc->stdout_pipe[0], .events = POLLIN },
++      { .fd = proc->stderr_pipe[0], .events = POLLIN },
+     };
+ 
+   do
+     {
+       xpoll (fds, 2, -1);
+-      transfer ("stdout", &fds[0], &result.out);
+-      transfer ("stderr", &fds[1], &result.err);
++      transfer ("stdout", &fds[0], &result->out);
++      transfer ("stderr", &fds[1], &result->err);
+     }
+   while (fds[0].events != 0 || fds[1].events != 0);
+-  xclose (stdout_pipe[0]);
+-  xclose (stderr_pipe[0]);
+ 
+-  xfclose_memstream (&result.out);
+-  xfclose_memstream (&result.err);
+-  xwaitpid (pid, &result.status, 0);
++  xfclose_memstream (&result->out);
++  xfclose_memstream (&result->err);
++
++  result->status = support_process_wait (proc);
++}
++
++struct support_capture_subprocess
++support_capture_subprocess (void (*callback) (void *), void *closure)
++{
++  struct support_capture_subprocess result;
++  xopen_memstream (&result.out);
++  xopen_memstream (&result.err);
++
++  struct support_subprocess proc = support_subprocess (callback, closure);
++
++  support_capture_poll (&result, &proc);
++  return result;
++}
++
++struct support_capture_subprocess
++support_capture_subprogram (const char *file, char *const argv[])
++{
++  struct support_capture_subprocess result;
++  xopen_memstream (&result.out);
++  xopen_memstream (&result.err);
++
++  struct support_subprocess proc = support_subprogram (file, argv);
++
++  support_capture_poll (&result, &proc);
+   return result;
+ }
+ 
+diff --git a/support/support_subprocess.c b/support/support_subprocess.c
+new file mode 100644
+index 0000000000..0c8cc6af30
+--- /dev/null
++++ b/support/support_subprocess.c
+@@ -0,0 +1,152 @@
++/* Create subprocess.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++#include <signal.h>
++#include <time.h>
++#include <sys/wait.h>
++#include <stdbool.h>
++#include <support/xspawn.h>
++#include <support/check.h>
++#include <support/xunistd.h>
++#include <support/subprocess.h>
++
++static struct support_subprocess
++support_suprocess_init (void)
++{
++  struct support_subprocess result;
++
++  xpipe (result.stdout_pipe);
++  TEST_VERIFY (result.stdout_pipe[0] > STDERR_FILENO);
++  TEST_VERIFY (result.stdout_pipe[1] > STDERR_FILENO);
++
++  xpipe (result.stderr_pipe);
++  TEST_VERIFY (result.stderr_pipe[0] > STDERR_FILENO);
++  TEST_VERIFY (result.stderr_pipe[1] > STDERR_FILENO);
++
++  TEST_VERIFY (fflush (stdout) == 0);
++  TEST_VERIFY (fflush (stderr) == 0);
++
++  return result;
++}
++
++struct support_subprocess
++support_subprocess (void (*callback) (void *), void *closure)
++{
++  struct support_subprocess result = support_suprocess_init ();
++
++  result.pid = xfork ();
++  if (result.pid == 0)
++    {
++      xclose (result.stdout_pipe[0]);
++      xclose (result.stderr_pipe[0]);
++      xdup2 (result.stdout_pipe[1], STDOUT_FILENO);
++      xdup2 (result.stderr_pipe[1], STDERR_FILENO);
++      xclose (result.stdout_pipe[1]);
++      xclose (result.stderr_pipe[1]);
++      callback (closure);
++      _exit (0);
++    }
++  xclose (result.stdout_pipe[1]);
++  xclose (result.stderr_pipe[1]);
++
++  return result;
++}
++
++struct support_subprocess
++support_subprogram (const char *file, char *const argv[])
++{
++  struct support_subprocess result = support_suprocess_init ();
++
++  posix_spawn_file_actions_t fa;
++  /* posix_spawn_file_actions_init does not fail.  */
++  posix_spawn_file_actions_init (&fa);
++
++  xposix_spawn_file_actions_addclose (&fa, result.stdout_pipe[0]);
++  xposix_spawn_file_actions_addclose (&fa, result.stderr_pipe[0]);
++  xposix_spawn_file_actions_adddup2 (&fa, result.stdout_pipe[1], STDOUT_FILENO);
++  xposix_spawn_file_actions_adddup2 (&fa, result.stderr_pipe[1], STDERR_FILENO);
++  xposix_spawn_file_actions_addclose (&fa, result.stdout_pipe[1]);
++  xposix_spawn_file_actions_addclose (&fa, result.stderr_pipe[1]);
++
++  result.pid = xposix_spawn (file, &fa, NULL, argv, NULL);
++
++  xclose (result.stdout_pipe[1]);
++  xclose (result.stderr_pipe[1]);
++
++  return result;
++}
++
++int
++support_process_wait (struct support_subprocess *proc)
++{
++  xclose (proc->stdout_pipe[0]);
++  xclose (proc->stderr_pipe[0]);
++
++  int status;
++  xwaitpid (proc->pid, &status, 0);
++  return status;
++}
++
++
++static bool
++support_process_kill (int pid, int signo, int *status)
++{
++  /* Kill the whole process group.  */
++  kill (-pid, signo);
++  /* In case setpgid failed in the child, kill it individually too.  */
++  kill (pid, signo);
++
++  /* Wait for it to terminate.  */
++  pid_t killed;
++  for (int i = 0; i < 5; ++i)
++    {
++      int status;
++      killed = xwaitpid (pid, &status, WNOHANG|WUNTRACED);
++      if (killed != 0)
++        break;
++
++      /* Delay, give the system time to process the kill.  If the
++         nanosleep() call return prematurely, all the better.  We
++         won't restart it since this probably means the child process
++         finally died.  */
++      nanosleep (&((struct timespec) { 0, 100000000 }), NULL);
++    }
++  if (killed != 0 && killed != pid)
++    return false;
++
++  return true;
++}
++
++int
++support_process_terminate (struct support_subprocess *proc)
++{
++  xclose (proc->stdout_pipe[0]);
++  xclose (proc->stderr_pipe[0]);
++
++  int status;
++  pid_t killed = xwaitpid (proc->pid, &status, WNOHANG|WUNTRACED);
++  if (killed != 0 && killed == proc->pid)
++    return status;
++
++  /* Subprocess is still running, terminate it.  */
++  if (!support_process_kill (proc->pid, SIGTERM, &status) )
++    support_process_kill (proc->pid, SIGKILL, &status);
++
++  return status;
++}
+diff --git a/support/tst-support_capture_subprocess.c b/support/tst-support_capture_subprocess.c
+index d8ba42ea8b..ab363e41ac 100644
+--- a/support/tst-support_capture_subprocess.c
++++ b/support/tst-support_capture_subprocess.c
+@@ -23,8 +23,20 @@
+ #include <support/capture_subprocess.h>
+ #include <support/check.h>
+ #include <support/support.h>
++#include <support/temp_file.h>
+ #include <sys/wait.h>
+ #include <unistd.h>
++#include <paths.h>
++#include <getopt.h>
++#include <limits.h>
++#include <errno.h>
++#include <array_length.h>
++
++/* Nonzero if the program gets called via 'exec'.  */
++static int restart;
++
++/* Hold the four initial argument used to respawn the process.  */
++static char *initial_argv[5];
+ 
+ /* Write one byte at *P to FD and advance *P.  Do nothing if *P is
+    '\0'.  */
+@@ -42,6 +54,30 @@ transfer (const unsigned char **p, int fd)
+ enum write_mode { out_first, err_first, interleave,
+                   write_mode_last =  interleave };
+ 
++static const char *
++write_mode_to_str (enum write_mode mode)
++{
++  switch (mode)
++    {
++    case out_first:  return "out_first";
++    case err_first:  return "err_first";
++    case interleave: return "interleave";
++    default:         return "write_mode_last";
++    }
++}
++
++static enum write_mode
++str_to_write_mode (const char *mode)
++{
++  if (strcmp (mode, "out_first") == 0)
++    return out_first;
++  else if (strcmp (mode, "err_first") == 0)
++    return err_first;
++  else if (strcmp (mode, "interleave") == 0)
++    return interleave;
++  return write_mode_last;
++}
++
+ /* Describe what to write in the subprocess.  */
+ struct test
+ {
+@@ -52,11 +88,9 @@ struct test
+   int status;
+ };
+ 
+-/* For use with support_capture_subprocess.  */
+-static void
+-callback (void *closure)
++_Noreturn static void
++test_common (const struct test *test)
+ {
+-  const struct test *test = closure;
+   bool mode_ok = false;
+   switch (test->write_mode)
+     {
+@@ -95,6 +129,40 @@ callback (void *closure)
+   exit (test->status);
+ }
+ 
++static int
++parse_int (const char *str)
++{
++  char *endptr;
++  long int ret = strtol (str, &endptr, 10);
++  TEST_COMPARE (errno, 0);
++  TEST_VERIFY (ret >= 0 && ret <= INT_MAX);
++  return ret;
++}
++
++/* For use with support_capture_subprogram.  */
++_Noreturn static void
++handle_restart (char *out, char *err, const char *write_mode,
++		const char *signal, const char *status)
++{
++  struct test test =
++    {
++      out,
++      err,
++      str_to_write_mode (write_mode),
++      parse_int (signal),
++      parse_int (status)
++    };
++  test_common (&test);
++}
++
++/* For use with support_capture_subprocess.  */
++_Noreturn static void
++callback (void *closure)
++{
++  const struct test *test = closure;
++  test_common (test);
++}
++
+ /* Create a heap-allocated random string of letters.  */
+ static char *
+ random_string (size_t length)
+@@ -130,12 +198,59 @@ check_stream (const char *what, const struct xmemstream *stream,
+     }
+ }
+ 
++static struct support_capture_subprocess
++do_subprocess (struct test *test)
++{
++  return support_capture_subprocess (callback, test);
++}
++
++static struct support_capture_subprocess
++do_subprogram (const struct test *test)
++{
++  /* Three digits per byte plus null terminator.  */
++  char signalstr[3 * sizeof(int) + 1];
++  snprintf (signalstr, sizeof (signalstr), "%d", test->signal);
++  char statusstr[3 * sizeof(int) + 1];
++  snprintf (statusstr, sizeof (statusstr), "%d", test->status);
++
++  int argc = 0;
++  enum {
++    /* 4 elements from initial_argv (path to ld.so, '--library-path', the
++       path', and application name'), 2 for restart argument ('--direct',
++       '--restart'), 5 arguments plus NULL.  */
++    argv_size = 12
++  };
++  char *args[argv_size];
++
++  for (char **arg = initial_argv; *arg != NULL; arg++)
++    args[argc++] = *arg;
++
++  args[argc++] = (char*) "--direct";
++  args[argc++] = (char*) "--restart";
++
++  args[argc++] = test->out;
++  args[argc++] = test->err;
++  args[argc++] = (char*) write_mode_to_str (test->write_mode);
++  args[argc++] = signalstr;
++  args[argc++] = statusstr;
++  args[argc]   = NULL;
++  TEST_VERIFY (argc < argv_size);
++
++  return support_capture_subprogram (args[0], args);
++}
++
++enum test_type
++{
++  subprocess,
++  subprogram,
++};
++
+ static int
+-do_test (void)
++do_multiple_tests (enum test_type type)
+ {
+   const int lengths[] = {0, 1, 17, 512, 20000, -1};
+ 
+-  /* Test multiple combinations of support_capture_subprocess.
++  /* Test multiple combinations of support_capture_sub{process,program}.
+ 
+      length_idx_stdout: Index into the lengths array above,
+        controls how many bytes are written by the subprocess to
+@@ -164,8 +279,10 @@ do_test (void)
+               TEST_VERIFY (strlen (test.out) == lengths[length_idx_stdout]);
+               TEST_VERIFY (strlen (test.err) == lengths[length_idx_stderr]);
+ 
+-              struct support_capture_subprocess result
+-                = support_capture_subprocess (callback, &test);
++	      struct support_capture_subprocess result
++		= type == subprocess ? do_subprocess (&test)
++				     : do_subprogram (&test);
++
+               check_stream ("stdout", &result.out, test.out);
+               check_stream ("stderr", &result.err, test.err);
+ 
+@@ -199,4 +316,54 @@ do_test (void)
+   return 0;
+ }
+ 
++static int
++do_test (int argc, char *argv[])
++{
++  /* We must have either:
++
++     - one or four parameters if called initially:
++       + argv[1]: path for ld.so        optional
++       + argv[2]: "--library-path"      optional
++       + argv[3]: the library path      optional
++       + argv[4]: the application name
++
++     - six parameters left if called through re-execution:
++       + argv[1]: the application name
++       + argv[2]: the stdout to print
++       + argv[3]: the stderr to print
++       + argv[4]: the write mode to use
++       + argv[5]: the signal to issue
++       + argv[6]: the exit status code to use
++
++     * When built with --enable-hardcoded-path-in-tests or issued without
++       using the loader directly.
++  */
++
++  if (argc != (restart ? 6 : 5) && argc != (restart ? 6 : 2))
++    FAIL_EXIT1 ("wrong number of arguments (%d)", argc);
++
++  if (restart)
++    {
++      handle_restart (argv[1],  /* stdout  */
++		      argv[2],  /* stderr  */
++		      argv[3],  /* write_mode  */
++		      argv[4],  /* signal  */
++		      argv[5]); /* status  */
++    }
++
++  initial_argv[0] = argv[1]; /* path for ld.so  */
++  initial_argv[1] = argv[2]; /* "--library-path"  */
++  initial_argv[2] = argv[3]; /* the library path  */
++  initial_argv[3] = argv[4]; /* the application name  */
++  initial_argv[4] = NULL;
++
++  do_multiple_tests (subprocess);
++  do_multiple_tests (subprogram);
++
++  return 0;
++}
++
++#define CMDLINE_OPTIONS \
++  { "restart", no_argument, &restart, 1 },
++#define TEST_FUNCTION_ARGV do_test
+ #include <support/test-driver.c>
+diff --git a/support/xposix_spawn.c b/support/xposix_spawn.c
+new file mode 100644
+index 0000000000..e846017632
+--- /dev/null
++++ b/support/xposix_spawn.c
+@@ -0,0 +1,32 @@
++/* xposix_spawn implementation.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <support/xspawn.h>
++#include <support/check.h>
++
++pid_t
++xposix_spawn (const char *file, const posix_spawn_file_actions_t *fa,
++	      const posix_spawnattr_t *attr, char *const args[],
++	      char *const envp[])
++{
++  pid_t pid;
++  int status = posix_spawn (&pid, file, fa, attr, args, envp);
++  if (status != 0)
++    FAIL_EXIT1 ("posix_spawn to %s file failed: %m", file);
++  return pid;
++}
+diff --git a/support/xposix_spawn_file_actions_addclose.c b/support/xposix_spawn_file_actions_addclose.c
+new file mode 100644
+index 0000000000..eed54a6514
+--- /dev/null
++++ b/support/xposix_spawn_file_actions_addclose.c
+@@ -0,0 +1,29 @@
++/* xposix_spawn_file_actions_addclose implementation.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <support/xspawn.h>
++#include <support/check.h>
++
++int
++xposix_spawn_file_actions_addclose (posix_spawn_file_actions_t *fa, int fd)
++{
++  int status = posix_spawn_file_actions_addclose (fa, fd);
++  if (status == -1)
++    FAIL_EXIT1 ("posix_spawn_file_actions_addclose failed: %m\n");
++  return status;
++}
+diff --git a/support/xposix_spawn_file_actions_adddup2.c b/support/xposix_spawn_file_actions_adddup2.c
+new file mode 100644
+index 0000000000..a43b6490be
+--- /dev/null
++++ b/support/xposix_spawn_file_actions_adddup2.c
+@@ -0,0 +1,30 @@
++/* xposix_spawn_file_actions_adddup2 implementation.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <support/xspawn.h>
++#include <support/check.h>
++
++int
++xposix_spawn_file_actions_adddup2 (posix_spawn_file_actions_t *fa, int fd,
++				   int newfd)
++{
++  int status = posix_spawn_file_actions_adddup2 (fa, fd, newfd);
++  if (status == -1)
++    FAIL_EXIT1 ("posix_spawn_file_actions_adddup2 failed: %m\n");
++  return status;
++}
 diff --git a/support/xpthread_rwlock_destroy.c b/support/xpthread_rwlock_destroy.c
 new file mode 100644
 index 0000000000..6d6e953569
@@ -1193,6 +2468,46 @@ index 0000000000..6d6e953569
 +  xpthread_check_return ("pthread_rwlock_destroy",
 +                         pthread_rwlock_destroy (rwlock));
 +}
+diff --git a/support/xspawn.h b/support/xspawn.h
+new file mode 100644
+index 0000000000..bbf89132e4
+--- /dev/null
++++ b/support/xspawn.h
+@@ -0,0 +1,34 @@
++/* posix_spawn with support checks.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifndef SUPPORT_XSPAWN_H
++#define SUPPORT_XSPAWN_H
++
++#include <spawn.h>
++
++__BEGIN_DECLS
++
++int xposix_spawn_file_actions_addclose (posix_spawn_file_actions_t *, int);
++int xposix_spawn_file_actions_adddup2 (posix_spawn_file_actions_t *, int, int);
++
++pid_t xposix_spawn (const char *, const posix_spawn_file_actions_t *,
++		    const posix_spawnattr_t *, char *const [], char *const []);
++
++__END_DECLS
++
++#endif
 diff --git a/support/xthread.h b/support/xthread.h
 index 47c23235f3..9fe1f68b3b 100644
 --- a/support/xthread.h
