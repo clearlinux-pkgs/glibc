@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.29
-Release:        264
+Release:        265
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -42,6 +42,7 @@ Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
 Patch53: 	nostackshrink.patch
+Patch54: 	0001-Compile-branred.c-with-mprefer-vector-width-128.patch
 
 # Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
 # Required for linux-steam-integration
@@ -220,6 +221,7 @@ GNU C library extra components.
 %patch51 -p1
 %patch52 -p1
 %patch53 -p1
+%patch54 -p1
 %patch61 -p1
 %patch62 -p1
 
