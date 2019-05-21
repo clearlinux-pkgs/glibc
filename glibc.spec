@@ -43,6 +43,7 @@ Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
 Patch53: 	nostackshrink.patch
 Patch54: 	0001-Compile-branred.c-with-mprefer-vector-width-128.patch
+Patch55: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
 
 # Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
 # Required for linux-steam-integration
@@ -222,6 +223,7 @@ GNU C library extra components.
 %patch52 -p1
 %patch53 -p1
 %patch54 -p1
+%patch55 -p1
 %patch61 -p1
 %patch62 -p1
 
