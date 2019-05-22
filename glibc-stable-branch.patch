@@ -1,8 +1,15 @@
 diff --git a/ChangeLog b/ChangeLog
-index 59dab18463..de8c5c214d 100644
+index 59dab18463..f4586d34a3 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,172 @@
+@@ -1,3 +1,179 @@
++2019-05-22  Wilco Dijkstra  <wdijkstr@arm.com>
++
++	[BZ #24531]
++	* malloc/malloc.c (MAX_TCACHE_COUNT): New define.
++	(do_set_tcache_count): Only update if count is small enough.
++	* manual/tunables.texi (glibc.malloc.tcache_count): Document max value.
++
 +2019-05-15  Mark Wielaard  <mark@klomp.org>
 +
 +	[BZ#24476]
@@ -933,10 +940,19 @@ index 1fd2fee44b..c64aaaff55 100644
  	"+:1:0001//01//01:1872//12//31:<U897F><U66A6>:%EC%Ey<U5E74>";/
  	"+:1:-0001//12//31:-*:<U7D00><U5143><U524D>:%EC%Ey<U5E74>"
 diff --git a/malloc/malloc.c b/malloc/malloc.c
-index feaf7ee0bf..ce771375b6 100644
+index feaf7ee0bf..0abd653be2 100644
 --- a/malloc/malloc.c
 +++ b/malloc/malloc.c
-@@ -3876,10 +3876,14 @@ _int_malloc (mstate av, size_t bytes)
+@@ -2919,6 +2919,8 @@ typedef struct tcache_perthread_struct
+   tcache_entry *entries[TCACHE_MAX_BINS];
+ } tcache_perthread_struct;
+ 
++#define MAX_TCACHE_COUNT 127	/* Maximum value of counts[] entries.  */
++
+ static __thread bool tcache_shutting_down = false;
+ static __thread tcache_perthread_struct *tcache = NULL;
+ 
+@@ -3876,10 +3878,14 @@ _int_malloc (mstate av, size_t bytes)
                          {
                            victim->fd_nextsize = fwd;
                            victim->bk_nextsize = fwd->bk_nextsize;
@@ -951,6 +967,20 @@ index feaf7ee0bf..ce771375b6 100644
                      }
                  }
                else
+@@ -5120,8 +5126,11 @@ static inline int
+ __always_inline
+ do_set_tcache_count (size_t value)
+ {
+-  LIBC_PROBE (memory_tunable_tcache_count, 2, value, mp_.tcache_count);
+-  mp_.tcache_count = value;
++  if (value <= MAX_TCACHE_COUNT)
++    {
++      LIBC_PROBE (memory_tunable_tcache_count, 2, value, mp_.tcache_count);
++      mp_.tcache_count = value;
++    }
+   return 1;
+ }
+ 
 diff --git a/malloc/mtrace.c b/malloc/mtrace.c
 index a2facf65ea..2fda262508 100644
 --- a/malloc/mtrace.c
@@ -1092,6 +1122,21 @@ index a2facf65ea..2fda262508 100644
  
    fprintf (f, "= End\n");
    fclose (f);
+diff --git a/manual/tunables.texi b/manual/tunables.texi
+index af820820e0..8edfea4edd 100644
+--- a/manual/tunables.texi
++++ b/manual/tunables.texi
+@@ -189,8 +189,8 @@ per-thread cache.  The default (and maximum) value is 1032 bytes on
+ 
+ @deftp Tunable glibc.malloc.tcache_count
+ The maximum number of chunks of each size to cache. The default is 7.
+-There is no upper limit, other than available system memory.  If set
+-to zero, the per-thread cache is effectively disabled.
++The upper limit is 127.  If set to zero, the per-thread cache is effectively
++disabled.
+ 
+ The approximate maximum overhead of the per-thread cache is thus equal
+ to the number of bins times the chunk count in each bin times the size
 diff --git a/nptl/Makefile b/nptl/Makefile
 index 340282c6cb..0e316edfac 100644
 --- a/nptl/Makefile
