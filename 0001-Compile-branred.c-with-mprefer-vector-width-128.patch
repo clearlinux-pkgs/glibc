@@ -23,7 +23,7 @@ index 2b7d69bb50..b5f9589021 100644
  endif
 +
 +ifeq ($(subdir),math)
-+CFLAGS-branred.c = -mprefer-vector-width=128
++CFLAGS-branred.c = -mprefer-vector-width=128 -fno-tree-vectorize
 +endif
 -- 
 2.20.1
