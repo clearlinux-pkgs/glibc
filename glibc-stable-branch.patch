@@ -209,10 +209,11 @@ diff --git a/NEWS b/NEWS
 index 912a9bdc0f..17dcaa7b74 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,38 @@ See the end for copying conditions.
+@@ -4,6 +4,38 @@ See the end for copying conditions.
+ 
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
- 
++
 +Version 2.29.1
 +
 +Major new features:
@@ -244,10 +245,9 @@ index 912a9bdc0f..17dcaa7b74 100644
 +  via proceed_next_node in posix/regexec.c leads to heap-based buffer
 +  over-read.  Reported by Hongxu Chen.
 +
-+
+ 
  Version 2.29
  
- Major new features:
 diff --git a/Rules b/Rules
 index 1562f2ce6d..16afa6acaa 100644
 --- a/Rules
