@@ -1,8 +1,25 @@
 diff --git a/ChangeLog b/ChangeLog
-index 59dab18463..306ea16ad5 100644
+index 59dab18463..20b650e026 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,202 @@
+@@ -1,3 +1,219 @@
++2019-06-20  Dmitry V. Levin  <ldv@altlinux.org>
++	    Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #24228]
++	* libio/genops.c (_IO_unbuffer_all)
++	[SHLIB_COMPAT (libc, GLIBC_2_0, GLIBC_2_1)]: Do not attempt to free wide
++	buffers and access _IO_FILE_complete members of legacy libio streams.
++	* libio/tst-bz24228.c: New file.
++	* libio/tst-bz24228.map: Likewise.
++	* libio/Makefile [build-shared] (tests): Add tst-bz24228.
++	[build-shared] (generated): Add tst-bz24228.mtrace and
++	tst-bz24228.check.
++	[run-built-tests && build-shared] (tests-special): Add
++	$(objpfx)tst-bz24228-mem.out.
++	(LDFLAGS-tst-bz24228, tst-bz24228-ENV): New variables.
++	($(objpfx)tst-bz24228-mem.out): New rule.
++
 +2019-03-13  Zack Weinberg  <zackw@panix.com>
 +
 +	* scripts/check-obsolete-constructs.py: New test script.
@@ -206,10 +223,10 @@ index 59dab18463..306ea16ad5 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index 912a9bdc0f..17dcaa7b74 100644
+index 912a9bdc0f..68d88b1036 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,38 @@ See the end for copying conditions.
+@@ -4,6 +4,39 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -229,6 +246,7 @@ index 912a9bdc0f..17dcaa7b74 100644
 +  [24164] Systemtap probes need to use "nr" constraint on 32-bit Arm
 +  [24161] __run_fork_handlers self-deadlocks in malloc/tst-mallocfork2
 +  [24211] Use-after-free in Systemtap probe in pthread_join
++  [24228] old x86 applications that use legacy libio crash on exit
 +  [24476] dlfcn: Guard __dlerror_main_freeres with __libc_once_get (once)
 +
 +Security related changes:
@@ -873,7 +891,7 @@ index c53dd86592..8c26292edd 100644
  
  /* Our code uses one macro LIBC_PROBE (name, n, arg1, ..., argn).
 diff --git a/libio/Makefile b/libio/Makefile
-index 5bee83e55c..ee3a34cc3b 100644
+index 5bee83e55c..9626a16b01 100644
 --- a/libio/Makefile
 +++ b/libio/Makefile
 @@ -65,7 +65,7 @@ tests = tst_swprintf tst_wprintf tst_swscanf tst_wscanf tst_getwc tst_putwc   \
@@ -885,7 +903,50 @@ index 5bee83e55c..ee3a34cc3b 100644
  
  tests-internal = tst-vtables tst-vtables-interposed tst-readline
  
-@@ -212,6 +212,7 @@ $(objpfx)tst-ungetwc1.out: $(gen-locales)
+@@ -73,6 +73,9 @@ ifeq (yes,$(build-shared))
+ # Add test-fopenloc only if shared library is enabled since it depends on
+ # shared localedata objects.
+ tests += tst-fopenloc
++# Add tst-bz24228 only if shared library is enabled since it can never meet its
++# objective with static linking because the relevant code just is not there.
++tests += tst-bz24228
+ endif
+ test-srcs = test-freopen
+ 
+@@ -157,11 +160,14 @@ CFLAGS-tst_putwc.c += -DOBJPFX=\"$(objpfx)\"
+ CFLAGS-tst-sprintf-ub.c += -Wno-restrict
+ CFLAGS-tst-sprintf-chk-ub.c += -Wno-restrict
+ 
++LDFLAGS-tst-bz24228 = -Wl,--version-script=tst-bz24228.map
++
+ tst_wprintf2-ARGS = "Some Text"
+ 
+ test-fmemopen-ENV = MALLOC_TRACE=$(objpfx)test-fmemopen.mtrace
+ tst-fopenloc-ENV = MALLOC_TRACE=$(objpfx)tst-fopenloc.mtrace
+ tst-bz22415-ENV = MALLOC_TRACE=$(objpfx)tst-bz22415.mtrace
++tst-bz24228-ENV = MALLOC_TRACE=$(objpfx)tst-bz24228.mtrace
+ 
+ generated += test-fmemopen.mtrace test-fmemopen.check
+ generated += tst-fopenloc.mtrace tst-fopenloc.check
+@@ -170,6 +176,7 @@ generated += tst-bz22415.mtrace tst-bz22415.check
+ aux	:= fileops genops stdfiles stdio strops
+ 
+ ifeq ($(build-shared),yes)
++generated += tst-bz24228.mtrace tst-bz24228.check
+ aux	+= oldfileops oldstdfiles
+ endif
+ 
+@@ -184,7 +191,8 @@ tests-special += $(objpfx)test-freopen.out $(objpfx)test-fmemopen-mem.out \
+ ifeq (yes,$(build-shared))
+ # Run tst-fopenloc-cmp.out and tst-openloc-mem.out only if shared
+ # library is enabled since they depend on tst-fopenloc.out.
+-tests-special += $(objpfx)tst-fopenloc-cmp.out $(objpfx)tst-fopenloc-mem.out
++tests-special += $(objpfx)tst-fopenloc-cmp.out $(objpfx)tst-fopenloc-mem.out \
++		 $(objpfx)tst-bz24228-mem.out
+ endif
+ endif
+ 
+@@ -212,6 +220,7 @@ $(objpfx)tst-ungetwc1.out: $(gen-locales)
  $(objpfx)tst-ungetwc2.out: $(gen-locales)
  $(objpfx)tst-widetext.out: $(gen-locales)
  $(objpfx)tst_wprintf2.out: $(gen-locales)
@@ -893,6 +954,110 @@ index 5bee83e55c..ee3a34cc3b 100644
  endif
  
  $(objpfx)test-freopen.out: test-freopen.sh $(objpfx)test-freopen
+@@ -235,3 +244,7 @@ $(objpfx)tst-fopenloc-mem.out: $(objpfx)tst-fopenloc.out
+ $(objpfx)tst-bz22415-mem.out: $(objpfx)tst-bz22415.out
+ 	$(common-objpfx)malloc/mtrace $(objpfx)tst-bz22415.mtrace > $@; \
+ 	$(evaluate-test)
++
++$(objpfx)tst-bz24228-mem.out: $(objpfx)tst-bz24228.out
++	$(common-objpfx)malloc/mtrace $(objpfx)tst-bz24228.mtrace > $@; \
++	$(evaluate-test)
+diff --git a/libio/genops.c b/libio/genops.c
+index 2a0d9b81df..11a15549e8 100644
+--- a/libio/genops.c
++++ b/libio/genops.c
+@@ -789,9 +789,16 @@ _IO_unbuffer_all (void)
+ 
+   for (fp = (FILE *) _IO_list_all; fp; fp = fp->_chain)
+     {
++      int legacy = 0;
++
++#if SHLIB_COMPAT (libc, GLIBC_2_0, GLIBC_2_1)
++      if (__glibc_unlikely (_IO_vtable_offset (fp) != 0))
++	legacy = 1;
++#endif
++
+       if (! (fp->_flags & _IO_UNBUFFERED)
+ 	  /* Iff stream is un-orientated, it wasn't used. */
+-	  && fp->_mode != 0)
++	  && (legacy || fp->_mode != 0))
+ 	{
+ #ifdef _IO_MTSAFE_IO
+ 	  int cnt;
+@@ -805,7 +812,7 @@ _IO_unbuffer_all (void)
+ 	      __sched_yield ();
+ #endif
+ 
+-	  if (! dealloc_buffers && !(fp->_flags & _IO_USER_BUF))
++	  if (! legacy && ! dealloc_buffers && !(fp->_flags & _IO_USER_BUF))
+ 	    {
+ 	      fp->_flags |= _IO_USER_BUF;
+ 
+@@ -816,7 +823,7 @@ _IO_unbuffer_all (void)
+ 
+ 	  _IO_SETBUF (fp, NULL, 0);
+ 
+-	  if (fp->_mode > 0)
++	  if (! legacy && fp->_mode > 0)
+ 	    _IO_wsetb (fp, NULL, NULL, 0);
+ 
+ #ifdef _IO_MTSAFE_IO
+@@ -827,7 +834,8 @@ _IO_unbuffer_all (void)
+ 
+       /* Make sure that never again the wide char functions can be
+ 	 used.  */
+-      fp->_mode = -1;
++      if (! legacy)
++	fp->_mode = -1;
+     }
+ 
+ #ifdef _IO_MTSAFE_IO
+diff --git a/libio/tst-bz24228.c b/libio/tst-bz24228.c
+new file mode 100644
+index 0000000000..6a74500d47
+--- /dev/null
++++ b/libio/tst-bz24228.c
+@@ -0,0 +1,29 @@
++/* BZ #24228 check for memory corruption in legacy libio
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <mcheck.h>
++#include <support/test-driver.h>
++
++static int
++do_test (void)
++{
++  mtrace ();
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/libio/tst-bz24228.map b/libio/tst-bz24228.map
+new file mode 100644
+index 0000000000..4383e0817d
+--- /dev/null
++++ b/libio/tst-bz24228.map
+@@ -0,0 +1,5 @@
++# Hide the symbol from libc.so.6 to switch to the libio/oldfileops.c
++# implementation when it is available for the architecture.
++{
++  local: _IO_stdin_used;
++};
 diff --git a/libio/tst-wfile-sync.c b/libio/tst-wfile-sync.c
 new file mode 100644
 index 0000000000..618682064d
