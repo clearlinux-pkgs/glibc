@@ -51,8 +51,7 @@ Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 Patch61: 	fix-ld-audit-performance.patch
 Patch62:	c-utf8-locale.patch
 
-# cves
-Patch101:       CVE-2019-7309.nopatch
+# cves: patches 101 through 200
 
 BuildRequires:	grep
 BuildRequires:	texinfo
