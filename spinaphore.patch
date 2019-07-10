@@ -12,7 +12,7 @@
 +	  int cnt = 0;
 +	  do
 +	    {
-+	      if (cnt++ >= 256 || !__is_smp)
++	      if (cnt++ >= 16 || !__is_smp)
 +		{
 +		  /* Normal mutex.  */
 +simple:
