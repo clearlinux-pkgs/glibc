@@ -11,6 +11,8 @@ Group:          libs
 Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.30.tar.gz
 Source1:        langs.txt
 
+Patch1:                glibc-stable-branch.patch
+
 Patch4:		0001-Set-host.conf-multi-to-on-by-default.patch
 Patch6:		skip-error-msg-ld.so.conf.patch
 Patch7:		ldconfig-format-new.patch
@@ -194,6 +196,7 @@ GNU C library extra components.
 %prep
 %setup -q
 
+%patch1 -p1
 %patch4 -p1
 %patch6 -p1
 %patch7 -p1
