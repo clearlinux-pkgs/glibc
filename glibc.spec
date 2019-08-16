@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.30
-Release:        281
+Release:        282
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -111,6 +111,14 @@ Summary:        GNU C library
 Group:          libs
 
 %description utils
+GNU C library.
+
+%package bench
+License:        GPL-2.0
+Summary:        GNU C library
+Group:          libs
+
+%description bench
 GNU C library.
 
 %package -n libc6
@@ -278,6 +286,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     libc_cv_complocaledir=/usr/share/locale
 
 make %{?_smp_mflags}
+make USE_CLOCK_GETTIME=1 bench-build %{?_smp_mflags}
 popd
 
 
@@ -484,6 +493,11 @@ install -d %{buildroot}/var/cache/ldconfig
 install -d %{buildroot}%{_datadir}/defaults/etc/
 mv %{buildroot}%{_sysconfdir}/rpc %{buildroot}%{_datadir}/defaults/etc/rpc
 
+mkdir -p %{buildroot}/usr/lib64/glibc/benchmarks
+for f in benchtests/*; do [ -x $f -a ! -d $f ] && cp -a $f %{buildroot}/usr/lib64/glibc/benchmarks; done
+pushd %{buildroot}/usr/bin
+find ../lib64/glibc/benchmarks -type f -exec ln -s {} . \;
+popd
 popd
 
 pushd localedata
@@ -537,6 +551,10 @@ popd
 /usr/sbin/zic
 /usr/sbin/iconvconfig
 /usr/sbin/zdump
+
+%files bench
+/usr/bin/bench-*
+/usr/lib64/glibc/benchmarks/*
 
 %files -n libc6
 %dir /usr/share/locale
