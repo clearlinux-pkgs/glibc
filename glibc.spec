@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.30
-Release:        283
+Release:        284
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -390,7 +390,7 @@ mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
 
 unset ASFLAGS
-export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -g2  -Wl,-z,max-page-size=0x1000 -m32"
+export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -mstackrealign -g2  -Wl,-z,max-page-size=0x1000"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
