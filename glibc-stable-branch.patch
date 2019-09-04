@@ -1,8 +1,12 @@
 diff --git a/ChangeLog b/ChangeLog
-index cdb9e14881..e3da8f9a76 100644
+index cdb9e14881..3ae73ace06 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,17 @@
+@@ -1,3 +1,21 @@
++2019-09-03  Aurelien Jarno  <aurelien@aurel32.net>
++
++	* sysdeps/alpha/fpu/libm-test-ulps: Regenerated using GCC 9.2.
++
 +2019-08-28  Rafal Luzynski  <digitalfreak@lingonborough.com>
 +
 +	[BZ #24682]
@@ -88,4 +92,38 @@ index 00ce48cf58..343d89f489 100644
 +	  fprintf (fp, "\
    <size from=\"%zu\" to=\"%zu\" total=\"%zu\" count=\"%zu\"/>\n",
  		   sizes[i].from, sizes[i].to, sizes[i].total, sizes[i].count);
+ 
+diff --git a/sysdeps/alpha/fpu/libm-test-ulps b/sysdeps/alpha/fpu/libm-test-ulps
+index 0f77dd2ed0..89c4527a81 100644
+--- a/sysdeps/alpha/fpu/libm-test-ulps
++++ b/sysdeps/alpha/fpu/libm-test-ulps
+@@ -1084,10 +1084,10 @@ ildouble: 1
+ ldouble: 1
+ 
+ Function: Real part of "cpow_downward":
+-double: 2
+-float: 4
+-idouble: 2
+-ifloat: 4
++double: 5
++float: 8
++idouble: 5
++ifloat: 8
+ ildouble: 6
+ ldouble: 6
+ 
+@@ -1100,10 +1100,10 @@ ildouble: 2
+ ldouble: 2
+ 
+ Function: Real part of "cpow_towardzero":
+-double: 2
+-float: 4
+-idouble: 2
+-ifloat: 4
++double: 5
++float: 8
++idouble: 5
++ifloat: 8
+ ildouble: 6
+ ldouble: 6
  
