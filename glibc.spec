@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.30
-Release:        285
+Release:        286
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -50,6 +50,7 @@ Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 # Required for linux-steam-integration
 Patch61: 	fix-ld-audit-performance.patch
 Patch62:	c-utf8-locale.patch
+Patch63:	elf.readelflib.c_Fix_resolving_of_loadaddr_for_.dynstr_vaddr.patch
 
 # cves: patches 101 through 200
 
@@ -235,6 +236,7 @@ GNU C library extra components.
 %patch56 -p1
 %patch61 -p1
 %patch62 -p1
+%patch63 -p1
 
 
 %build
