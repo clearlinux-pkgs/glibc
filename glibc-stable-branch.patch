@@ -1,8 +1,18 @@
 diff --git a/ChangeLog b/ChangeLog
-index cdb9e14881..8e29a549b9 100644
+index cdb9e14881..3ea022b738 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,25 @@
+@@ -1,3 +1,35 @@
++2019-09-14  Aurelien Jarno  <aurelien@aurel32.net>
++
++	[BZ #24986]
++        * sysdeps/unix/alpha/getegid.S: Move to ...
++	* sysdeps/unix/sysv/linux/alpha/getegid.S: ... here.
++        * sysdeps/unix/alpha/geteuid.S: Move to ...
++	* sysdeps/unix/sysv/linux/alpha/geteuid.S: ... here.
++        * sysdeps/unix/alpha/getppid.S: Move to ...
++	* sysdeps/unix/sysv/linux/alpha/getppid.S: ... here
++
 +2019-09-08  Adhemerval Zanella  <adhemerval.zanella@linaro.org>
 +
 +	* sysdeps/hppa/fpu/libm-test-ulps: Update.
@@ -29,10 +39,10 @@ index cdb9e14881..8e29a549b9 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index ee9ed4de5a..09f2ce9752 100644
+index ee9ed4de5a..5f1ade1c49 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,15 @@ See the end for copying conditions.
+@@ -4,6 +4,17 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -44,6 +54,8 @@ index ee9ed4de5a..09f2ce9752 100644
 +  [24682] localedata: zh_CN first weekday should be Monday per GB/T
 +    7408-2005
 +  [24867] malloc: Remove unwanted leading whitespace in malloc_info
++  [24986] alpha: new getegid, geteuid and getppid syscalls used
++    unconditionally
 +
  
  Version 2.30
@@ -363,3 +375,15 @@ index d0c4dea001..2c61a7ae91 100644
  ifloat: 1
  
  Function: "exp10_upward":
+diff --git a/sysdeps/unix/alpha/getegid.S b/sysdeps/unix/sysv/linux/alpha/getegid.S
+similarity index 100%
+rename from sysdeps/unix/alpha/getegid.S
+rename to sysdeps/unix/sysv/linux/alpha/getegid.S
+diff --git a/sysdeps/unix/alpha/geteuid.S b/sysdeps/unix/sysv/linux/alpha/geteuid.S
+similarity index 100%
+rename from sysdeps/unix/alpha/geteuid.S
+rename to sysdeps/unix/sysv/linux/alpha/geteuid.S
+diff --git a/sysdeps/unix/alpha/getppid.S b/sysdeps/unix/sysv/linux/alpha/getppid.S
+similarity index 100%
+rename from sysdeps/unix/alpha/getppid.S
+rename to sysdeps/unix/sysv/linux/alpha/getppid.S
