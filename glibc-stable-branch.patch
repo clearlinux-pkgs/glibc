@@ -1,8 +1,15 @@
 diff --git a/ChangeLog b/ChangeLog
-index cdb9e14881..3ea022b738 100644
+index cdb9e14881..29c864868a 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,35 @@
+@@ -1,3 +1,42 @@
++2019-09-20  Joseph Myers  <joseph@codesourcery.com>
++
++	* sysdeps/unix/sysv/linux/riscv/vfork.S: Do not include
++	<linux/sched.h>.
++	(CLONE_VM): New macro.
++	(CLONE_VFORK): Likewise.
++
 +2019-09-14  Aurelien Jarno  <aurelien@aurel32.net>
 +
 +	[BZ #24986]
@@ -387,3 +394,21 @@ diff --git a/sysdeps/unix/alpha/getppid.S b/sysdeps/unix/sysv/linux/alpha/getppi
 similarity index 100%
 rename from sysdeps/unix/alpha/getppid.S
 rename to sysdeps/unix/sysv/linux/alpha/getppid.S
+diff --git a/sysdeps/unix/sysv/linux/riscv/vfork.S b/sysdeps/unix/sysv/linux/riscv/vfork.S
+index 67373f181b..dc173d6b47 100644
+--- a/sysdeps/unix/sysv/linux/riscv/vfork.S
++++ b/sysdeps/unix/sysv/linux/riscv/vfork.S
+@@ -21,9 +21,12 @@
+ #include <sys/asm.h>
+ #include <sysdep.h>
+ #define __ASSEMBLY__
+-#include <linux/sched.h>
+ #include <asm/signal.h>
+ 
++#define CLONE_VM      0x00000100 /* Set if VM shared between processes.  */
++#define CLONE_VFORK   0x00004000 /* Set if the parent wants the child to
++				    wake it up on mm_release.  */
++
+ 	.text
+ LEAF (__libc_vfork)
+ 
