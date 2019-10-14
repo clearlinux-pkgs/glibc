@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.30
-Release:        289
+Release:        290
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -530,29 +530,29 @@ popd
 
 %files bin
 /usr/bin/catchsegv
-/usr/bin/ldd
 /sbin/sln
 
 %files nscd
 /usr/sbin/nscd
 
 %files utils
-/usr/bin/locale
-/usr/bin/getconf
-/usr/bin/iconv
-/usr/bin/gencat
-/usr/bin/rpcgen
-/usr/bin/tzselect
-/usr/bin/getent
-/usr/bin/pcprofiledump
-/usr/bin/sprof
-/usr/bin/pldd
 %exclude /usr/bin/mtrace
+/usr/bin/gencat
+/usr/bin/getconf
+/usr/bin/getent
+/usr/bin/iconv
+/usr/bin/ldd
+/usr/bin/locale
+/usr/bin/pcprofiledump
+/usr/bin/pldd
+/usr/bin/rpcgen
 /usr/bin/sotruss
+/usr/bin/sprof
+/usr/bin/tzselect
 /usr/bin/xtrace
-/usr/sbin/zic
 /usr/sbin/iconvconfig
 /usr/sbin/zdump
+/usr/sbin/zic
 
 %files bench
 /usr/bin/bench-*
