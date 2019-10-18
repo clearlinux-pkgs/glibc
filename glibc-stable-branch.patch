@@ -382,6 +382,37 @@ index d0c4dea001..2c61a7ae91 100644
  ifloat: 1
  
  Function: "exp10_upward":
+diff --git a/sysdeps/s390/dl-procinfo.c b/sysdeps/s390/dl-procinfo.c
+index 44c9901800..1307ec41de 100644
+--- a/sysdeps/s390/dl-procinfo.c
++++ b/sysdeps/s390/dl-procinfo.c
+@@ -63,11 +63,11 @@ PROCINFO_CLASS const char _dl_s390_cap_flags[19][9]
+ #if !defined PROCINFO_DECL && defined SHARED
+   ._dl_s390_platforms
+ #else
+-PROCINFO_CLASS const char _dl_s390_platforms[9][7]
++PROCINFO_CLASS const char _dl_s390_platforms[10][7]
+ #endif
+ #ifndef PROCINFO_DECL
+ = {
+-    "g5", "z900", "z990", "z9-109", "z10", "z196", "zEC12", "z13", "z14"
++    "g5", "z900", "z990", "z9-109", "z10", "z196", "zEC12", "z13", "z14", "z15"
+   }
+ #endif
+ #if !defined SHARED || defined PROCINFO_DECL
+diff --git a/sysdeps/s390/dl-procinfo.h b/sysdeps/s390/dl-procinfo.h
+index 3b1f6a642b..689e961ced 100644
+--- a/sysdeps/s390/dl-procinfo.h
++++ b/sysdeps/s390/dl-procinfo.h
+@@ -23,7 +23,7 @@
+ 
+ #define _DL_HWCAP_COUNT 19
+ 
+-#define _DL_PLATFORMS_COUNT	9
++#define _DL_PLATFORMS_COUNT	10
+ 
+ /* The kernel provides up to 32 capability bits with elf_hwcap.  */
+ #define _DL_FIRST_PLATFORM	32
 diff --git a/sysdeps/unix/alpha/getegid.S b/sysdeps/unix/sysv/linux/alpha/getegid.S
 similarity index 100%
 rename from sysdeps/unix/alpha/getegid.S
