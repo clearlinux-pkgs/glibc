@@ -1,8 +1,14 @@
 diff --git a/ChangeLog b/ChangeLog
-index cdb9e14881..29c864868a 100644
+index cdb9e14881..4472d6c59d 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,42 @@
+@@ -1,3 +1,48 @@
++2019-10-08  Gabriel F. T. Gomes  <gabrielftg@linux.ibm.com>
++
++	* Makefile: Fix locale dependency for a couple of tests.
++	($(objpfx)tst-strftime2.out): New rule.
++	($(objpfx)tst-strftime3.out): Likewise.
++
 +2019-09-20  Joseph Myers  <joseph@codesourcery.com>
 +
 +	* sysdeps/unix/sysv/linux/riscv/vfork.S: Do not include
@@ -443,3 +449,16 @@ index 67373f181b..dc173d6b47 100644
  	.text
  LEAF (__libc_vfork)
  
+diff --git a/time/Makefile b/time/Makefile
+index a428f55245..63b8d735ea 100644
+--- a/time/Makefile
++++ b/time/Makefile
+@@ -57,6 +57,8 @@ include ../gen-locales.mk
+ 
+ $(objpfx)tst-ftime_l.out: $(gen-locales)
+ $(objpfx)tst-strptime.out: $(gen-locales)
++$(objpfx)tst-strftime2.out: $(gen-locales)
++$(objpfx)tst-strftime3.out: $(gen-locales)
+ endif
+ 
+ tz-cflags = -DTZDIR='"$(zonedir)"' \
