@@ -1,8 +1,32 @@
 diff --git a/ChangeLog b/ChangeLog
-index cdb9e14881..43c9a70ed1 100644
+index cdb9e14881..c4687dfd4c 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,64 @@
+@@ -1,3 +1,88 @@
++2019-08-15  Florian Weimer  <fweimer@redhat.com>
++
++	* malloc/Makefile (tests): Only add tst-mxfast for
++	$(have-tunables).
++	* malloc/tst-mxfast.c: Fix copyright year.
++	(do_test): Fix GNU style issues.  Use TEST_COMPARE instead of
++	assert for checks.
++
++2019-08-09  DJ Delorie  <dj@redhat.com>
++
++	* elf/dl-tunables.list: Add glibc.malloc.mxfast.
++	* manual/tunables.texi: Document it.
++	* malloc/malloc.c (do_set_mxfast): New.
++	(__libc_mallopt): Call it.
++	* malloc/arena.c: Add mxfast tunable.
++	* malloc/tst-mxfast.c: New.
++	* malloc/Makefile: Add it.
++
++2019-08-08  Niklas Hambüchen  <mail@nh2.me>
++	    Carlos O'Donell  <carlos@redhat.com>
++
++	[BZ #24026]
++	* malloc/malloc.c (__malloc_info): Account for top chunk.
++
 +2019-11-01  Dragan Mladjenovic  <dmladjenovic@wavecomp.com>
 +
 +	* sysdeps/unix/sysv/linux/mips/Makefile
@@ -89,6 +113,22 @@ index ee9ed4de5a..5f1ade1c49 100644
  
  Version 2.30
  
+diff --git a/elf/dl-tunables.list b/elf/dl-tunables.list
+index 1fc2d8886b..525c3767b5 100644
+--- a/elf/dl-tunables.list
++++ b/elf/dl-tunables.list
+@@ -85,6 +85,11 @@ glibc {
+     tcache_unsorted_limit {
+       type: SIZE_T
+     }
++    mxfast {
++      type: SIZE_T
++      minval: 0
++      security_level: SXID_IGNORE
++    }
+   }
+   cpu {
+     hwcap_mask {
 diff --git a/localedata/locales/bo_CN b/localedata/locales/bo_CN
 index 90cbc7807b..9df91a1721 100644
 --- a/localedata/locales/bo_CN
@@ -125,11 +165,110 @@ index 62a46415c1..cd4b33602a 100644
  END LC_TIME
  
  LC_MESSAGES
+diff --git a/malloc/Makefile b/malloc/Makefile
+index d2fba29953..742c515eb2 100644
+--- a/malloc/Makefile
++++ b/malloc/Makefile
+@@ -54,7 +54,7 @@ tests-internal += \
+ 	 tst-dynarray-at-fail \
+ 
+ ifneq (no,$(have-tunables))
+-tests += tst-malloc-usable-tunables
++tests += tst-malloc-usable-tunables tst-mxfast
+ tests-static += tst-malloc-usable-static-tunables
+ endif
+ 
+@@ -196,6 +196,8 @@ tst-malloc-usable-static-ENV = $(tst-malloc-usable-ENV)
+ tst-malloc-usable-tunables-ENV = GLIBC_TUNABLES=glibc.malloc.check=3
+ tst-malloc-usable-static-tunables-ENV = $(tst-malloc-usable-tunables-ENV)
+ 
++tst-mxfast-ENV = GLIBC_TUNABLES=glibc.malloc.tcache_count=0:glibc.malloc.mxfast=0
++
+ ifeq ($(experimental-malloc),yes)
+ CPPFLAGS-malloc.c += -DUSE_TCACHE=1
+ else
+diff --git a/malloc/arena.c b/malloc/arena.c
+index 8309c1334c..a32eb403ec 100644
+--- a/malloc/arena.c
++++ b/malloc/arena.c
+@@ -236,6 +236,7 @@ TUNABLE_CALLBACK_FNDECL (set_tcache_max, size_t)
+ TUNABLE_CALLBACK_FNDECL (set_tcache_count, size_t)
+ TUNABLE_CALLBACK_FNDECL (set_tcache_unsorted_limit, size_t)
+ #endif
++TUNABLE_CALLBACK_FNDECL (set_mxfast, size_t)
+ #else
+ /* Initialization routine. */
+ #include <string.h>
+@@ -323,6 +324,7 @@ ptmalloc_init (void)
+   TUNABLE_GET (tcache_unsorted_limit, size_t,
+ 	       TUNABLE_CALLBACK (set_tcache_unsorted_limit));
+ # endif
++  TUNABLE_GET (mxfast, size_t, TUNABLE_CALLBACK (set_mxfast));
+ #else
+   const char *s = NULL;
+   if (__glibc_likely (_environ != NULL))
 diff --git a/malloc/malloc.c b/malloc/malloc.c
-index 00ce48cf58..343d89f489 100644
+index 00ce48cf58..8c68b21b2b 100644
 --- a/malloc/malloc.c
 +++ b/malloc/malloc.c
-@@ -5491,7 +5491,7 @@ __malloc_info (int options, FILE *fp)
+@@ -1621,7 +1621,7 @@ static INTERNAL_SIZE_T global_max_fast;
+ 
+ #define set_max_fast(s) \
+   global_max_fast = (((s) == 0)						      \
+-                     ? SMALLBIN_WIDTH : ((s + SIZE_SZ) & ~MALLOC_ALIGN_MASK))
++                     ? MIN_CHUNK_SIZE / 2 : ((s + SIZE_SZ) & ~MALLOC_ALIGN_MASK))
+ 
+ static inline INTERNAL_SIZE_T
+ get_max_fast (void)
+@@ -5115,6 +5115,19 @@ do_set_tcache_unsorted_limit (size_t value)
+ }
+ #endif
+ 
++static inline int
++__always_inline
++do_set_mxfast (size_t value)
++{
++  if (value >= 0 && value <= MAX_FAST_SIZE)
++    {
++      LIBC_PROBE (memory_mallopt_mxfast, 2, value, get_max_fast ());
++      set_max_fast (value);
++      return 1;
++    }
++  return 0;
++}
++
+ int
+ __libc_mallopt (int param_number, int value)
+ {
+@@ -5134,13 +5147,7 @@ __libc_mallopt (int param_number, int value)
+   switch (param_number)
+     {
+     case M_MXFAST:
+-      if (value >= 0 && value <= MAX_FAST_SIZE)
+-        {
+-          LIBC_PROBE (memory_mallopt_mxfast, 2, value, get_max_fast ());
+-          set_max_fast (value);
+-        }
+-      else
+-        res = 0;
++      do_set_mxfast (value);
+       break;
+ 
+     case M_TRIM_THRESHOLD:
+@@ -5406,6 +5413,12 @@ __malloc_info (int options, FILE *fp)
+ 
+       __libc_lock_lock (ar_ptr->mutex);
+ 
++      /* Account for top chunk.  The top-most available chunk is
++	 treated specially and is never in any bin. See "initial_top"
++	 comments.  */
++      avail = chunksize (ar_ptr->top);
++      nblocks = 1;  /* Top always exists.  */
++
+       for (size_t i = 0; i < NFASTBINS; ++i)
+ 	{
+ 	  mchunkptr p = fastbin (ar_ptr, i);
+@@ -5491,7 +5504,7 @@ __malloc_info (int options, FILE *fp)
  
        for (size_t i = 0; i < nsizes; ++i)
  	if (sizes[i].count != 0 && i != NFASTBINS)
@@ -138,6 +277,85 @@ index 00ce48cf58..343d89f489 100644
    <size from=\"%zu\" to=\"%zu\" total=\"%zu\" count=\"%zu\"/>\n",
  		   sizes[i].from, sizes[i].to, sizes[i].total, sizes[i].count);
  
+diff --git a/malloc/tst-mxfast.c b/malloc/tst-mxfast.c
+new file mode 100644
+index 0000000000..7a7750bc71
+--- /dev/null
++++ b/malloc/tst-mxfast.c
+@@ -0,0 +1,50 @@
++/* Test that glibc.malloc.mxfast tunable works.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++/* This test verifies that setting the glibc.malloc.mxfast tunable to
++   zero results in free'd blocks being returned to the small bins, not
++   the fast bins.  */
++
++#include <malloc.h>
++#include <support/check.h>
++
++int
++do_test (void)
++{
++  struct mallinfo m;
++  char *volatile p1;
++  char *volatile p2;
++
++  /* Arbitrary value; must be in default fastbin range.  */
++  p1 = malloc (3);
++  /* Something large so that p1 isn't a "top block" */
++  p2 = malloc (512);
++  free (p1);
++
++  m = mallinfo ();
++
++  /* This will fail if there are any blocks in the fastbins.  */
++  TEST_COMPARE (m.smblks, 0);
++
++  /* To keep gcc happy.  */
++  free (p2);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/manual/tunables.texi b/manual/tunables.texi
+index ee0fdf28d1..1687f9c939 100644
+--- a/manual/tunables.texi
++++ b/manual/tunables.texi
+@@ -214,6 +214,18 @@ pre-fill the per-thread cache with.  The default, or when set to zero,
+ is no limit.
+ @end deftp
+ 
++@deftp Tunable glibc.malloc.mxfast
++One of the optimizations malloc uses is to maintain a series of ``fast
++bins'' that hold chunks up to a specific size.  The default and
++maximum size which may be held this way is 80 bytes on 32-bit systems
++or 160 bytes on 64-bit systems.  Applications which value size over
++speed may choose to reduce the size of requests which are serviced
++from fast bins with this tunable.  Note that the value specified
++includes malloc's internal overhead, which is normally the size of one
++pointer, so add 4 on 32-bit systems or 8 on 64-bit systems to the size
++passed to @code{malloc} for the largest bin size to enable.
++@end deftp
++
+ @node Elision Tunables
+ @section Elision Tunables
+ @cindex elision tunables
 diff --git a/sysdeps/alpha/fpu/libm-test-ulps b/sysdeps/alpha/fpu/libm-test-ulps
 index 0f77dd2ed0..89c4527a81 100644
 --- a/sysdeps/alpha/fpu/libm-test-ulps
