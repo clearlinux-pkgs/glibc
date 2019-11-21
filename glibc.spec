@@ -246,7 +246,8 @@ export LANG=C
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32"
+export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -Wa,-mbranches-within-32B-boundaries"
+export ASFLAGS="-mbranches-within-32B-boundaries"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
@@ -295,8 +296,8 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC "
-export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
+export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -Wa,-mbranches-within-32B-boundaries"
+export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 -mbranches-within-32B-boundaries"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
