@@ -92,10 +92,10 @@ index cdb9e14881..c4687dfd4c 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index ee9ed4de5a..b0d2167a60 100644
+index ee9ed4de5a..1f60f3eb19 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,27 @@ See the end for copying conditions.
+@@ -4,6 +4,28 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -118,6 +118,7 @@ index ee9ed4de5a..b0d2167a60 100644
 +  [24986] alpha: new getegid, geteuid and getppid syscalls used
 +    unconditionally
 +  [25189] Don't use a custom wrapper macro around __has_include
++  [25203] libio: Disable vtable validation for pre-2.1 interposed handles
 +  [25204] Ignore LD_PREFER_MAP_32BIT_EXEC for SUID programs
 +
  
@@ -139,6 +140,22 @@ index 1fc2d8886b..525c3767b5 100644
    }
    cpu {
      hwcap_mask {
+diff --git a/libio/oldstdfiles.c b/libio/oldstdfiles.c
+index 2b861cd754..7503cdd62d 100644
+--- a/libio/oldstdfiles.c
++++ b/libio/oldstdfiles.c
+@@ -83,6 +83,11 @@ _IO_check_libio (void)
+ 	= stderr->_vtable_offset =
+ 	((int) sizeof (struct _IO_FILE)
+ 	 - (int) sizeof (struct _IO_FILE_complete));
++
++      if (_IO_stdin_.vtable != &_IO_old_file_jumps
++	  || _IO_stdout_.vtable != &_IO_old_file_jumps
++	  || _IO_stderr_.vtable != &_IO_old_file_jumps)
++	IO_set_accept_foreign_vtables (&_IO_vtable_check);
+     }
+ }
+ 
 diff --git a/localedata/locales/bo_CN b/localedata/locales/bo_CN
 index 90cbc7807b..9df91a1721 100644
 --- a/localedata/locales/bo_CN
