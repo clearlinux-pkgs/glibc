@@ -92,10 +92,10 @@ index cdb9e14881..c4687dfd4c 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index ee9ed4de5a..a02fa10df9 100644
+index ee9ed4de5a..74826b9eb8 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,29 @@ See the end for copying conditions.
+@@ -4,6 +4,30 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -121,6 +121,7 @@ index ee9ed4de5a..a02fa10df9 100644
 +  [25203] libio: Disable vtable validation for pre-2.1 interposed handles
 +  [25204] Ignore LD_PREFER_MAP_32BIT_EXEC for SUID programs
 +  [25225] ld.so fails to link on x86 if GCC defaults to -fcf-protection
++  [25232] No const correctness for strchr et al. for Clang++
 +
  
  Version 2.30
@@ -465,6 +466,20 @@ index f1bd994a10..b1695376dc 100644
  #if (!defined _Noreturn \
       && (defined __STDC_VERSION__ ? __STDC_VERSION__ : 0) < 201112 \
       &&  !__GNUC_PREREQ (4,7))
+diff --git a/string/string.h b/string/string.h
+index c38eea971f..608ed496b9 100644
+--- a/string/string.h
++++ b/string/string.h
+@@ -33,7 +33,8 @@ __BEGIN_DECLS
+ #include <stddef.h>
+ 
+ /* Tell the caller that we provide correct C++ prototypes.  */
+-#if defined __cplusplus && __GNUC_PREREQ (4, 4)
++#if defined __cplusplus && (__GNUC_PREREQ (4, 4) \
++			    || __glibc_clang_prereq (3, 5))
+ # define __CORRECT_ISO_CPP_STRING_H_PROTO
+ #endif
+ 
 diff --git a/string/test-strstr.c b/string/test-strstr.c
 index df6dbc251e..daed9a2705 100644
 --- a/string/test-strstr.c
@@ -1008,6 +1023,22 @@ index 67373f181b..dc173d6b47 100644
  	.text
  LEAF (__libc_vfork)
  
+diff --git a/sysdeps/unix/sysv/linux/test-errno-linux.c b/sysdeps/unix/sysv/linux/test-errno-linux.c
+index cb979d44bd..aaa9eadc0a 100644
+--- a/sysdeps/unix/sysv/linux/test-errno-linux.c
++++ b/sysdeps/unix/sysv/linux/test-errno-linux.c
+@@ -160,8 +160,9 @@ do_test (void)
+   fails |= test_wrp (EINVAL, poll, &pollfd, -1, 0);
+   /* quotactl returns ENOSYS for kernels not configured with
+      CONFIG_QUOTA, and may return EPERM if called within certain types
+-     of containers.  */
+-  fails |= test_wrp2 (LIST (ENODEV, ENOSYS, EPERM),
++     of containers.  Linux 5.4 added additional argument validation
++     and can return EINVAL.  */
++  fails |= test_wrp2 (LIST (ENODEV, ENOSYS, EPERM, EINVAL),
+ 		      quotactl, Q_GETINFO, NULL, -1, (caddr_t) &dqblk);
+   fails |= test_wrp (EINVAL, sched_getparam, -1, &sch_param);
+   fails |= test_wrp (EINVAL, sched_getscheduler, -1);
 diff --git a/sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h b/sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h
 index 975cbe2950..df2cdfdb6b 100644
 --- a/sysdeps/unix/sysv/linux/x86_64/64/dl-librecon.h
