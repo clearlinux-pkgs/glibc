@@ -1,8 +1,134 @@
 diff --git a/ChangeLog b/ChangeLog
-index cdb9e14881..c4687dfd4c 100644
+index cdb9e14881..bc2f4aae69 100644
 --- a/ChangeLog
 +++ b/ChangeLog
-@@ -1,3 +1,88 @@
+@@ -1,3 +1,214 @@
++2019-08-15  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #24899]
++	* sysdeps/gnu/bits/utmpx.h (struct utmpx): Add
++	__attribute_nonstring__ to ut_line, ut_id, ut_user, ut_host.
++	* sysdeps/unix/sysv/linux/s390/bits/utmpx.h (struct utmpx):
++	Likewise.
++	* sysdeps/gnu/bits/utmp.h (struct utmp): Add
++	__attribute_nonstring__ to ut_id.
++	* sysdeps/unix/sysv/linux/s390/bits/utmpx.h (struct utmp):
++	Likewise.
++
++2019-08-28  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #24902]
++	* login/Makefile (tests): Add tst-pututxline-lockfail.
++	(tst-pututxline-lockfail): Link with -lpthread.
++	* login/utmp_file.c (internal_getut_r): Remove buffer argument.
++	(__libc_getutid_r): Adjust.
++	(__libc_pututline): Likewise.  Check for file_offset == -1.
++	* login/tst-pututxline-lockfail.c: New file.
++
++2019-08-15  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #24880]
++	* login/utmp_file.c (file_locking_failed): Use struct flock64.
++	(file_locking_unlock): Likewise.
++
++2019-08-15  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #24879]
++	login: Disarm timer after utmp lock acquisition.
++	* login/utmp_file.c (struct file_locking): Remove.
++	(try_file_lock): Adjust.
++	(file_lock_restore): Remove function.
++	(__libc_getutent_r): .
++	(internal_getut_r): Likewise.
++	(__libc_getutline_r): Likewise.
++	(__libc_pututline): Likewise.
++	(__libc_updwtmp): Likewise.
++
++2019-08-15  Florian Weimer  <fweimer@redhat.com>
++
++	* login/utmp_file.c (__libc_updwtmp): Unlock the right file
++	descriptor.
++	* login/Makefile (tests): Add tst-updwtmpx.
++	* login/tst-updwtmpx.c: New file.
++
++2019-08-13  Florian Weimer  <fweimer@redhat.com>
++
++	* login/utmp_file.c (LOCK_FILE, LOCKING_FAILED, UNLOCK_FILE):
++	Remove macros.
++	(struct file_locking): New.
++	(try_file_lock, file_unlock, file_lock_restore): New functions.
++	(__libc_getutent_r): Use the new functions.
++	(internal_getut_r): Likewise.
++	(__libc_getutline_r): Likewise.
++	(__libc_pututline): Likewise.
++	(__libc_updwtmp): Likewise.
++
++2019-08-13  Florian Weimer  <fweimer@redhat.com>
++
++	* login/getutid_r.c (__getutid_r): _HAVE_UT_ID and _HAVE_UT_TYPE
++	are always true.
++	* login/getutmp.c (getutmp): _HAVE_UT_TYPE, _HAVE_UT_PID,
++	_HAVE_UT_ID, _HAVE_UT_HOST, _HAVE_UT_TV are always true.
++	* login/getutmpx.c (getutmpx): Likewise.
++	* login/login.c (login): _HAVE_UT_TYPE, _HAVE_UT_PID are always
++	true.
++	* login/logout.c (logout): _HAVE_UT_TYPE, _HAVE_UT_HOST,
++	_HAVE_UT_TV are always true.
++	* login/logwtmp.c (logwtmp): _HAVE_UT_PID, _HAVE_UT_TYPE,
++	_HAVE_UT_HOST, _HAVE_UT_TV are always true.
++	* login/tst-utmp.c: _HAVE_UT_TYPE, _HAVE_UT_TV are always true.
++	* login/utmp_file.c (__libc_setutent): _HAVE_UT_TYPE, _HAVE_UT_ID
++	are always true.
++	(internal_getut_r): _HAVE_UT_TYPE is always true.
++	(__libc_pututline): Likewise.
++	* login/programs/utmpdump.c (print_entry): Assume that
++	_HAVE_UT_TYPE, _HAVE_UT_PID, _HAVE_UT_ID, _HAVE_UT_HOST,
++	_HAVE_UT_TV are always true.
++	* sysdeps/generic/utmp-equal.h (__utmp_equal): _HAVE_UT_TYPE,
++	_HAVE_UT_ID are always true.
++	* sysdeps/gnu/bits/utmp.h: Move to ...
++	* bits/utmp.h: ... here, replacing the old file.
++
++2019-08-05  Florian Weimer  <fweimer@redhat.com>
++
++	[BZ #23518]
++	* login/uptmp-private.h (struct ufuncs): Remove definition.
++	(__libc_utmp_file_functions, __libc_utmp_unknown_functions)
++	(__libc_utmp_jump_table): Remove declarations.
++	(__libc_setutent, __libc_getutent_r, __libc_getutid_r)
++	(__libc_getutline_r, __libc_pututline, __libc_endutent)
++	(__libc_updwtmp): Declare.
++	* login/getutent_r.c (__libc_utmp_unknown_functions)
++	(__libc_utmp_jump_table, setutent_unknown, getutent_r_unknown)
++	(getutid_r_unknown, getutline_r_unknown, pututline_unknown)
++	(endutent_unknown): Remove definitions.
++	(__setutent): Call __libc_setutent.
++	(__getutent_r): Call __libc_getutent_r.
++	(__pututline): Call __libc_pututline.
++	(__endutent): Call __libc_endutent.
++	* login/getutid_r.c (__getutid_r): Call __libc_getutid_r.
++	* login/getutline_r.c (__getutline_r): Call __libc_getutline_r.
++	* login/updwtmp.c (__updwtmp): Call __libc_updwtmp.
++	* login/utmp_file.c (__libc_utmp_file_functions): Remove definition
++	(__libc_setutent): Rename from stetutent_file.  Drop static.
++	(maybe_setutent): New function.
++	(__libc_getutent_r): Rename from getutent_r_file.  Drop static.
++	Check for initialization.
++	(__libc_getutid_r): Rename from getutid_r_file.  Drop static.
++	Check for initialization.
++	(__libc_getutline_r): Rename from getutline_r_file.  Drop static.
++	Check for initialization.
++	(__libc_pututline): Rename from pututline_file.  Drop static.
++	Check for initialization.
++	(__libc_endutent): Rename from endutent_file.  Drop static.  Check
++	for initialization.
++	(__libc_updwtmp): Rename from updwtmp_file.  Drop static.
++	* login/utmpname.c (__utmpname): Call __libc_endutent.
++	* sysdeps/unix/getlogin_r (__getlogin_r): Call __libc_setutent,
++	__libc_getutlien_r, __libc_endutent.
++	* manual/users.texi (Who Logged In, Manipulating the Database):
++	Adjust.
++
 +2019-08-15  Florian Weimer  <fweimer@redhat.com>
 +
 +	* malloc/Makefile (tests): Only add tst-mxfast for
@@ -92,10 +218,10 @@ index cdb9e14881..c4687dfd4c 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index ee9ed4de5a..74826b9eb8 100644
+index ee9ed4de5a..2c707f35ff 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,30 @@ See the end for copying conditions.
+@@ -4,6 +4,37 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -112,20 +238,157 @@ index ee9ed4de5a..74826b9eb8 100644
 +
 +The following bugs are resolved with this release:
 +
++  [23518] login: Remove utmp backend jump tables
 +  [24682] localedata: zh_CN first weekday should be Monday per GB/T
 +    7408-2005
 +  [24867] malloc: Remove unwanted leading whitespace in malloc_info
++  [24879] login: Disarm timer after utmp lock acquisition
++  [24880] login: Use struct flock64 in utmp
++  [24882] login: Acquire write lock early in pututline
 +  [24986] alpha: new getegid, geteuid and getppid syscalls used
 +    unconditionally
++  [24899] login: Add nonstring attributes to struct utmp, struct utmpx
++  [24902] login: pututxline could fail to overwrite existing entries
 +  [25189] Don't use a custom wrapper macro around __has_include
 +  [25203] libio: Disable vtable validation for pre-2.1 interposed handles
 +  [25204] Ignore LD_PREFER_MAP_32BIT_EXEC for SUID programs
 +  [25225] ld.so fails to link on x86 if GCC defaults to -fcf-protection
 +  [25232] No const correctness for strchr et al. for Clang++
++  [25401] Remove incorrect alloc_size attribute from pvalloc
 +
  
  Version 2.30
  
+diff --git a/bits/utmp.h b/bits/utmp.h
+index 4c36ca19ce..854b342164 100644
+--- a/bits/utmp.h
++++ b/bits/utmp.h
+@@ -1,4 +1,4 @@
+-/* The `struct utmp' type, describing entries in the utmp file.  Generic/BSDish
++/* The `struct utmp' type, describing entries in the utmp file.
+    Copyright (C) 1993-2019 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+@@ -21,29 +21,107 @@
+ #endif
+ 
+ #include <paths.h>
+-#include <time.h>
++#include <sys/time.h>
++#include <sys/types.h>
++#include <bits/wordsize.h>
+ 
+ 
+-#define	UT_NAMESIZE	8
+-#define	UT_LINESIZE	8
+-#define	UT_HOSTSIZE	16
++#define UT_LINESIZE	32
++#define UT_NAMESIZE	32
++#define UT_HOSTSIZE	256
+ 
+ 
++/* The structure describing an entry in the database of
++   previous logins.  */
+ struct lastlog
+   {
+-    time_t ll_time;
++#if __WORDSIZE_TIME64_COMPAT32
++    int32_t ll_time;
++#else
++    __time_t ll_time;
++#endif
+     char ll_line[UT_LINESIZE];
+     char ll_host[UT_HOSTSIZE];
+   };
+ 
+-struct utmp
++
++/* The structure describing the status of a terminated process.  This
++   type is used in `struct utmp' below.  */
++struct exit_status
+   {
+-    char ut_line[UT_LINESIZE];
+-    char ut_user[UT_NAMESIZE];
+-#define ut_name ut_user
+-    char ut_host[UT_HOSTSIZE];
+-    long int ut_time;
++    short int e_termination;	/* Process termination status.  */
++    short int e_exit;		/* Process exit status.  */
+   };
+ 
+ 
+-#define _HAVE_UT_HOST 1		/* We have the ut_host field.  */
++/* The structure describing an entry in the user accounting database.  */
++struct utmp
++{
++  short int ut_type;		/* Type of login.  */
++  pid_t ut_pid;			/* Process ID of login process.  */
++  char ut_line[UT_LINESIZE]
++    __attribute_nonstring__;	/* Devicename.  */
++  char ut_id[4]
++    __attribute_nonstring__;	/* Inittab ID.  */
++  char ut_user[UT_NAMESIZE]
++    __attribute_nonstring__;	/* Username.  */
++  char ut_host[UT_HOSTSIZE]
++    __attribute_nonstring__;	/* Hostname for remote login.  */
++  struct exit_status ut_exit;	/* Exit status of a process marked
++				   as DEAD_PROCESS.  */
++/* The ut_session and ut_tv fields must be the same size when compiled
++   32- and 64-bit.  This allows data files and shared memory to be
++   shared between 32- and 64-bit applications.  */
++#if __WORDSIZE_TIME64_COMPAT32
++  int32_t ut_session;		/* Session ID, used for windowing.  */
++  struct
++  {
++    int32_t tv_sec;		/* Seconds.  */
++    int32_t tv_usec;		/* Microseconds.  */
++  } ut_tv;			/* Time entry was made.  */
++#else
++  long int ut_session;		/* Session ID, used for windowing.  */
++  struct timeval ut_tv;		/* Time entry was made.  */
++#endif
++
++  int32_t ut_addr_v6[4];	/* Internet address of remote host.  */
++  char __glibc_reserved[20];		/* Reserved for future use.  */
++};
++
++/* Backwards compatibility hacks.  */
++#define ut_name		ut_user
++#ifndef _NO_UT_TIME
++/* We have a problem here: `ut_time' is also used otherwise.  Define
++   _NO_UT_TIME if the compiler complains.  */
++# define ut_time	ut_tv.tv_sec
++#endif
++#define ut_xtime	ut_tv.tv_sec
++#define ut_addr		ut_addr_v6[0]
++
++
++/* Values for the `ut_type' field of a `struct utmp'.  */
++#define EMPTY		0	/* No valid user accounting information.  */
++
++#define RUN_LVL		1	/* The system's runlevel.  */
++#define BOOT_TIME	2	/* Time of system boot.  */
++#define NEW_TIME	3	/* Time after system clock changed.  */
++#define OLD_TIME	4	/* Time when system clock changed.  */
++
++#define INIT_PROCESS	5	/* Process spawned by the init process.  */
++#define LOGIN_PROCESS	6	/* Session leader of a logged in user.  */
++#define USER_PROCESS	7	/* Normal process.  */
++#define DEAD_PROCESS	8	/* Terminated process.  */
++
++#define ACCOUNTING	9
++
++/* Old Linux name for the EMPTY type.  */
++#define UT_UNKNOWN	EMPTY
++
++
++/* Tell the user that we have a modern system with UT_HOST, UT_PID,
++   UT_TYPE, UT_ID and UT_TV fields.  */
++#define _HAVE_UT_TYPE	1
++#define _HAVE_UT_PID	1
++#define _HAVE_UT_ID	1
++#define _HAVE_UT_TV	1
++#define _HAVE_UT_HOST	1
 diff --git a/configure b/configure
 index c773c487b5..6d26b8246f 100755
 --- a/configure
@@ -256,10 +519,1747 @@ index 62a46415c1..cd4b33602a 100644
  END LC_TIME
  
  LC_MESSAGES
+diff --git a/login/Makefile b/login/Makefile
+index 92535f0aec..4fd8195e73 100644
+--- a/login/Makefile
++++ b/login/Makefile
+@@ -43,7 +43,8 @@ endif
+ subdir-dirs = programs
+ vpath %.c programs
+ 
+-tests := tst-utmp tst-utmpx tst-grantpt tst-ptsname tst-getlogin
++tests := tst-utmp tst-utmpx tst-grantpt tst-ptsname tst-getlogin tst-updwtmpx \
++  tst-pututxline-lockfail tst-pututxline-cache
+ 
+ # Build the -lutil library with these extra functions.
+ extra-libs      := libutil
+@@ -71,3 +72,6 @@ endif
+ $(inst_libexecdir)/pt_chown: $(objpfx)pt_chown $(+force)
+ 	$(make-target-directory)
+ 	-$(INSTALL_PROGRAM) -m 4755 -o root $< $@
++
++$(objpfx)tst-pututxline-lockfail: $(shared-thread-library)
++$(objpfx)tst-pututxline-cache: $(shared-thread-library)
+diff --git a/login/getutent_r.c b/login/getutent_r.c
+index 98ffc5d1c6..fd13be8a1e 100644
+--- a/login/getutent_r.c
++++ b/login/getutent_r.c
+@@ -23,115 +23,16 @@
+ 
+ #include "utmp-private.h"
+ 
+-
+-/* Functions defined here.  */
+-static int setutent_unknown (void);
+-static int getutent_r_unknown (struct utmp *buffer, struct utmp **result);
+-static int getutid_r_unknown (const struct utmp *line, struct utmp *buffer,
+-			      struct utmp **result);
+-static int getutline_r_unknown (const struct utmp *id, struct utmp *buffer,
+-				struct utmp **result);
+-static struct utmp *pututline_unknown (const struct utmp *data);
+-static void endutent_unknown (void);
+-
+-/* Initial Jump table.  */
+-const struct utfuncs __libc_utmp_unknown_functions =
+-{
+-  setutent_unknown,
+-  getutent_r_unknown,
+-  getutid_r_unknown,
+-  getutline_r_unknown,
+-  pututline_unknown,
+-  endutent_unknown,
+-  NULL
+-};
+-
+-/* Currently selected backend.  */
+-const struct utfuncs *__libc_utmp_jump_table = &__libc_utmp_unknown_functions;
+-
+ /* We need to protect the opening of the file.  */
+ __libc_lock_define_initialized (, __libc_utmp_lock attribute_hidden)
+ 
+ 
+-static int
+-setutent_unknown (void)
+-{
+-  int result;
+-
+-  result = (*__libc_utmp_file_functions.setutent) ();
+-  if (result)
+-    __libc_utmp_jump_table = &__libc_utmp_file_functions;
+-
+-  return result;
+-}
+-
+-
+-static int
+-getutent_r_unknown (struct utmp *buffer, struct utmp **result)
+-{
+-  /* The backend was not yet initialized.  */
+-  if (setutent_unknown ())
+-    return (*__libc_utmp_jump_table->getutent_r) (buffer, result);
+-
+-  /* Not available.  */
+-  *result = NULL;
+-  return -1;
+-}
+-
+-
+-static int
+-getutid_r_unknown (const struct utmp *id, struct utmp *buffer,
+-		   struct utmp **result)
+-{
+-  /* The backend was not yet initialized.  */
+-  if (setutent_unknown ())
+-    return (*__libc_utmp_jump_table->getutid_r) (id, buffer, result);
+-
+-  /* Not available.  */
+-  *result = NULL;
+-  return -1;
+-}
+-
+-
+-static int
+-getutline_r_unknown (const struct utmp *line, struct utmp *buffer,
+-		     struct utmp **result)
+-{
+-  /* The backend was not yet initialized.  */
+-  if (setutent_unknown ())
+-    return (*__libc_utmp_jump_table->getutline_r) (line, buffer, result);
+-
+-  /* Not available.  */
+-  *result = NULL;
+-  return -1;
+-}
+-
+-
+-static struct utmp *
+-pututline_unknown (const struct utmp *data)
+-{
+-  /* The backend was not yet initialized.  */
+-  if (setutent_unknown ())
+-    return (*__libc_utmp_jump_table->pututline) (data);
+-
+-  /* Not available.  */
+-  return NULL;
+-}
+-
+-
+-static void
+-endutent_unknown (void)
+-{
+-  /* Nothing to do.  */
+-}
+-
+-
+ void
+ __setutent (void)
+ {
+   __libc_lock_lock (__libc_utmp_lock);
+ 
+-  (*__libc_utmp_jump_table->setutent) ();
++  __libc_setutent ();
+ 
+   __libc_lock_unlock (__libc_utmp_lock);
+ }
+@@ -145,7 +46,7 @@ __getutent_r (struct utmp *buffer, struct utmp **result)
+ 
+   __libc_lock_lock (__libc_utmp_lock);
+ 
+-  retval = (*__libc_utmp_jump_table->getutent_r) (buffer, result);
++  retval = __libc_getutent_r (buffer, result);
+ 
+   __libc_lock_unlock (__libc_utmp_lock);
+ 
+@@ -162,7 +63,7 @@ __pututline (const struct utmp *data)
+ 
+   __libc_lock_lock (__libc_utmp_lock);
+ 
+-  buffer = (*__libc_utmp_jump_table->pututline) (data);
++  buffer = __libc_pututline (data);
+ 
+   __libc_lock_unlock (__libc_utmp_lock);
+ 
+@@ -177,8 +78,7 @@ __endutent (void)
+ {
+   __libc_lock_lock (__libc_utmp_lock);
+ 
+-  (*__libc_utmp_jump_table->endutent) ();
+-  __libc_utmp_jump_table = &__libc_utmp_unknown_functions;
++  __libc_endutent ();
+ 
+   __libc_lock_unlock (__libc_utmp_lock);
+ }
+diff --git a/login/getutid_r.c b/login/getutid_r.c
+index 34ea61d8f4..460d94be0c 100644
+--- a/login/getutid_r.c
++++ b/login/getutid_r.c
+@@ -32,7 +32,6 @@ __libc_lock_define (extern, __libc_utmp_lock attribute_hidden)
+ int
+ __getutid_r (const struct utmp *id, struct utmp *buffer, struct utmp **result)
+ {
+-#if (_HAVE_UT_ID - 0) && (_HAVE_UT_TYPE - 0)
+   int retval;
+ 
+   /* Test whether ID has any of the legal types.  */
+@@ -49,15 +48,11 @@ __getutid_r (const struct utmp *id, struct utmp *buffer, struct utmp **result)
+ 
+   __libc_lock_lock (__libc_utmp_lock);
+ 
+-  retval = (*__libc_utmp_jump_table->getutid_r) (id, buffer, result);
++  retval = __libc_getutid_r (id, buffer, result);
+ 
+   __libc_lock_unlock (__libc_utmp_lock);
+ 
+   return retval;
+-#else	/* !_HAVE_UT_ID && !_HAVE_UT_TYPE */
+-  __set_errno (ENOSYS);
+-  return -1;
+-#endif
+ }
+ libc_hidden_def (__getutid_r)
+ weak_alias (__getutid_r, getutid_r)
+diff --git a/login/getutline_r.c b/login/getutline_r.c
+index 110b89e438..f03255dbbd 100644
+--- a/login/getutline_r.c
++++ b/login/getutline_r.c
+@@ -36,7 +36,7 @@ __getutline_r (const struct utmp *line, struct utmp *buffer,
+ 
+   __libc_lock_lock (__libc_utmp_lock);
+ 
+-  retval = (*__libc_utmp_jump_table->getutline_r) (line, buffer, result);
++  retval = __libc_getutline_r (line, buffer, result);
+ 
+   __libc_lock_unlock (__libc_utmp_lock);
+ 
+diff --git a/login/getutmp.c b/login/getutmp.c
+index 73bc15d781..4e3be11216 100644
+--- a/login/getutmp.c
++++ b/login/getutmp.c
+@@ -23,23 +23,11 @@
+ void
+ getutmp (const struct utmpx *utmpx, struct utmp *utmp)
+ {
+-#if _HAVE_UT_TYPE - 0
+   utmp->ut_type = utmpx->ut_type;
+-#endif
+-#if _HAVE_UT_PID - 0
+   utmp->ut_pid = utmpx->ut_pid;
+-#endif
+   memcpy (utmp->ut_line, utmpx->ut_line, sizeof (utmp->ut_line));
+   memcpy (utmp->ut_user, utmpx->ut_user, sizeof (utmp->ut_user));
+-#if _HAVE_UT_ID - 0
+   memcpy (utmp->ut_id, utmpx->ut_id, sizeof (utmp->ut_id));
+-#endif
+-#if _HAVE_UT_HOST - 0
+   memcpy (utmp->ut_host, utmpx->ut_host, sizeof (utmp->ut_host));
+-#endif
+-#if _HAVE_UT_TV - 0
+   utmp->ut_tv = utmpx->ut_tv;
+-#else
+-  utmp->ut_time = utmpx->ut_time;
+-#endif
+ }
+diff --git a/login/getutmpx.c b/login/getutmpx.c
+index b181d9bc30..da28d339ab 100644
+--- a/login/getutmpx.c
++++ b/login/getutmpx.c
+@@ -24,24 +24,11 @@ void
+ getutmpx (const struct utmp *utmp, struct utmpx *utmpx)
+ {
+   memset (utmpx, 0, sizeof (struct utmpx));
+-
+-#if _HAVE_UT_TYPE - 0
+   utmpx->ut_type = utmp->ut_type;
+-#endif
+-#if _HAVE_UT_PID - 0
+   utmpx->ut_pid = utmp->ut_pid;
+-#endif
+   memcpy (utmpx->ut_line, utmp->ut_line, sizeof (utmp->ut_line));
+   memcpy (utmpx->ut_user, utmp->ut_user, sizeof (utmp->ut_user));
+-#if _HAVE_UT_ID - 0
+   memcpy (utmpx->ut_id, utmp->ut_id, sizeof (utmp->ut_id));
+-#endif
+-#if _HAVE_UT_HOST - 0
+   memcpy (utmpx->ut_host, utmp->ut_host, sizeof (utmp->ut_host));
+-#endif
+-#if _HAVE_UT_TV - 0
+   utmpx->ut_tv = utmp->ut_tv;
+-#else
+-  utmpx->ut_time = utmp->ut_time;
+-#endif
+ }
+diff --git a/login/login.c b/login/login.c
+index 09ef3f75a5..b7d638c692 100644
+--- a/login/login.c
++++ b/login/login.c
+@@ -91,12 +91,8 @@ login (const struct utmp *ut)
+   struct utmp copy = *ut;
+ 
+   /* Fill in those fields we supply.  */
+-#if _HAVE_UT_TYPE - 0
+   copy.ut_type = USER_PROCESS;
+-#endif
+-#if _HAVE_UT_PID - 0
+   copy.ut_pid = getpid ();
+-#endif
+ 
+   /* Seek tty.  */
+   found_tty = tty_name (STDIN_FILENO, &tty, sizeof (_tty));
+diff --git a/login/logout.c b/login/logout.c
+index 85254d0324..5015c1af0b 100644
+--- a/login/logout.c
++++ b/login/logout.c
+@@ -36,9 +36,7 @@ logout (const char *line)
+   setutent ();
+ 
+   /* Fill in search information.  */
+-#if _HAVE_UT_TYPE - 0
+   tmp.ut_type = USER_PROCESS;
+-#endif
+   strncpy (tmp.ut_line, line, sizeof tmp.ut_line);
+ 
+   /* Read the record.  */
+@@ -46,20 +44,12 @@ logout (const char *line)
+     {
+       /* Clear information about who & from where.  */
+       memset (ut->ut_name, '\0', sizeof ut->ut_name);
+-#if _HAVE_UT_HOST - 0
+       memset (ut->ut_host, '\0', sizeof ut->ut_host);
+-#endif
+-#if _HAVE_UT_TV - 0
+       struct timeval tv;
+       __gettimeofday (&tv, NULL);
+       ut->ut_tv.tv_sec = tv.tv_sec;
+       ut->ut_tv.tv_usec = tv.tv_usec;
+-#else
+-      ut->ut_time = time (NULL);
+-#endif
+-#if _HAVE_UT_TYPE - 0
+       ut->ut_type = DEAD_PROCESS;
+-#endif
+ 
+       if (pututline (ut) != NULL)
+ 	result = 1;
+diff --git a/login/logwtmp.c b/login/logwtmp.c
+index f53187121c..50d14976c7 100644
+--- a/login/logwtmp.c
++++ b/login/logwtmp.c
+@@ -30,26 +30,16 @@ logwtmp (const char *line, const char *name, const char *host)
+ 
+   /* Set information in new entry.  */
+   memset (&ut, 0, sizeof (ut));
+-#if _HAVE_UT_PID - 0
+   ut.ut_pid = getpid ();
+-#endif
+-#if _HAVE_UT_TYPE - 0
+   ut.ut_type = name[0] ? USER_PROCESS : DEAD_PROCESS;
+-#endif
+   strncpy (ut.ut_line, line, sizeof ut.ut_line);
+   strncpy (ut.ut_name, name, sizeof ut.ut_name);
+-#if _HAVE_UT_HOST - 0
+   strncpy (ut.ut_host, host, sizeof ut.ut_host);
+-#endif
+ 
+-#if _HAVE_UT_TV - 0
+   struct timeval tv;
+   __gettimeofday (&tv, NULL);
+   ut.ut_tv.tv_sec = tv.tv_sec;
+   ut.ut_tv.tv_usec = tv.tv_usec;
+-#else
+-  ut.ut_time = time (NULL);
+-#endif
+ 
+   updwtmp (_PATH_WTMP, &ut);
+ }
+diff --git a/login/programs/utmpdump.c b/login/programs/utmpdump.c
+index 4c312f0939..85d8e31b43 100644
+--- a/login/programs/utmpdump.c
++++ b/login/programs/utmpdump.c
+@@ -37,47 +37,11 @@ print_entry (struct utmp *up)
+   temp_tv.tv_sec = up->ut_tv.tv_sec;
+   temp_tv.tv_usec = up->ut_tv.tv_usec;
+ 
+-  (printf) (
+-	    /* The format string.  */
+-#if _HAVE_UT_TYPE
+-	    "[%d] "
+-#endif
+-#if _HAVE_UT_PID
+-	    "[%05d] "
+-#endif
+-#if _HAVE_UT_ID
+-	    "[%-4.4s] "
+-#endif
+-	    "[%-8.8s] [%-12.12s]"
+-#if _HAVE_UT_HOST
+-	    " [%-16.16s]"
+-#endif
+-	    " [%-15.15s]"
+-#if _HAVE_UT_TV
+-	    " [%ld]"
+-#endif
+-	    "\n"
+-	    /* The arguments.  */
+-#if _HAVE_UT_TYPE
+-	    , up->ut_type
+-#endif
+-#if _HAVE_UT_PID
+-	    , up->ut_pid
+-#endif
+-#if _HAVE_UT_ID
+-	    , up->ut_id
+-#endif
+-	    , up->ut_user, up->ut_line
+-#if _HAVE_UT_HOST
+-	    , up->ut_host
+-#endif
+-#if _HAVE_UT_TV
+-	    , 4 + ctime (&temp_tv.tv_sec)
+-	    , (long int) temp_tv.tv_usec
+-#else
+-	    , 4 + ctime (&up->ut_time)
+-#endif
+-	   );
++  printf ("[%d] [%05d] [%-4.4s] [%-8.8s] [%-12.12s] [%-16.16s] [%-15.15s]"
++	  " [%ld]\n",
++	  up->ut_type, up->ut_pid, up->ut_id, up->ut_user, up->ut_line,
++	  up->ut_host, 4 + ctime (&temp_tv.tv_sec),
++	  (long int) temp_tv.tv_usec);
+ }
+ 
+ int
+diff --git a/login/tst-pututxline-cache.c b/login/tst-pututxline-cache.c
+new file mode 100644
+index 0000000000..3f30dd1776
+--- /dev/null
++++ b/login/tst-pututxline-cache.c
+@@ -0,0 +1,193 @@
++/* Test case for cache invalidation after concurrent write (bug 24882).
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <http://www.gnu.org/licenses/>.  */
++
++/* This test writes an entry to the utmpx file, reads it (so that it
++   is cached) in process1, and overwrites the same entry in process2
++   with something that does not match the search criteria.  At this
++   point, the cache of the first process is stale, and when process1
++   attempts to write a new record which would have gone to the same
++   place (as indicated by the cache), it needs to realize that it has
++   to pick a different slot because the old slot is now used for
++   something else.  */
++
++#include <errno.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/namespace.h>
++#include <support/support.h>
++#include <support/temp_file.h>
++#include <support/xthread.h>
++#include <support/xunistd.h>
++#include <utmp.h>
++#include <utmpx.h>
++
++/* Set to the path of the utmp file.  */
++static char *utmp_file;
++
++/* Used to synchronize the subprocesses.  The barrier itself is
++   allocated in shared memory.  */
++static pthread_barrier_t *barrier;
++
++/* setutxent with error checking.  */
++static void
++xsetutxent (void)
++{
++  errno = 0;
++  setutxent ();
++  TEST_COMPARE (errno, 0);
++}
++
++/* getutxent with error checking.  */
++static struct utmpx *
++xgetutxent (void)
++{
++  errno = 0;
++  struct utmpx *result = getutxent ();
++  if (result == NULL)
++    FAIL_EXIT1 ("getutxent: %m");
++  return result;
++}
++
++static void
++put_entry (const char *id, pid_t pid, const char *user, const char *line)
++{
++  struct utmpx ut =
++    {
++     .ut_type = LOGIN_PROCESS,
++     .ut_pid = pid,
++     .ut_host = "localhost",
++    };
++  strcpy (ut.ut_id, id);
++  strncpy (ut.ut_user, user, sizeof (ut.ut_user));
++  strncpy (ut.ut_line, line, sizeof (ut.ut_line));
++  TEST_VERIFY (pututxline (&ut) != NULL);
++}
++
++/* Use two cooperating subprocesses to avoid issues related to
++   unlock-on-close semantics of POSIX advisory locks.  */
++
++static __attribute__ ((noreturn)) void
++process1 (void)
++{
++  TEST_COMPARE (utmpname (utmp_file), 0);
++
++  /* Create an entry.  */
++  xsetutxent ();
++  put_entry ("1", 101, "root", "process1");
++
++  /* Retrieve the entry.  This will fill the internal cache.  */
++  {
++    errno = 0;
++    setutxent ();
++    TEST_COMPARE (errno, 0);
++    struct utmpx ut =
++      {
++       .ut_type = LOGIN_PROCESS,
++       .ut_line = "process1",
++      };
++    struct utmpx *result = getutxline (&ut);
++    if (result == NULL)
++      FAIL_EXIT1 ("getutxline (\"process1\"): %m");
++    TEST_COMPARE (result->ut_pid, 101);
++  }
++
++  /* Signal the other process to overwrite the entry.  */
++  xpthread_barrier_wait (barrier);
++
++  /* Wait for the other process to complete the write operation.  */
++  xpthread_barrier_wait (barrier);
++
++  /* Add another entry.  Note: This time, there is no setutxent call.  */
++  put_entry ("1", 103, "root", "process1");
++
++  _exit (0);
++}
++
++static void
++process2 (void *closure)
++{
++  /* Wait for the first process to write its entry.  */
++  xpthread_barrier_wait (barrier);
++
++  /* Truncate the file.  The glibc interface does not support
++     re-purposing records, but an external expiration mechanism may
++     trigger this.  */
++  TEST_COMPARE (truncate64 (utmp_file, 0), 0);
++
++  /* Write the replacement entry.  */
++  TEST_COMPARE (utmpname (utmp_file), 0);
++  xsetutxent ();
++  put_entry ("2", 102, "user", "process2");
++
++  /* Signal the other process that the entry has been replaced.  */
++  xpthread_barrier_wait (barrier);
++}
++
++static int
++do_test (void)
++{
++  xclose (create_temp_file ("tst-tumpx-cache-write-", &utmp_file));
++  {
++    pthread_barrierattr_t attr;
++    xpthread_barrierattr_init (&attr);
++    xpthread_barrierattr_setpshared (&attr, PTHREAD_SCOPE_PROCESS);
++    barrier = support_shared_allocate (sizeof (*barrier));
++    xpthread_barrier_init (barrier, &attr, 2);
++  }
++
++  /* Run both subprocesses in parallel.  */
++  {
++    pid_t pid1 = xfork ();
++    if (pid1 == 0)
++      process1 ();
++    support_isolate_in_subprocess (process2, NULL);
++    int status;
++    xwaitpid (pid1, &status, 0);
++    TEST_COMPARE (status, 0);
++  }
++
++  /* Check that the utmpx database contains the expected records.  */
++  {
++    TEST_COMPARE (utmpname (utmp_file), 0);
++    xsetutxent ();
++
++    struct utmpx *ut = xgetutxent ();
++    TEST_COMPARE_STRING (ut->ut_id, "2");
++    TEST_COMPARE (ut->ut_pid, 102);
++    TEST_COMPARE_STRING (ut->ut_user, "user");
++    TEST_COMPARE_STRING (ut->ut_line, "process2");
++
++    ut = xgetutxent ();
++    TEST_COMPARE_STRING (ut->ut_id, "1");
++    TEST_COMPARE (ut->ut_pid, 103);
++    TEST_COMPARE_STRING (ut->ut_user, "root");
++    TEST_COMPARE_STRING (ut->ut_line, "process1");
++
++    if (getutxent () != NULL)
++      FAIL_EXIT1 ("additional utmpx entry");
++  }
++
++  xpthread_barrier_destroy (barrier);
++  support_shared_free (barrier);
++  free (utmp_file);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/login/tst-pututxline-lockfail.c b/login/tst-pututxline-lockfail.c
+new file mode 100644
+index 0000000000..47c25dc065
+--- /dev/null
++++ b/login/tst-pututxline-lockfail.c
+@@ -0,0 +1,176 @@
++/* Test the lock upgrade path in tst-pututxline.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <http://www.gnu.org/licenses/>.  */
++
++/* pututxline upgrades the read lock on the file to a write lock.
++   This test verifies that if the lock upgrade fails, the utmp
++   subsystem remains in a consistent state, so that pututxline can be
++   called again.  */
++
++#include <errno.h>
++#include <fcntl.h>
++#include <stdlib.h>
++#include <support/check.h>
++#include <support/namespace.h>
++#include <support/support.h>
++#include <support/temp_file.h>
++#include <support/xthread.h>
++#include <support/xunistd.h>
++#include <unistd.h>
++#include <utmp.h>
++#include <utmpx.h>
++
++/* Path to the temporary utmp file.   */
++static char *path;
++
++/* Used to synchronize the subprocesses.  The barrier itself is
++   allocated in shared memory.  */
++static pthread_barrier_t *barrier;
++
++/* Use pututxline to write an entry for PID.  */
++static struct utmpx *
++write_entry (pid_t pid)
++{
++  struct utmpx ut =
++    {
++     .ut_type = LOGIN_PROCESS,
++     .ut_id = "1",
++     .ut_user = "root",
++     .ut_pid = pid,
++     .ut_line = "entry",
++     .ut_host = "localhost",
++    };
++  return pututxline (&ut);
++}
++
++/* Create the initial entry in a subprocess, so that the utmp
++   subsystem in the original process is not disturbed.  */
++static void
++subprocess_create_entry (void *closure)
++{
++  TEST_COMPARE (utmpname (path), 0);
++  TEST_VERIFY (write_entry (101) != NULL);
++}
++
++/* Acquire an advisory read lock on PATH.  */
++__attribute__ ((noreturn)) static void
++subprocess_lock_file (void)
++{
++  int fd = xopen (path, O_RDONLY, 0);
++
++  struct flock64 fl =
++    {
++     .l_type = F_RDLCK,
++     fl.l_whence = SEEK_SET,
++    };
++  TEST_COMPARE (fcntl64 (fd, F_SETLKW, &fl), 0);
++
++  /* Signal to the main process that the lock has been acquired.  */
++  xpthread_barrier_wait (barrier);
++
++  /* Wait for the unlock request from the main process.  */
++  xpthread_barrier_wait (barrier);
++
++  /* Implicitly unlock the file.  */
++  xclose (fd);
++
++  /* Overwrite the existing entry.  */
++  TEST_COMPARE (utmpname (path), 0);
++  errno = 0;
++  setutxent ();
++  TEST_COMPARE (errno, 0);
++  TEST_VERIFY (write_entry (102) != NULL);
++  errno = 0;
++  endutxent ();
++  TEST_COMPARE (errno, 0);
++
++  _exit (0);
++}
++
++static int
++do_test (void)
++{
++  xclose (create_temp_file ("tst-pututxline-lockfail-", &path));
++
++  {
++    pthread_barrierattr_t attr;
++    xpthread_barrierattr_init (&attr);
++    xpthread_barrierattr_setpshared (&attr, PTHREAD_SCOPE_PROCESS);
++    barrier = support_shared_allocate (sizeof (*barrier));
++    xpthread_barrier_init (barrier, &attr, 2);
++    xpthread_barrierattr_destroy (&attr);
++  }
++
++  /* Write the initial entry.  */
++  support_isolate_in_subprocess (subprocess_create_entry, NULL);
++
++  pid_t locker_pid = xfork ();
++  if (locker_pid == 0)
++    subprocess_lock_file ();
++
++  /* Wait for the file locking to complete.  */
++  xpthread_barrier_wait (barrier);
++
++  /* Try to add another entry.  This attempt will fail, with EINTR or
++     EAGAIN.  */
++  TEST_COMPARE (utmpname (path), 0);
++  TEST_VERIFY (write_entry (102) == NULL);
++  if (errno != EINTR)
++    TEST_COMPARE (errno, EAGAIN);
++
++  /* Signal the subprocess to overwrite the entry.  */
++  xpthread_barrier_wait (barrier);
++
++  /* Wait for write and unlock to complete.  */
++  {
++    int status;
++    xwaitpid (locker_pid, &status, 0);
++    TEST_COMPARE (status, 0);
++  }
++
++  /* The file is no longer locked, so this operation will succeed.  */
++  TEST_VERIFY (write_entry (103) != NULL);
++  errno = 0;
++  endutxent ();
++  TEST_COMPARE (errno, 0);
++
++  /* Check that there is just one entry with the expected contents.
++     If pututxline becomes desynchronized internally, the entry is not
++     overwritten (bug 24902).  */
++  errno = 0;
++  setutxent ();
++  TEST_COMPARE (errno, 0);
++  struct utmpx *ut = getutxent ();
++  TEST_VERIFY_EXIT (ut != NULL);
++  TEST_COMPARE (ut->ut_type, LOGIN_PROCESS);
++  TEST_COMPARE_STRING (ut->ut_id, "1");
++  TEST_COMPARE_STRING (ut->ut_user, "root");
++  TEST_COMPARE (ut->ut_pid, 103);
++  TEST_COMPARE_STRING (ut->ut_line, "entry");
++  TEST_COMPARE_STRING (ut->ut_host, "localhost");
++  TEST_VERIFY (getutxent () == NULL);
++  errno = 0;
++  endutxent ();
++  TEST_COMPARE (errno, 0);
++
++  xpthread_barrier_destroy (barrier);
++  support_shared_free (barrier);
++  free (path);
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/login/tst-updwtmpx.c b/login/tst-updwtmpx.c
+new file mode 100644
+index 0000000000..0a4a27daeb
+--- /dev/null
++++ b/login/tst-updwtmpx.c
+@@ -0,0 +1,112 @@
++/* Basic test coverage for updwtmpx.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <http://www.gnu.org/licenses/>.  */
++
++/* This program runs a series of tests.  Each one calls updwtmpx
++   twice, to write two records, optionally with misalignment in the
++   file, and reads back the results.  */
++
++#include <errno.h>
++#include <stdlib.h>
++#include <support/check.h>
++#include <support/descriptors.h>
++#include <support/support.h>
++#include <support/temp_file.h>
++#include <support/test-driver.h>
++#include <support/xunistd.h>
++#include <unistd.h>
++#include <utmpx.h>
++
++static int
++do_test (void)
++{
++  /* Two entries filled with an arbitrary bit pattern.  */
++  struct utmpx entries[2];
++  unsigned char pad;
++  {
++    unsigned char *p = (unsigned char *) &entries[0];
++    for (size_t i = 0; i < sizeof (entries); ++i)
++      {
++        p[i] = i;
++      }
++    /* Make sure that the first and second entry and the padding are
++       different.  */
++    p[sizeof (struct utmpx)] = p[0] + 1;
++    pad = p[0] + 2;
++  }
++
++  char *path;
++  int fd = create_temp_file ("tst-updwtmpx-", &path);
++
++  /* Used to check that updwtmpx does not leave an open file
++     descriptor around.  */
++  struct support_descriptors *descriptors = support_descriptors_list ();
++
++  /* updwtmpx is expected to remove misalignment.  Optionally insert
++     one byte of misalignment at the start and in the middle (after
++     the first entry).  */
++  for (int misaligned_start = 0; misaligned_start < 2; ++misaligned_start)
++    for (int misaligned_middle = 0; misaligned_middle < 2; ++misaligned_middle)
++      {
++        if (test_verbose > 0)
++          printf ("info: misaligned_start=%d misaligned_middle=%d\n",
++                  misaligned_start, misaligned_middle);
++
++        xftruncate (fd, 0);
++        TEST_COMPARE (pwrite64 (fd, &pad, misaligned_start, 0),
++                      misaligned_start);
++
++        /* Write first entry and check it.  */
++        errno = 0;
++        updwtmpx (path, &entries[0]);
++        TEST_COMPARE (errno, 0);
++        support_descriptors_check (descriptors);
++        TEST_COMPARE (xlseek (fd, 0, SEEK_END), sizeof (struct utmpx));
++        struct utmpx buffer;
++        TEST_COMPARE (pread64 (fd, &buffer, sizeof (buffer), 0),
++                      sizeof (buffer));
++        TEST_COMPARE_BLOB (&entries[0], sizeof (entries[0]),
++                           &buffer, sizeof (buffer));
++
++        /* Middle mis-alignmet.  */
++        TEST_COMPARE (pwrite64 (fd, &pad, misaligned_middle,
++                                sizeof (struct utmpx)), misaligned_middle);
++
++        /* Write second entry and check both entries.  */
++        errno = 0;
++        updwtmpx (path, &entries[1]);
++        TEST_COMPARE (errno, 0);
++        support_descriptors_check (descriptors);
++        TEST_COMPARE (xlseek (fd, 0, SEEK_END), 2 * sizeof (struct utmpx));
++        TEST_COMPARE (pread64 (fd, &buffer, sizeof (buffer), 0),
++                      sizeof (buffer));
++        TEST_COMPARE_BLOB (&entries[0], sizeof (entries[0]),
++                           &buffer, sizeof (buffer));
++        TEST_COMPARE (pread64 (fd, &buffer, sizeof (buffer), sizeof (buffer)),
++                      sizeof (buffer));
++        TEST_COMPARE_BLOB (&entries[1], sizeof (entries[1]),
++                           &buffer, sizeof (buffer));
++      }
++
++  support_descriptors_free (descriptors);
++  free (path);
++  xclose (fd);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/login/tst-utmp.c b/login/tst-utmp.c
+index ce48e8326e..02d0c1fe8c 100644
+--- a/login/tst-utmp.c
++++ b/login/tst-utmp.c
+@@ -39,8 +39,6 @@
+ #endif
+ 
+ 
+-#if defined UTMPX || _HAVE_UT_TYPE
+-
+ /* Prototype for our test function.  */
+ static int do_test (int argc, char *argv[]);
+ 
+@@ -75,11 +73,7 @@ do_prepare (int argc, char *argv[])
+ 
+ struct utmp entry[] =
+ {
+-#if defined UTMPX || _HAVE_UT_TV
+ #define UT(a)  .ut_tv = { .tv_sec = (a)}
+-#else
+-#define UT(a)  .ut_time = (a)
+-#endif
+ 
+   { .ut_type = BOOT_TIME, .ut_pid = 1, UT(1000) },
+   { .ut_type = RUN_LVL, .ut_pid = 1, UT(2000) },
+@@ -167,11 +161,7 @@ simulate_login (const char *line, const char *user)
+ 	    entry[n].ut_pid = (entry_pid += 27);
+ 	  entry[n].ut_type = USER_PROCESS;
+ 	  strncpy (entry[n].ut_user, user, sizeof (entry[n].ut_user));
+-#if defined UTMPX || _HAVE_UT_TV - 0
+ 	  entry[n].ut_tv.tv_sec = (entry_time += 1000);
+-#else
+-          entry[n].ut_time = (entry_time += 1000);
+-#endif
+ 	  setutent ();
+ 
+ 	  if (pututline (&entry[n]) == NULL)
+@@ -201,11 +191,7 @@ simulate_logout (const char *line)
+ 	{
+ 	  entry[n].ut_type = DEAD_PROCESS;
+ 	  strncpy (entry[n].ut_user, "", sizeof (entry[n].ut_user));
+-#if defined UTMPX || _HAVE_UT_TV - 0
+           entry[n].ut_tv.tv_sec = (entry_time += 1000);
+-#else
+-          entry[n].ut_time = (entry_time += 1000);
+-#endif
+ 	  setutent ();
+ 
+ 	  if (pututline (&entry[n]) == NULL)
+@@ -390,14 +376,3 @@ do_test (int argc, char *argv[])
+ 
+   return result;
+ }
+-
+-#else
+-
+-/* No field 'ut_type' in struct utmp.  */
+-int
+-main (void)
+-{
+-  return 0;
+-}
+-
+-#endif
+diff --git a/login/updwtmp.c b/login/updwtmp.c
+index b9bccd9b67..387e580828 100644
+--- a/login/updwtmp.c
++++ b/login/updwtmp.c
+@@ -29,7 +29,7 @@ __updwtmp (const char *wtmp_file, const struct utmp *utmp)
+ {
+   const char *file_name = TRANSFORM_UTMP_FILE_NAME (wtmp_file);
+ 
+-  (*__libc_utmp_file_functions.updwtmp) (file_name, utmp);
++  __libc_updwtmp (file_name, utmp);
+ }
+ libc_hidden_def (__updwtmp)
+ weak_alias (__updwtmp, updwtmp)
+diff --git a/login/utmp-private.h b/login/utmp-private.h
+index a82a923657..d60461d644 100644
+--- a/login/utmp-private.h
++++ b/login/utmp-private.h
+@@ -24,24 +24,17 @@
+ #include <utmp.h>
+ #include <libc-lock.h>
+ 
+-/* The structure describing the functions in a backend.  */
+-struct utfuncs
+-{
+-  int (*setutent) (void);
+-  int (*getutent_r) (struct utmp *, struct utmp **);
+-  int (*getutid_r) (const struct utmp *, struct utmp *, struct utmp **);
+-  int (*getutline_r) (const struct utmp *, struct utmp *, struct utmp **);
+-  struct utmp *(*pututline) (const struct utmp *);
+-  void (*endutent) (void);
+-  int (*updwtmp) (const char *, const struct utmp *);
+-};
+-
+-/* The tables from the services.  */
+-extern const struct utfuncs __libc_utmp_file_functions attribute_hidden;
+-extern const struct utfuncs __libc_utmp_unknown_functions attribute_hidden;
+-
+-/* Currently selected backend.  */
+-extern const struct utfuncs *__libc_utmp_jump_table attribute_hidden;
++/* These functions check for initialization, but not perform any
++   locking.  */
++int __libc_setutent (void) attribute_hidden;
++int __libc_getutent_r (struct utmp *, struct utmp **) attribute_hidden;
++int __libc_getutid_r (const struct utmp *, struct utmp *, struct utmp **)
++  attribute_hidden;
++int __libc_getutline_r (const struct utmp *, struct utmp *, struct utmp **)
++  attribute_hidden;
++struct utmp *__libc_pututline (const struct utmp *) attribute_hidden;
++void __libc_endutent (void) attribute_hidden;
++int __libc_updwtmp (const char *, const struct utmp *) attribute_hidden;
+ 
+ /* Current file name.  */
+ extern const char *__libc_utmp_file_name attribute_hidden;
+diff --git a/login/utmp_file.c b/login/utmp_file.c
+index b19d3caf0d..e98bc31899 100644
+--- a/login/utmp_file.c
++++ b/login/utmp_file.c
+@@ -43,6 +43,25 @@ static off64_t file_offset;
+ /* Cache for the last read entry.  */
+ static struct utmp last_entry;
+ 
++/* Returns true if *ENTRY matches last_entry, based on
++   data->ut_type.  */
++static bool
++matches_last_entry (const struct utmp *data)
++{
++  if (file_offset <= 0)
++    /* Nothing has been read.  last_entry is stale and cannot match.  */
++    return false;
++
++  if (data->ut_type == RUN_LVL
++      || data->ut_type == BOOT_TIME
++      || data->ut_type == OLD_TIME
++      || data->ut_type == NEW_TIME)
++    /* For some entry types, only a type match is required.  */
++    return data->ut_type == last_entry.ut_type;
++  else
++    /* For the process-related entries, a full match is needed.  */
++    return __utmp_equal (&last_entry, data);
++}
+ 
+ /* Locking timeout.  */
+ #ifndef TIMEOUT
+@@ -52,90 +71,70 @@ static struct utmp last_entry;
+ /* Do-nothing handler for locking timeout.  */
+ static void timeout_handler (int signum) {};
+ 
+-/* LOCK_FILE(fd, type) failure_statement
+-     attempts to get a lock on the utmp file referenced by FD.  If it fails,
+-     the failure_statement is executed, otherwise it is skipped.
+-   LOCKING_FAILED()
+-     jumps into the UNLOCK_FILE macro and ensures cleanup of LOCK_FILE.
+-   UNLOCK_FILE(fd)
+-     unlocks the utmp file referenced by FD and performs the cleanup of
+-     LOCK_FILE.
+- */
+-#define LOCK_FILE(fd, type) \
+-{									      \
+-  struct flock fl;							      \
+-  struct sigaction action, old_action;					      \
+-  unsigned int old_timeout;						      \
+-									      \
+-  /* Cancel any existing alarm.  */					      \
+-  old_timeout = alarm (0);						      \
+-									      \
+-  /* Establish signal handler.  */					      \
+-  action.sa_handler = timeout_handler;					      \
+-  __sigemptyset (&action.sa_mask);					      \
+-  action.sa_flags = 0;							      \
+-  __sigaction (SIGALRM, &action, &old_action);				      \
+-									      \
+-  alarm (TIMEOUT);							      \
+-									      \
+-  /* Try to get the lock.  */						      \
+-  memset (&fl, '\0', sizeof (struct flock));				      \
+-  fl.l_type = (type);							      \
+-  fl.l_whence = SEEK_SET;						      \
+-  if (__fcntl64_nocancel ((fd), F_SETLKW, &fl) < 0)
+-
+-#define LOCKING_FAILED() \
+-  goto unalarm_return
+-
+-#define UNLOCK_FILE(fd) \
+-  /* Unlock the file.  */						      \
+-  fl.l_type = F_UNLCK;							      \
+-  __fcntl64_nocancel ((fd), F_SETLKW, &fl);				      \
+-									      \
+- unalarm_return:							      \
+-  /* Reset the signal handler and alarm.  We must reset the alarm	      \
+-     before resetting the handler so our alarm does not generate a	      \
+-     spurious SIGALRM seen by the user.  However, we cannot just set	      \
+-     the user's old alarm before restoring the handler, because then	      \
+-     it's possible our handler could catch the user alarm's SIGARLM	      \
+-     and then the user would never see the signal he expected.  */	      \
+-  alarm (0);								      \
+-  __sigaction (SIGALRM, &old_action, NULL);				      \
+-  if (old_timeout != 0)							      \
+-    alarm (old_timeout);						      \
+-} while (0)
+-
+-
+-/* Functions defined here.  */
+-static int setutent_file (void);
+-static int getutent_r_file (struct utmp *buffer, struct utmp **result);
+-static int getutid_r_file (const struct utmp *key, struct utmp *buffer,
+-			   struct utmp **result);
+-static int getutline_r_file (const struct utmp *key, struct utmp *buffer,
+-			     struct utmp **result);
+-static struct utmp *pututline_file (const struct utmp *data);
+-static void endutent_file (void);
+-static int updwtmp_file (const char *file, const struct utmp *utmp);
+-
+-/* Jump table for file functions.  */
+-const struct utfuncs __libc_utmp_file_functions =
++
++/* try_file_lock (LOCKING, FD, TYPE) returns true if the locking
++   operation failed and recovery needs to be performed.
++
++   file_unlock (FD) removes the lock (which must have been
++   successfully acquired). */
++
++static bool
++try_file_lock (int fd, int type)
+ {
+-  setutent_file,
+-  getutent_r_file,
+-  getutid_r_file,
+-  getutline_r_file,
+-  pututline_file,
+-  endutent_file,
+-  updwtmp_file
+-};
++  /* Cancel any existing alarm.  */
++  int old_timeout = alarm (0);
++
++  /* Establish signal handler.  */
++  struct sigaction old_action;
++  struct sigaction action;
++  action.sa_handler = timeout_handler;
++  __sigemptyset (&action.sa_mask);
++  action.sa_flags = 0;
++  __sigaction (SIGALRM, &action, &old_action);
++
++  alarm (TIMEOUT);
++
++  /* Try to get the lock.  */
++ struct flock64 fl =
++   {
++    .l_type = type,
++    .l_whence = SEEK_SET,
++   };
++
++ bool status = __fcntl64_nocancel (fd, F_SETLKW, &fl) < 0;
++ int saved_errno = errno;
++
++ /* Reset the signal handler and alarm.  We must reset the alarm
++    before resetting the handler so our alarm does not generate a
++    spurious SIGALRM seen by the user.  However, we cannot just set
++    the user's old alarm before restoring the handler, because then
++    it's possible our handler could catch the user alarm's SIGARLM and
++    then the user would never see the signal he expected.  */
++  alarm (0);
++  __sigaction (SIGALRM, &old_action, NULL);
++  if (old_timeout != 0)
++    alarm (old_timeout);
++
++  __set_errno (saved_errno);
++  return status;
++}
+ 
++static void
++file_unlock (int fd)
++{
++  struct flock64 fl =
++    {
++      .l_type = F_UNLCK,
++    };
++  __fcntl64_nocancel (fd, F_SETLKW, &fl);
++}
+ 
+ #ifndef TRANSFORM_UTMP_FILE_NAME
+ # define TRANSFORM_UTMP_FILE_NAME(file_name) (file_name)
+ #endif
+ 
+-static int
+-setutent_file (void)
++int
++__libc_setutent (void)
+ {
+   if (file_fd < 0)
+     {
+@@ -153,56 +152,68 @@ setutent_file (void)
+   __lseek64 (file_fd, 0, SEEK_SET);
+   file_offset = 0;
+ 
+-  /* Make sure the entry won't match.  */
+-#if _HAVE_UT_TYPE - 0
+-  last_entry.ut_type = -1;
+-#else
+-  last_entry.ut_line[0] = '\177';
+-# if _HAVE_UT_ID - 0
+-  last_entry.ut_id[0] = '\0';
+-# endif
+-#endif
+-
+   return 1;
+ }
+ 
++/* Preform initialization if necessary.  */
++static bool
++maybe_setutent (void)
++{
++  return file_fd >= 0 || __libc_setutent ();
++}
+ 
+-static int
+-getutent_r_file (struct utmp *buffer, struct utmp **result)
++/* Reads the entry at file_offset, storing it in last_entry and
++   updating file_offset on success.  Returns -1 for a read error, 0
++   for EOF, and 1 for a successful read.  last_entry and file_offset
++   are only updated on a successful and complete read.  */
++static ssize_t
++read_last_entry (void)
+ {
+-  ssize_t nbytes;
++  struct utmp buffer;
++  ssize_t nbytes = __pread64_nocancel (file_fd, &buffer, sizeof (buffer),
++				       file_offset);
++  if (nbytes < 0)
++    return -1;
++  else if (nbytes != sizeof (buffer))
++    /* Assume EOF.  */
++    return 0;
++  else
++    {
++      last_entry = buffer;
++      file_offset += sizeof (buffer);
++      return 1;
++    }
++}
+ 
+-  assert (file_fd >= 0);
++int
++__libc_getutent_r (struct utmp *buffer, struct utmp **result)
++{
++  int saved_errno = errno;
+ 
+-  if (file_offset == -1l)
++  if (!maybe_setutent ())
+     {
+       /* Not available.  */
+       *result = NULL;
+       return -1;
+     }
+ 
+-  LOCK_FILE (file_fd, F_RDLCK)
+-    {
+-      nbytes = 0;
+-      LOCKING_FAILED ();
+-    }
+-
+-  /* Read the next entry.  */
+-  nbytes = __read_nocancel (file_fd, &last_entry, sizeof (struct utmp));
++  if (try_file_lock (file_fd, F_RDLCK))
++    return -1;
+ 
+-  UNLOCK_FILE (file_fd);
++  ssize_t nbytes = read_last_entry ();
++  file_unlock (file_fd);
+ 
+-  if (nbytes != sizeof (struct utmp))
++  if (nbytes <= 0)		/* Read error or EOF.  */
+     {
+-      if (nbytes != 0)
+-	file_offset = -1l;
++      if (nbytes == 0)
++	/* errno should be unchanged to indicate success.  A premature
++	   EOF is treated like an EOF (missing complete record at the
++	   end).  */
++	__set_errno (saved_errno);
+       *result = NULL;
+       return -1;
+     }
+ 
+-  /* Update position pointer.  */
+-  file_offset += sizeof (struct utmp);
+-
+   memcpy (buffer, &last_entry, sizeof (struct utmp));
+   *result = buffer;
+ 
+@@ -210,82 +221,55 @@ getutent_r_file (struct utmp *buffer, struct utmp **result)
+ }
+ 
+ 
++/* Search for *ID, updating last_entry and file_offset.  Return 0 on
++   success and -1 on failure.  Does not perform locking; for that see
++   internal_getut_r below.  */
+ static int
+-internal_getut_r (const struct utmp *id, struct utmp *buffer,
+-		  bool *lock_failed)
++internal_getut_nolock (const struct utmp *id)
+ {
+-  int result = -1;
+-
+-  LOCK_FILE (file_fd, F_RDLCK)
+-    {
+-      *lock_failed = true;
+-      LOCKING_FAILED ();
+-    }
+-
+-#if _HAVE_UT_TYPE - 0
+-  if (id->ut_type == RUN_LVL || id->ut_type == BOOT_TIME
+-      || id->ut_type == OLD_TIME || id->ut_type == NEW_TIME)
++  while (1)
+     {
+-      /* Search for next entry with type RUN_LVL, BOOT_TIME,
+-	 OLD_TIME, or NEW_TIME.  */
+-
+-      while (1)
++      ssize_t nbytes = read_last_entry ();
++      if (nbytes < 0)
++	return -1;
++      if (nbytes == 0)
+ 	{
+-	  /* Read the next entry.  */
+-	  if (__read_nocancel (file_fd, buffer, sizeof (struct utmp))
+-	      != sizeof (struct utmp))
+-	    {
+-	      __set_errno (ESRCH);
+-	      file_offset = -1l;
+-	      goto unlock_return;
+-	    }
+-	  file_offset += sizeof (struct utmp);
+-
+-	  if (id->ut_type == buffer->ut_type)
+-	    break;
++	  /* End of file reached.  */
++	  __set_errno (ESRCH);
++	  return -1;
+ 	}
+-    }
+-  else
+-#endif /* _HAVE_UT_TYPE */
+-    {
+-      /* Search for the next entry with the specified ID and with type
+-	 INIT_PROCESS, LOGIN_PROCESS, USER_PROCESS, or DEAD_PROCESS.  */
+ 
+-      while (1)
+-	{
+-	  /* Read the next entry.  */
+-	  if (__read_nocancel (file_fd, buffer, sizeof (struct utmp))
+-	      != sizeof (struct utmp))
+-	    {
+-	      __set_errno (ESRCH);
+-	      file_offset = -1l;
+-	      goto unlock_return;
+-	    }
+-	  file_offset += sizeof (struct utmp);
+-
+-	  if (__utmp_equal (buffer, id))
+-	    break;
+-	}
++      if (matches_last_entry (id))
++	break;
+     }
+ 
+-  result = 0;
++  return 0;
++}
+ 
+-unlock_return:
+-  UNLOCK_FILE (file_fd);
++/* Search for *ID, updating last_entry and file_offset.  Return 0 on
++   success and -1 on failure.  If the locking operation failed, write
++   true to *LOCK_FAILED.  */
++static int
++internal_getut_r (const struct utmp *id, bool *lock_failed)
++{
++  if (try_file_lock (file_fd, F_RDLCK))
++    {
++      *lock_failed = true;
++      return -1;
++    }
+ 
++  int result = internal_getut_nolock (id);
++  file_unlock (file_fd);
+   return result;
+ }
+ 
+-
+ /* For implementing this function we don't use the getutent_r function
+    because we can avoid the reposition on every new entry this way.  */
+-static int
+-getutid_r_file (const struct utmp *id, struct utmp *buffer,
+-		struct utmp **result)
++int
++__libc_getutid_r (const struct utmp *id, struct utmp *buffer,
++		  struct utmp **result)
+ {
+-  assert (file_fd >= 0);
+-
+-  if (file_offset == -1l)
++  if (!maybe_setutent ())
+     {
+       *result = NULL;
+       return -1;
+@@ -294,7 +278,7 @@ getutid_r_file (const struct utmp *id, struct utmp *buffer,
+   /* We don't have to distinguish whether we can lock the file or
+      whether there is no entry.  */
+   bool lock_failed = false;
+-  if (internal_getut_r (id, &last_entry, &lock_failed) < 0)
++  if (internal_getut_r (id, &lock_failed) < 0)
+     {
+       *result = NULL;
+       return -1;
+@@ -306,69 +290,65 @@ getutid_r_file (const struct utmp *id, struct utmp *buffer,
+   return 0;
+ }
+ 
+-
+ /* For implementing this function we don't use the getutent_r function
+    because we can avoid the reposition on every new entry this way.  */
+-static int
+-getutline_r_file (const struct utmp *line, struct utmp *buffer,
+-		  struct utmp **result)
++int
++__libc_getutline_r (const struct utmp *line, struct utmp *buffer,
++		    struct utmp **result)
+ {
+-  assert (file_fd >= 0);
+-
+-  if (file_offset == -1l)
++  if (!maybe_setutent ())
+     {
+       *result = NULL;
+       return -1;
+     }
+ 
+-  LOCK_FILE (file_fd, F_RDLCK)
++  if (try_file_lock (file_fd, F_RDLCK))
+     {
+       *result = NULL;
+-      LOCKING_FAILED ();
++      return -1;
+     }
+ 
+   while (1)
+     {
+-      /* Read the next entry.  */
+-      if (__read_nocancel (file_fd, &last_entry, sizeof (struct utmp))
+-	  != sizeof (struct utmp))
++      ssize_t nbytes = read_last_entry ();
++      if (nbytes < 0)
++	{
++	  file_unlock (file_fd);
++	  *result = NULL;
++	  return -1;
++	}
++      if (nbytes == 0)
+ 	{
++	  /* End of file reached.  */
++	  file_unlock (file_fd);
+ 	  __set_errno (ESRCH);
+-	  file_offset = -1l;
+ 	  *result = NULL;
+-	  goto unlock_return;
++	  return -1;
+ 	}
+-      file_offset += sizeof (struct utmp);
+ 
+       /* Stop if we found a user or login entry.  */
+-      if (
+-#if _HAVE_UT_TYPE - 0
+-	  (last_entry.ut_type == USER_PROCESS
++      if ((last_entry.ut_type == USER_PROCESS
+ 	   || last_entry.ut_type == LOGIN_PROCESS)
+-	  &&
+-#endif
+-	  !strncmp (line->ut_line, last_entry.ut_line, sizeof line->ut_line))
++	  && (strncmp (line->ut_line, last_entry.ut_line, sizeof line->ut_line)
++	      == 0))
+ 	break;
+     }
+ 
++  file_unlock (file_fd);
+   memcpy (buffer, &last_entry, sizeof (struct utmp));
+   *result = buffer;
+ 
+-unlock_return:
+-  UNLOCK_FILE (file_fd);
+-
+-  return ((*result == NULL) ? -1 : 0);
++  return 0;
+ }
+ 
+ 
+-static struct utmp *
+-pututline_file (const struct utmp *data)
++struct utmp *
++__libc_pututline (const struct utmp *data)
+ {
+-  struct utmp buffer;
+-  struct utmp *pbuf;
+-  int found;
++  if (!maybe_setutent ())
++    return NULL;
+ 
+-  assert (file_fd >= 0);
++  struct utmp *pbuf;
+ 
+   if (! file_writable)
+     {
+@@ -380,8 +360,7 @@ pututline_file (const struct utmp *data)
+       if (new_fd == -1)
+ 	return NULL;
+ 
+-      if (__lseek64 (new_fd, __lseek64 (file_fd, 0, SEEK_CUR), SEEK_SET) == -1
+-	  || __dup2 (new_fd, file_fd) < 0)
++      if (__dup2 (new_fd, file_fd) < 0)
+ 	{
+ 	  __close_nocancel_nostatus (new_fd);
+ 	  return NULL;
+@@ -390,95 +369,96 @@ pututline_file (const struct utmp *data)
+       file_writable = true;
+     }
+ 
++  /* Exclude other writers before validating the cache.  */
++  if (try_file_lock (file_fd, F_WRLCK))
++    return NULL;
++
+   /* Find the correct place to insert the data.  */
+-  if (file_offset > 0
+-      && (
+-#if _HAVE_UT_TYPE - 0
+-	  (last_entry.ut_type == data->ut_type
+-	   && (last_entry.ut_type == RUN_LVL
+-	       || last_entry.ut_type == BOOT_TIME
+-	       || last_entry.ut_type == OLD_TIME
+-	       || last_entry.ut_type == NEW_TIME))
+-	  ||
+-#endif
+-	  __utmp_equal (&last_entry, data)))
+-    found = 1;
+-  else
++  bool found = false;
++  if (matches_last_entry (data))
+     {
+-      bool lock_failed = false;
+-      found = internal_getut_r (data, &buffer, &lock_failed);
+-
+-      if (__builtin_expect (lock_failed, false))
++      /* Read back the entry under the write lock.  */
++      file_offset -= sizeof (last_entry);
++      ssize_t nbytes = read_last_entry ();
++      if (nbytes < 0)
+ 	{
+-	  __set_errno (EAGAIN);
++	  file_unlock (file_fd);
+ 	  return NULL;
+ 	}
+-    }
+ 
+-  LOCK_FILE (file_fd, F_WRLCK)
+-    {
+-      pbuf = NULL;
+-      LOCKING_FAILED ();
++      if (nbytes == 0)
++	/* End of file reached.  */
++	found = false;
++      else
++	found = matches_last_entry (data);
+     }
+ 
+-  if (found < 0)
++  if (!found)
++    /* Search forward for the entry.  */
++    found = internal_getut_nolock (data) >= 0;
++
++  off64_t write_offset;
++  if (!found)
+     {
+       /* We append the next entry.  */
+-      file_offset = __lseek64 (file_fd, 0, SEEK_END);
+-      if (file_offset % sizeof (struct utmp) != 0)
+-	{
+-	  file_offset -= file_offset % sizeof (struct utmp);
+-	  __ftruncate64 (file_fd, file_offset);
+-
+-	  if (__lseek64 (file_fd, 0, SEEK_END) < 0)
+-	    {
+-	      pbuf = NULL;
+-	      goto unlock_return;
+-	    }
+-	}
++      write_offset = __lseek64 (file_fd, 0, SEEK_END);
++
++      /* Round down to the next multiple of the entry size.  This
++	 ensures any partially-written record is overwritten by the
++	 new record.  */
++      write_offset = (write_offset / sizeof (struct utmp)
++		      * sizeof (struct utmp));
+     }
+   else
++    /* Overwrite last_entry.  */
++    write_offset = file_offset - sizeof (struct utmp);
++
++  /* Write the new data.  */
++  ssize_t nbytes;
++  if (__lseek64 (file_fd, write_offset, SEEK_SET) < 0
++      || (nbytes = __write_nocancel (file_fd, data, sizeof (struct utmp))) < 0)
+     {
+-      /* We replace the just read entry.  */
+-      file_offset -= sizeof (struct utmp);
+-      __lseek64 (file_fd, file_offset, SEEK_SET);
++      /* There is no need to recover the file position because all
++	 reads use pread64, and any future write is preceded by
++	 another seek.  */
++      file_unlock (file_fd);
++      return NULL;
+     }
+ 
+-  /* Write the new data.  */
+-  if (__write_nocancel (file_fd, data, sizeof (struct utmp))
+-      != sizeof (struct utmp))
++  if (nbytes != sizeof (struct utmp))
+     {
+       /* If we appended a new record this is only partially written.
+ 	 Remove it.  */
+-      if (found < 0)
+-	(void) __ftruncate64 (file_fd, file_offset);
+-      pbuf = NULL;
+-    }
+-  else
+-    {
+-      file_offset += sizeof (struct utmp);
+-      pbuf = (struct utmp *) data;
++      if (!found)
++	(void) __ftruncate64 (file_fd, write_offset);
++      file_unlock (file_fd);
++      /* Assume that the write failure was due to missing disk
++	 space.  */
++      __set_errno (ENOSPC);
++      return NULL;
+     }
+ 
+- unlock_return:
+-  UNLOCK_FILE (file_fd);
++  file_unlock (file_fd);
++  file_offset = write_offset + sizeof (struct utmp);
++  pbuf = (struct utmp *) data;
+ 
+   return pbuf;
+ }
+ 
+ 
+-static void
+-endutent_file (void)
++void
++__libc_endutent (void)
+ {
+-  assert (file_fd >= 0);
+-
+-  __close_nocancel_nostatus (file_fd);
+-  file_fd = -1;
++  if (file_fd >= 0)
++    {
++      __close_nocancel_nostatus (file_fd);
++      file_fd = -1;
++    }
+ }
+ 
+ 
+-static int
+-updwtmp_file (const char *file, const struct utmp *utmp)
++int
++__libc_updwtmp (const char *file, const struct utmp *utmp)
+ {
+   int result = -1;
+   off64_t offset;
+@@ -489,8 +469,11 @@ updwtmp_file (const char *file, const struct utmp *utmp)
+   if (fd < 0)
+     return -1;
+ 
+-  LOCK_FILE (fd, F_WRLCK)
+-    LOCKING_FAILED ();
++  if (try_file_lock (fd, F_WRLCK))
++    {
++      __close_nocancel_nostatus (fd);
++      return -1;
++    }
+ 
+   /* Remember original size of log file.  */
+   offset = __lseek64 (fd, 0, SEEK_END);
+@@ -516,7 +499,7 @@ updwtmp_file (const char *file, const struct utmp *utmp)
+   result = 0;
+ 
+ unlock_return:
+-  UNLOCK_FILE (fd);
++  file_unlock (fd);
+ 
+   /* Close WTMP file.  */
+   __close_nocancel_nostatus (fd);
+diff --git a/login/utmpname.c b/login/utmpname.c
+index c3da183d5b..8f94b19caf 100644
+--- a/login/utmpname.c
++++ b/login/utmpname.c
+@@ -42,8 +42,7 @@ __utmpname (const char *file)
+   __libc_lock_lock (__libc_utmp_lock);
+ 
+   /* Close the old file.  */
+-  (*__libc_utmp_jump_table->endutent) ();
+-  __libc_utmp_jump_table = &__libc_utmp_unknown_functions;
++  __libc_endutent ();
+ 
+   if (strcmp (file, __libc_utmp_file_name) != 0)
+     {
 diff --git a/malloc/Makefile b/malloc/Makefile
-index d2fba29953..742c515eb2 100644
+index d2fba29953..9698574bba 100644
 --- a/malloc/Makefile
 +++ b/malloc/Makefile
+@@ -27,7 +27,7 @@ headers := $(dist-headers) obstack.h mcheck.h
+ tests := mallocbug tst-malloc tst-valloc tst-calloc tst-obstack \
+ 	 tst-mcheck tst-mallocfork tst-trim1 \
+ 	 tst-malloc-usable tst-realloc tst-reallocarray tst-posix_memalign \
+-	 tst-pvalloc tst-memalign tst-mallopt \
++	 tst-pvalloc tst-pvalloc-fortify tst-memalign tst-mallopt \
+ 	 tst-malloc-backtrace tst-malloc-thread-exit \
+ 	 tst-malloc-thread-fail tst-malloc-fork-deadlock \
+ 	 tst-mallocfork2 \
 @@ -54,7 +54,7 @@ tests-internal += \
  	 tst-dynarray-at-fail \
  
@@ -368,6 +2368,20 @@ index 00ce48cf58..8c68b21b2b 100644
    <size from=\"%zu\" to=\"%zu\" total=\"%zu\" count=\"%zu\"/>\n",
  		   sizes[i].from, sizes[i].to, sizes[i].total, sizes[i].count);
  
+diff --git a/malloc/malloc.h b/malloc/malloc.h
+index 70d8282bdc..f62c6c594c 100644
+--- a/malloc/malloc.h
++++ b/malloc/malloc.h
+@@ -71,8 +71,7 @@ extern void *valloc (size_t __size) __THROW __attribute_malloc__
+ 
+ /* Equivalent to valloc(minimum-page-that-holds(n)), that is, round up
+    __size to nearest pagesize. */
+-extern void *pvalloc (size_t __size) __THROW __attribute_malloc__
+-     __attribute_alloc_size__ ((1)) __wur;
++extern void *pvalloc (size_t __size) __THROW __attribute_malloc__ __wur;
+ 
+ /* Underlying allocation function; successive calls should return
+    contiguous pieces of memory.  */
 diff --git a/malloc/tst-mxfast.c b/malloc/tst-mxfast.c
 new file mode 100644
 index 0000000000..7a7750bc71
@@ -424,6 +2438,60 @@ index 0000000000..7a7750bc71
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/malloc/tst-pvalloc-fortify.c b/malloc/tst-pvalloc-fortify.c
+new file mode 100644
+index 0000000000..391b7fa2f5
+--- /dev/null
++++ b/malloc/tst-pvalloc-fortify.c
+@@ -0,0 +1,48 @@
++/* Test fortify-source allocation size handling in pvalloc (bug 25401).
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <https://www.gnu.org/licenses/>.  */
++
++#undef _FORTIFY_SOURCE
++#define _FORTIFY_SOURCE 2
++#include <malloc.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/xunistd.h>
++#include <unistd.h>
++
++static int
++do_test (void)
++{
++  /* The test below assumes that pvalloc rounds up the allocation size
++     to at least 8.  */
++  TEST_VERIFY (xsysconf (_SC_PAGESIZE) >= 8);
++
++  void *p = pvalloc (5);
++  TEST_VERIFY_EXIT (p != NULL);
++
++  /* This is valid assuming the page size is at least 8 because
++     pvalloc rounds up the allocation size to a multiple of the page
++     size.  Due to bug 25041, this used to trigger a compiler
++     warning.  */
++  strcpy (p, "abcdefg");
++
++  asm ("" : : "g" (p) : "memory"); /* Optimization barrier.  */
++  TEST_VERIFY (malloc_usable_size (p) >= xsysconf (_SC_PAGESIZE));
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/manual/tunables.texi b/manual/tunables.texi
 index ee0fdf28d1..1687f9c939 100644
 --- a/manual/tunables.texi
@@ -447,6 +2515,86 @@ index ee0fdf28d1..1687f9c939 100644
  @node Elision Tunables
  @section Elision Tunables
  @cindex elision tunables
+diff --git a/manual/users.texi b/manual/users.texi
+index 96ed2065b7..ec22ce6c1c 100644
+--- a/manual/users.texi
++++ b/manual/users.texi
+@@ -894,9 +894,9 @@ The @code{getlogin} function is declared in @file{unistd.h}, while
+ @c   ttyname_r dup @ascuheap @acsmem @acsfd
+ @c   strncpy dup ok
+ @c   libc_lock_lock dup @asulock @aculock
+-@c   *libc_utmp_jump_table->setutent dup @mtasurace:utent @acsfd
+-@c   *libc_utmp_jump_table->getutline_r dup @mtasurace:utent @mtascusig:ALRM @mtascutimer
+-@c   *libc_utmp_jump_table->endutent dup @mtasurace:utent @asulock @aculock
++@c   __libc_setutent dup @mtasurace:utent @acsfd
++@c   __libc_getutline_r dup @mtasurace:utent @mtascusig:ALRM @mtascutimer
++@c   __libc_endutent dup @mtasurace:utent @asulock @aculock
+ @c   libc_lock_unlock dup ok
+ @c   strlen dup ok
+ @c   memcpy dup ok
+@@ -1111,7 +1111,7 @@ compatibility only, @file{utmp.h} defines @code{ut_time} as an alias for
+ 
+ @c setutent @mtasurace:utent @asulock @aculock @acsfd
+ @c  libc_lock_lock dup @asulock @aculock
+-@c  *libc_utmp_jump_table->setutent @mtasurace:utent @acsfd
++@c  __libc_setutent @mtasurace:utent @acsfd
+ @c   setutent_unknown @mtasurace:utent @acsfd
+ @c    *libc_utmp_file_functions.setutent = setutent_file @mtasurace:utent @acsfd
+ @c      open_not_cancel_2 dup @acsfd
+@@ -1152,7 +1152,7 @@ A null pointer is returned in case no further entry is available.
+ @safety{@prelim{}@mtunsafe{@mtasurace{:utent}}@asunsafe{@asulock{}}@acunsafe{@aculock{} @acsfd{}}}
+ @c endutent @mtasurace:utent @asulock @aculock @acsfd
+ @c  libc_lock_lock dup @asulock @aculock
+-@c  *libc_utmp_jump_table->endutent @mtasurace:utent @acsfd
++@c  __libc_endutent @mtasurace:utent @acsfd
+ @c   endutent_unknown ok
+ @c   endutent_file @mtasurace:utent @acsfd
+ @c    close_not_cancel_no_status dup @acsfd
+@@ -1230,7 +1230,7 @@ over again.
+ @safety{@prelim{}@mtunsafe{@mtasurace{:utent} @mtascusig{:ALRM} @mtascutimer{}}@asunsafe{@asulock{}}@acunsafe{@aculock{} @acsfd{}}}
+ @c pututline @mtasurace:utent @mtascusig:ALRM @mtascutimer @asulock @aculock @acsfd
+ @c  libc_lock_lock dup @asulock @aculock
+-@c  *libc_utmp_jump_table->pututline @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
++@c  __libc_pututline @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
+ @c   pututline_unknown @mtasurace:utent @acsfd
+ @c    setutent_unknown dup @mtasurace:utent @acsfd
+ @c   pututline_file @mtascusig:ALRM @mtascutimer @acsfd
+@@ -1282,7 +1282,7 @@ user-provided buffer.
+ @safety{@prelim{}@mtunsafe{@mtasurace{:utent} @mtascusig{:ALRM} @mtascutimer{}}@asunsafe{@asulock{}}@acunsafe{@aculock{} @acsfd{}}}
+ @c getutent_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @asulock @aculock @acsfd
+ @c  libc_lock_lock dup @asulock @aculock
+-@c  *libc_utmp_jump_table->getutent_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
++@c  __libc_getutent_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
+ @c   getutent_r_unknown @mtasurace:utent @acsfd
+ @c    setutent_unknown dup @mtasurace:utent @acsfd
+ @c   getutent_r_file @mtasurace:utent @mtascusig:ALRM @mtascutimer
+@@ -1319,7 +1319,7 @@ This function is a GNU extension.
+ @safety{@prelim{}@mtunsafe{@mtasurace{:utent} @mtascusig{:ALRM} @mtascutimer{}}@asunsafe{@asulock{}}@acunsafe{@aculock{} @acsfd{}}}
+ @c getutid_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @asulock @aculock @acsfd
+ @c  libc_lock_lock dup @asulock @aculock
+-@c  *libc_utmp_jump_table->getutid_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
++@c  __libc_getutid_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
+ @c   getutid_r_unknown @mtasurace:utent @acsfd
+ @c    setutent_unknown dup @mtasurace:utent @acsfd
+ @c   getutid_r_file @mtascusig:ALRM @mtascutimer
+@@ -1349,7 +1349,7 @@ This function is a GNU extension.
+ @safety{@prelim{}@mtunsafe{@mtasurace{:utent} @mtascusig{:ALRM} @mtascutimer{}}@asunsafe{@asulock{}}@acunsafe{@aculock{} @acsfd{}}}
+ @c getutline_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @asulock @aculock @acsfd
+ @c  libc_lock_lock dup @asulock @aculock
+-@c  *libc_utmp_jump_table->getutline_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
++@c  __libc_getutline_r @mtasurace:utent @mtascusig:ALRM @mtascutimer @acsfd
+ @c   getutline_r_unknown @mtasurace:utent @acsfd
+ @c    setutent_unknown dup @mtasurace:utent @acsfd
+ @c   getutline_r_file @mtasurace:utent @mtascusig:ALRM @mtascutimer
+@@ -1393,7 +1393,7 @@ be used.
+ @safety{@prelim{}@mtunsafe{@mtasurace{:utent}}@asunsafe{@asulock{} @ascuheap{}}@acunsafe{@aculock{} @acsmem{}}}
+ @c utmpname @mtasurace:utent @asulock @ascuheap @aculock @acsmem
+ @c  libc_lock_lock dup @asulock @aculock
+-@c  *libc_utmp_jump_table->endutent dup @mtasurace:utent
++@c  __libc_endutent dup @mtasurace:utent
+ @c  strcmp dup ok
+ @c  free dup @ascuheap @acsmem
+ @c  strdup dup @ascuheap @acsmem
 diff --git a/misc/sys/cdefs.h b/misc/sys/cdefs.h
 index f1bd994a10..b1695376dc 100644
 --- a/misc/sys/cdefs.h
@@ -569,6 +2717,217 @@ index 0f77dd2ed0..89c4527a81 100644
 +ifloat: 8
  ildouble: 6
  ldouble: 6
+ 
+diff --git a/sysdeps/generic/not-cancel.h b/sysdeps/generic/not-cancel.h
+index f3d862651e..724c3e5e71 100644
+--- a/sysdeps/generic/not-cancel.h
++++ b/sysdeps/generic/not-cancel.h
+@@ -41,6 +41,8 @@
+   (void) __close (fd)
+ #define __read_nocancel(fd, buf, n) \
+   __read (fd, buf, n)
++#define __pread64_nocancel(fd, buf, count, offset) \
++  __pread64 (fd, buf, count, offset)
+ #define __write_nocancel(fd, buf, n) \
+   __write (fd, buf, n)
+ #define __writev_nocancel_nostatus(fd, iov, n) \
+diff --git a/sysdeps/generic/utmp-equal.h b/sysdeps/generic/utmp-equal.h
+index d077147a7a..d61cbb3300 100644
+--- a/sysdeps/generic/utmp-equal.h
++++ b/sysdeps/generic/utmp-equal.h
+@@ -27,26 +27,16 @@
+ static int
+ __utmp_equal (const struct utmp *entry, const struct utmp *match)
+ {
+-  return
+-    (
+-#if _HAVE_UT_TYPE - 0
+-     (entry->ut_type == INIT_PROCESS
+-      || entry->ut_type == LOGIN_PROCESS
+-      || entry->ut_type == USER_PROCESS
+-      || entry->ut_type == DEAD_PROCESS)
+-     &&
+-     (match->ut_type == INIT_PROCESS
+-      || match->ut_type == LOGIN_PROCESS
+-      || match->ut_type == USER_PROCESS
+-      || match->ut_type == DEAD_PROCESS)
+-     &&
+-#endif
+-#if _HAVE_UT_ID - 0
+-     (entry->ut_id[0] && match->ut_id[0]
+-      ? strncmp (entry->ut_id, match->ut_id, sizeof match->ut_id) == 0
+-      : strncmp (entry->ut_line, match->ut_line, sizeof match->ut_line) == 0)
+-#else
+-     strncmp (entry->ut_line, match->ut_line, sizeof match->ut_line) == 0
+-#endif
+-     );
++  return (entry->ut_type == INIT_PROCESS
++          || entry->ut_type == LOGIN_PROCESS
++          || entry->ut_type == USER_PROCESS
++          || entry->ut_type == DEAD_PROCESS)
++    && (match->ut_type == INIT_PROCESS
++        || match->ut_type == LOGIN_PROCESS
++        || match->ut_type == USER_PROCESS
++        || match->ut_type == DEAD_PROCESS)
++    && (entry->ut_id[0] && match->ut_id[0]
++        ? strncmp (entry->ut_id, match->ut_id, sizeof match->ut_id) == 0
++        : (strncmp (entry->ut_line, match->ut_line, sizeof match->ut_line)
++           == 0));
+ }
+diff --git a/sysdeps/gnu/bits/utmp.h b/sysdeps/gnu/bits/utmp.h
+deleted file mode 100644
+index 7357034cb6..0000000000
+--- a/sysdeps/gnu/bits/utmp.h
++++ /dev/null
+@@ -1,126 +0,0 @@
+-/* The `struct utmp' type, describing entries in the utmp file.  GNU version.
+-   Copyright (C) 1993-2019 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
+-
+-#ifndef _UTMP_H
+-# error "Never include <bits/utmp.h> directly; use <utmp.h> instead."
+-#endif
+-
+-#include <paths.h>
+-#include <sys/time.h>
+-#include <sys/types.h>
+-#include <bits/wordsize.h>
+-
+-
+-#define UT_LINESIZE	32
+-#define UT_NAMESIZE	32
+-#define UT_HOSTSIZE	256
+-
+-
+-/* The structure describing an entry in the database of
+-   previous logins.  */
+-struct lastlog
+-  {
+-#if __WORDSIZE_TIME64_COMPAT32
+-    int32_t ll_time;
+-#else
+-    __time_t ll_time;
+-#endif
+-    char ll_line[UT_LINESIZE];
+-    char ll_host[UT_HOSTSIZE];
+-  };
+-
+-
+-/* The structure describing the status of a terminated process.  This
+-   type is used in `struct utmp' below.  */
+-struct exit_status
+-  {
+-    short int e_termination;	/* Process termination status.  */
+-    short int e_exit;		/* Process exit status.  */
+-  };
+-
+-
+-/* The structure describing an entry in the user accounting database.  */
+-struct utmp
+-{
+-  short int ut_type;		/* Type of login.  */
+-  pid_t ut_pid;			/* Process ID of login process.  */
+-  char ut_line[UT_LINESIZE]
+-    __attribute_nonstring__;	/* Devicename.  */
+-  char ut_id[4];		/* Inittab ID.  */
+-  char ut_user[UT_NAMESIZE]
+-    __attribute_nonstring__;	/* Username.  */
+-  char ut_host[UT_HOSTSIZE]
+-    __attribute_nonstring__;	/* Hostname for remote login.  */
+-  struct exit_status ut_exit;	/* Exit status of a process marked
+-				   as DEAD_PROCESS.  */
+-/* The ut_session and ut_tv fields must be the same size when compiled
+-   32- and 64-bit.  This allows data files and shared memory to be
+-   shared between 32- and 64-bit applications.  */
+-#if __WORDSIZE_TIME64_COMPAT32
+-  int32_t ut_session;		/* Session ID, used for windowing.  */
+-  struct
+-  {
+-    int32_t tv_sec;		/* Seconds.  */
+-    int32_t tv_usec;		/* Microseconds.  */
+-  } ut_tv;			/* Time entry was made.  */
+-#else
+-  long int ut_session;		/* Session ID, used for windowing.  */
+-  struct timeval ut_tv;		/* Time entry was made.  */
+-#endif
+-
+-  int32_t ut_addr_v6[4];	/* Internet address of remote host.  */
+-  char __glibc_reserved[20];		/* Reserved for future use.  */
+-};
+-
+-/* Backwards compatibility hacks.  */
+-#define ut_name		ut_user
+-#ifndef _NO_UT_TIME
+-/* We have a problem here: `ut_time' is also used otherwise.  Define
+-   _NO_UT_TIME if the compiler complains.  */
+-# define ut_time	ut_tv.tv_sec
+-#endif
+-#define ut_xtime	ut_tv.tv_sec
+-#define ut_addr		ut_addr_v6[0]
+-
+-
+-/* Values for the `ut_type' field of a `struct utmp'.  */
+-#define EMPTY		0	/* No valid user accounting information.  */
+-
+-#define RUN_LVL		1	/* The system's runlevel.  */
+-#define BOOT_TIME	2	/* Time of system boot.  */
+-#define NEW_TIME	3	/* Time after system clock changed.  */
+-#define OLD_TIME	4	/* Time when system clock changed.  */
+-
+-#define INIT_PROCESS	5	/* Process spawned by the init process.  */
+-#define LOGIN_PROCESS	6	/* Session leader of a logged in user.  */
+-#define USER_PROCESS	7	/* Normal process.  */
+-#define DEAD_PROCESS	8	/* Terminated process.  */
+-
+-#define ACCOUNTING	9
+-
+-/* Old Linux name for the EMPTY type.  */
+-#define UT_UNKNOWN	EMPTY
+-
+-
+-/* Tell the user that we have a modern system with UT_HOST, UT_PID,
+-   UT_TYPE, UT_ID and UT_TV fields.  */
+-#define _HAVE_UT_TYPE	1
+-#define _HAVE_UT_PID	1
+-#define _HAVE_UT_ID	1
+-#define _HAVE_UT_TV	1
+-#define _HAVE_UT_HOST	1
+diff --git a/sysdeps/gnu/bits/utmpx.h b/sysdeps/gnu/bits/utmpx.h
+index 472a7d57d3..2beadbf587 100644
+--- a/sysdeps/gnu/bits/utmpx.h
++++ b/sysdeps/gnu/bits/utmpx.h
+@@ -56,10 +56,14 @@ struct utmpx
+ {
+   short int ut_type;		/* Type of login.  */
+   __pid_t ut_pid;		/* Process ID of login process.  */
+-  char ut_line[__UT_LINESIZE];	/* Devicename.  */
+-  char ut_id[4];		/* Inittab ID. */
+-  char ut_user[__UT_NAMESIZE];	/* Username.  */
+-  char ut_host[__UT_HOSTSIZE];	/* Hostname for remote login.  */
++  char ut_line[__UT_LINESIZE]
++    __attribute_nonstring__;	/* Devicename.  */
++  char ut_id[4]
++    __attribute_nonstring__;	/* Inittab ID.  */
++  char ut_user[__UT_NAMESIZE]
++    __attribute_nonstring__;	/* Username.  */
++  char ut_host[__UT_HOSTSIZE]
++    __attribute_nonstring__;	/* Hostname for remote login.  */
+   struct __exit_status ut_exit;	/* Exit status of a process marked
+ 				   as DEAD_PROCESS.  */
  
 diff --git a/sysdeps/hppa/fpu/libm-test-ulps b/sysdeps/hppa/fpu/libm-test-ulps
 index d0c4dea001..2c61a7ae91 100644
@@ -846,6 +3205,58 @@ index 929b026adf..faa969849e 100644
  	vfenezb	%v19,%v18,%v18
  	j	.Lneedle_loaded
  END(STRSTR_ARCH13)
+diff --git a/sysdeps/unix/getlogin_r.c b/sysdeps/unix/getlogin_r.c
+index 6c564d3b59..88971a9931 100644
+--- a/sysdeps/unix/getlogin_r.c
++++ b/sysdeps/unix/getlogin_r.c
+@@ -64,8 +64,8 @@ __getlogin_r (char *name, size_t name_len)
+      held so that our search is thread-safe.  */
+ 
+   __libc_lock_lock (__libc_utmp_lock);
+-  (*__libc_utmp_jump_table->setutent) ();
+-  result = (*__libc_utmp_jump_table->getutline_r) (&line, &buffer, &ut);
++  __libc_setutent ();
++  result = __libc_getutline_r (&line, &buffer, &ut);
+   if (result < 0)
+     {
+       if (errno == ESRCH)
+@@ -74,8 +74,7 @@ __getlogin_r (char *name, size_t name_len)
+       else
+ 	result = errno;
+     }
+-  (*__libc_utmp_jump_table->endutent) ();
+-  __libc_utmp_jump_table = &__libc_utmp_unknown_functions;
++  __libc_endutent ();
+   __libc_lock_unlock (__libc_utmp_lock);
+ 
+   if (result == 0)
+diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
+index 1ab6bcbfc8..a7980a60f6 100644
+--- a/sysdeps/unix/sysv/linux/Makefile
++++ b/sysdeps/unix/sysv/linux/Makefile
+@@ -212,8 +212,8 @@ sysdep_routines += xstatconv internal_statvfs internal_statvfs64 \
+ 		   close_nocancel fcntl_nocancel nanosleep_nocancel \
+ 		   open_nocancel open64_nocancel \
+ 		   openat_nocancel openat64_nocancel \
+-		   pause_nocancel read_nocancel waitpid_nocancel \
+-		   write_nocancel statx_cp
++		   pause_nocancel read_nocancel pread64_nocancel \
++		   waitpid_nocancel write_nocancel statx_cp
+ 
+ sysdep_headers += bits/fcntl-linux.h
+ 
+diff --git a/sysdeps/unix/sysv/linux/Versions b/sysdeps/unix/sysv/linux/Versions
+index 1ca102a9e2..d385085c61 100644
+--- a/sysdeps/unix/sysv/linux/Versions
++++ b/sysdeps/unix/sysv/linux/Versions
+@@ -182,6 +182,7 @@ libc {
+     __syscall_rt_sigqueueinfo;
+     __open_nocancel;
+     __read_nocancel;
++    __pread64_nocancel;
+     __close_nocancel;
+     __sigtimedwait;
+     # functions used by nscd
 diff --git a/sysdeps/unix/alpha/getegid.S b/sysdeps/unix/sysv/linux/alpha/getegid.S
 similarity index 100%
 rename from sysdeps/unix/alpha/getegid.S
@@ -1005,6 +3416,66 @@ index 9147aa4582..3db1b32b08 100644
 +
 +LIBC_CONFIG_VAR([mips-force-execstack],[${libc_cv_mips_force_execstack}])
 +LIBC_CONFIG_VAR([mips-has-gnustack],[${libc_mips_has_gnustack}])
+diff --git a/sysdeps/unix/sysv/linux/not-cancel.h b/sysdeps/unix/sysv/linux/not-cancel.h
+index 16cc31cba5..bf7d80125a 100644
+--- a/sysdeps/unix/sysv/linux/not-cancel.h
++++ b/sysdeps/unix/sysv/linux/not-cancel.h
+@@ -43,6 +43,9 @@ __typeof (openat64) __openat64_nocancel;
+ /* Non cancellable read syscall.  */
+ __typeof (__read) __read_nocancel;
+ 
++/* Non cancellable pread syscall (LFS version).  */
++__typeof (__pread64) __pread64_nocancel;
++
+ /* Uncancelable write.  */
+ __typeof (__write) __write_nocancel;
+ 
+@@ -84,6 +87,7 @@ hidden_proto (__open64_nocancel)
+ hidden_proto (__openat_nocancel)
+ hidden_proto (__openat64_nocancel)
+ hidden_proto (__read_nocancel)
++hidden_proto (__pread64_nocancel)
+ hidden_proto (__write_nocancel)
+ hidden_proto (__close_nocancel)
+ hidden_proto (__waitpid_nocancel)
+diff --git a/sysdeps/unix/sysv/linux/pread64_nocancel.c b/sysdeps/unix/sysv/linux/pread64_nocancel.c
+new file mode 100644
+index 0000000000..dab61260e5
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/pread64_nocancel.c
+@@ -0,0 +1,32 @@
++/* Linux pread64() syscall implementation -- non-cancellable.
++   Copyright (C) 2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <unistd.h>
++#include <sysdep-cancel.h>
++#include <not-cancel.h>
++
++#ifndef __NR_pread64
++# define __NR_pread64 __NR_pread
++#endif
++
++ssize_t
++__pread64_nocancel (int fd, void *buf, size_t count, off64_t offset)
++{
++  return INLINE_SYSCALL_CALL (pread64, fd, buf, count, SYSCALL_LL64_PRW (offset));
++}
++hidden_def (__pread64_nocancel)
 diff --git a/sysdeps/unix/sysv/linux/riscv/vfork.S b/sysdeps/unix/sysv/linux/riscv/vfork.S
 index 67373f181b..dc173d6b47 100644
 --- a/sysdeps/unix/sysv/linux/riscv/vfork.S
@@ -1022,6 +3493,43 @@ index 67373f181b..dc173d6b47 100644
 +
  	.text
  LEAF (__libc_vfork)
+ 
+diff --git a/sysdeps/unix/sysv/linux/s390/bits/utmp.h b/sysdeps/unix/sysv/linux/s390/bits/utmp.h
+index 862115c6f8..0569c3b784 100644
+--- a/sysdeps/unix/sysv/linux/s390/bits/utmp.h
++++ b/sysdeps/unix/sysv/linux/s390/bits/utmp.h
+@@ -61,7 +61,8 @@ struct utmp
+   pid_t ut_pid;			/* Process ID of login process.  */
+   char ut_line[UT_LINESIZE]
+      __attribute_nonstring__;	/* Devicename.  */
+-  char ut_id[4];		/* Inittab ID.  */
++  char ut_id[4]
++    __attribute_nonstring__;	/* Inittab ID.  */
+   char ut_user[UT_NAMESIZE]
+      __attribute_nonstring__;	/* Username.  */
+   char ut_host[UT_HOSTSIZE]
+diff --git a/sysdeps/unix/sysv/linux/s390/bits/utmpx.h b/sysdeps/unix/sysv/linux/s390/bits/utmpx.h
+index ea3e860a2d..737d9dca05 100644
+--- a/sysdeps/unix/sysv/linux/s390/bits/utmpx.h
++++ b/sysdeps/unix/sysv/linux/s390/bits/utmpx.h
+@@ -56,10 +56,14 @@ struct utmpx
+ {
+   short int ut_type;		/* Type of login.  */
+   __pid_t ut_pid;		/* Process ID of login process.  */
+-  char ut_line[__UT_LINESIZE];	/* Devicename.  */
+-  char ut_id[4];		/* Inittab ID. */
+-  char ut_user[__UT_NAMESIZE];	/* Username.  */
+-  char ut_host[__UT_HOSTSIZE];	/* Hostname for remote login.  */
++  char ut_line[__UT_LINESIZE]
++    __attribute_nonstring__;	/* Devicename.  */
++  char ut_id[4]
++    __attribute_nonstring__;	/* Inittab ID.  */
++  char ut_user[__UT_NAMESIZE]
++    __attribute_nonstring__;	/* Username.  */
++  char ut_host[__UT_HOSTSIZE]
++    __attribute_nonstring__;	/* Hostname for remote login.  */
+   struct __exit_status ut_exit;	/* Exit status of a process marked
+ 				   as DEAD_PROCESS.  */
  
 diff --git a/sysdeps/unix/sysv/linux/test-errno-linux.c b/sysdeps/unix/sysv/linux/test-errno-linux.c
 index cb979d44bd..aaa9eadc0a 100644
