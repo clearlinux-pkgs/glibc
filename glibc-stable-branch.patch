@@ -218,10 +218,10 @@ index cdb9e14881..bc2f4aae69 100644
  
  	* version.h (RELEASE): Set to "stable".
 diff --git a/NEWS b/NEWS
-index ee9ed4de5a..2c707f35ff 100644
+index ee9ed4de5a..15df670edc 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,37 @@ See the end for copying conditions.
+@@ -4,6 +4,38 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -249,6 +249,7 @@ index ee9ed4de5a..2c707f35ff 100644
 +    unconditionally
 +  [24899] login: Add nonstring attributes to struct utmp, struct utmpx
 +  [24902] login: pututxline could fail to overwrite existing entries
++  [25066] FAIL: nptl/tst-tls1 on hppa
 +  [25189] Don't use a custom wrapper macro around __has_include
 +  [25203] libio: Disable vtable validation for pre-2.1 interposed handles
 +  [25204] Ignore LD_PREFER_MAP_32BIT_EXEC for SUID programs
@@ -3292,6 +3293,31 @@ index 206878723f..aaccfdc2dc 100644
  # endif
  #endif
  
+diff --git a/sysdeps/unix/sysv/linux/hppa/clone.S b/sysdeps/unix/sysv/linux/hppa/clone.S
+index 79fa4f6147..1c0325e199 100644
+--- a/sysdeps/unix/sysv/linux/hppa/clone.S
++++ b/sysdeps/unix/sysv/linux/hppa/clone.S
+@@ -73,13 +73,18 @@ ENTRY(__clone)
+ #endif
+ 
+ 	/* Sanity check arguments.  */
+-	comib,=,n  0, %arg0, .LerrorSanity        /* no NULL function pointers */
+-	comib,=,n  0, %arg1, .LerrorSanity        /* no NULL stack pointers */
++	comib,=,n	0,%arg0,.LerrorSanity	/* no NULL function pointers */
++	comib,=,n	0,%arg1,.LerrorSanity	/* no NULL stack pointers */
++
++	/* Ensure stack argument is 8-byte aligned.  */
++	ldo		7(%r25),%r25
++	depi		0,31,3,%r25
+ 
+ 	/* Save the function pointer, arg, and flags on the new stack.  */
+ 	stwm    %r26, 64(%r25)
+ 	stw	%r23, -60(%r25)
+ 	stw     %r24, -56(%r25)
++
+ 	/* Clone arguments are (int flags, void * child_stack) */
+ 	copy	%r24, %r26		/* flags are first */
+ 	/* User stack pointer is in the correct register already */
 diff --git a/sysdeps/unix/sysv/linux/mips/Makefile b/sysdeps/unix/sysv/linux/mips/Makefile
 index 8217f42e75..03044e7365 100644
 --- a/sysdeps/unix/sysv/linux/mips/Makefile
