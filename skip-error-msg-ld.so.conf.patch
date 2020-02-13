@@ -1,0 +1,14 @@
+Index: glibc-2.21/elf/ldconfig.c
+===================================================================
+--- glibc-2.21.orig/elf/ldconfig.c	2015-02-27 12:04:13.364141730 +0000
++++ glibc-2.21/elf/ldconfig.c	2015-02-27 12:05:15.040143559 +0000
+@@ -1091,9 +1091,6 @@
+ 
+   if (file == NULL)
+     {
+-      error (0, errno, _("\
+-Warning: ignoring configuration file that cannot be opened: %s"),
+-	     canon);
+       if (canon != filename)
+ 	free ((char *) canon);
+       return;

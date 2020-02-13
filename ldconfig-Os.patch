@@ -1,0 +1,33 @@
+diff --git a/elf/Makefile b/elf/Makefile
+index 2a432d8..2bcd427 100644
+--- a/elf/Makefile
++++ b/elf/Makefile
+@@ -74,9 +74,9 @@ define elide-stack-protector
+ $(if $(filter $(@F),$(patsubst %,%$(1),$(2))), $(no-stack-protector))
+ endef
+ 
+-CFLAGS-.o += $(call elide-stack-protector,.o,$(elide-routines.os))
+-CFLAGS-.op += $(call elide-stack-protector,.op,$(elide-routines.os))
+-CFLAGS-.os += $(call elide-stack-protector,.os,$(all-rtld-routines))
++CFLAGS-.o += $(call elide-stack-protector,.o,$(elide-routines.os)) -Os
++CFLAGS-.op += $(call elide-stack-protector,.op,$(elide-routines.os)) -Os
++CFLAGS-.os += $(call elide-stack-protector,.os,$(all-rtld-routines)) -Os
+ 
+ ifeq ($(unwind-find-fde),yes)
+ routines += unwind-dw2-fde-glibc
+@@ -561,11 +561,11 @@ $(objpfx)ldconfig: $(ldconfig-modules:%=$(objpfx)%.o)
+ 
+ SYSCONF-FLAGS := -D'SYSCONFDIR="$(sysconfdir)"'
+ CFLAGS-ldconfig.c += $(SYSCONF-FLAGS) -D'LIBDIR="$(libdir)"' \
+-		    -D'SLIBDIR="$(slibdir)"'
++		    -D'SLIBDIR="$(slibdir)"' -Os
+ libof-ldconfig = ldconfig
+-CFLAGS-dl-cache.c += $(SYSCONF-FLAGS)
+-CFLAGS-cache.c += $(SYSCONF-FLAGS)
+-CFLAGS-rtld.c += $(SYSCONF-FLAGS)
++CFLAGS-dl-cache.c = $(SYSCONF-FLAGS) -Os
++CFLAGS-cache.c = $(SYSCONF-FLAGS) -Os
++CFLAGS-rtld.c = $(SYSCONF-FLAGS) -Os
+ 
+ cpp-srcs-left := $(all-rtld-routines:=.os)
+ lib := rtld
