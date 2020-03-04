@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.31
-Release:        314
+Release:        315
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -515,6 +515,14 @@ ln -s ../lib32/ld-linux.so.2  %{buildroot}/usr/lib/ld-linux.so.2
 # for oracle db installer (compat link)
 ln -sf libpthread.a %{buildroot}/usr/lib64/libpthread_nonshared.a
 
+# Get things out of /sbin and /usr/sbin
+mv %{buildroot}/sbin/sln %{buildroot}/usr/bin/sln
+mv %{buildroot}/sbin/ldconfig %{buildroot}/usr/bin/ldconfig
+mv %{buildroot}/usr/sbin/nscd %{buildroot}/usr/bin/nscd
+mv %{buildroot}/usr/sbin/iconvconfig %{buildroot}/usr/bin/iconvconfig
+mv %{buildroot}/usr/sbin/zdump %{buildroot}/usr/bin/zdump
+mv %{buildroot}/usr/sbin/zic %{buildroot}/usr/bin/zic
+
 
 %check
 pushd ../glibc-buildroot
@@ -523,10 +531,10 @@ popd
 
 %files bin
 /usr/bin/catchsegv
-/sbin/sln
+/usr/bin/sln
 
 %files nscd
-/usr/sbin/nscd
+/usr/bin/nscd
 
 %files utils
 %exclude /usr/bin/mtrace
@@ -543,9 +551,9 @@ popd
 /usr/bin/sprof
 /usr/bin/tzselect
 /usr/bin/xtrace
-/usr/sbin/iconvconfig
-/usr/sbin/zdump
-/usr/sbin/zic
+/usr/bin/iconvconfig
+/usr/bin/zdump
+/usr/bin/zic
 
 %files bench
 /usr/bin/bench-*
@@ -724,7 +732,7 @@ popd
 /usr/lib64/haswell/libm-2.31.so
 /usr/lib64/haswell/libm.so.6
 
-/sbin/ldconfig
+/usr/bin/ldconfig
 %exclude /var/cache/ldconfig
 
 %files lib-avx2
