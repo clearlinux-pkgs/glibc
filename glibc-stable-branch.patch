@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..64e21b1c50 100644
+index 292fbc595a..d0ad1693f2 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,12 @@ See the end for copying conditions.
+@@ -4,6 +4,17 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -10,11 +10,42 @@ index 292fbc595a..64e21b1c50 100644
 +Version 2.31.1
 +
 +The following bugs are resolved with this release:
++  [25487] sinl() stack corruption from crafted input (CVE-2020-10029)
 +  [25523] MIPS/Linux inline syscall template is miscompiled
++
++Security related changes:
++
++ CVE-2020-10029
 +
  
  Version 2.31
  
+diff --git a/configure b/configure
+index b959d2d988..3b98ec312f 100755
+--- a/configure
++++ b/configure
+@@ -4035,7 +4035,7 @@ if ${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS \
+ 	    -o conftest conftest.S 1>&5 2>&5; then
+   # Do a link to see if the backend supports IFUNC relocs.
+   $READELF -r conftest 1>&5
+-  LC_ALL=C $READELF -r conftest | grep 'no relocations' >/dev/null || {
++  LC_ALL=C $READELF -Wr conftest | grep -q 'IRELATIVE\|R_SPARC_JMP_IREL' && {
+     libc_cv_ld_gnu_indirect_function=yes
+   }
+ fi
+diff --git a/configure.ac b/configure.ac
+index 49b900c1ed..e20034f301 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -649,7 +649,7 @@ if ${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS \
+ 	    -o conftest conftest.S 1>&AS_MESSAGE_LOG_FD 2>&AS_MESSAGE_LOG_FD; then
+   # Do a link to see if the backend supports IFUNC relocs.
+   $READELF -r conftest 1>&AS_MESSAGE_LOG_FD
+-  LC_ALL=C $READELF -r conftest | grep 'no relocations' >/dev/null || {
++  LC_ALL=C $READELF -Wr conftest | grep -q 'IRELATIVE\|R_SPARC_JMP_IREL' && {
+     libc_cv_ld_gnu_indirect_function=yes
+   }
+ fi
 diff --git a/malloc/tst-mallocfork2.c b/malloc/tst-mallocfork2.c
 index 0602a94895..fc1fd64b21 100644
 --- a/malloc/tst-mallocfork2.c
@@ -127,6 +158,88 @@ index 0602a94895..fc1fd64b21 100644
    printf ("info: signals received during fork: %u\n", fork_signals);
    printf ("info: signals received during free: %u\n", free_signals);
    printf ("info: signals received during malloc: %u\n", malloc_signals);
+diff --git a/sysdeps/ieee754/ldbl-96/Makefile b/sysdeps/ieee754/ldbl-96/Makefile
+index 995e90d6da..318628aed6 100644
+--- a/sysdeps/ieee754/ldbl-96/Makefile
++++ b/sysdeps/ieee754/ldbl-96/Makefile
+@@ -17,5 +17,6 @@
+ # <https://www.gnu.org/licenses/>.
+ 
+ ifeq ($(subdir),math)
+-tests += test-canonical-ldbl-96 test-totalorderl-ldbl-96
++tests += test-canonical-ldbl-96 test-totalorderl-ldbl-96 test-sinl-pseudo
++CFLAGS-test-sinl-pseudo.c += -fstack-protector-all
+ endif
+diff --git a/sysdeps/ieee754/ldbl-96/e_rem_pio2l.c b/sysdeps/ieee754/ldbl-96/e_rem_pio2l.c
+index 5f742321ae..bcdf20179f 100644
+--- a/sysdeps/ieee754/ldbl-96/e_rem_pio2l.c
++++ b/sysdeps/ieee754/ldbl-96/e_rem_pio2l.c
+@@ -210,6 +210,18 @@ __ieee754_rem_pio2l (long double x, long double *y)
+       return 0;
+     }
+ 
++  if ((i0 & 0x80000000) == 0)
++    {
++      /* Pseudo-zero and unnormal representations are not valid
++	 representations of long double.  We need to avoid stack
++	 corruption in __kernel_rem_pio2, which expects input in a
++	 particular normal form, but those representations do not need
++	 to be consistently handled like any particular floating-point
++	 value.  */
++      y[1] = y[0] = __builtin_nanl ("");
++      return 0;
++    }
++
+   /* Split the 64 bits of the mantissa into three 24-bit integers
+      stored in a double array.  */
+   exp = j0 - 23;
+diff --git a/sysdeps/ieee754/ldbl-96/test-sinl-pseudo.c b/sysdeps/ieee754/ldbl-96/test-sinl-pseudo.c
+new file mode 100644
+index 0000000000..f59b97769d
+--- /dev/null
++++ b/sysdeps/ieee754/ldbl-96/test-sinl-pseudo.c
+@@ -0,0 +1,41 @@
++/* Test sinl for pseudo-zeros and unnormals for ldbl-96 (bug 25487).
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <math.h>
++#include <math_ldbl.h>
++#include <stdint.h>
++
++static int
++do_test (void)
++{
++  for (int i = 0; i < 64; i++)
++    {
++      uint64_t sig = i == 63 ? 0 : 1ULL << i;
++      long double ld;
++      SET_LDOUBLE_WORDS (ld, 0x4141,
++			 sig >> 32, sig & 0xffffffffULL);
++      /* The requirement is that no stack overflow occurs when the
++	 pseudo-zero or unnormal goes through range reduction.  */
++      volatile long double ldr;
++      ldr = sinl (ld);
++      (void) ldr;
++    }
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/sysdeps/unix/sysv/linux/microblaze/sysdep.h b/sysdeps/unix/sysv/linux/microblaze/sysdep.h
 index ed873d9dd4..796663a23a 100644
 --- a/sysdeps/unix/sysv/linux/microblaze/sysdep.h
