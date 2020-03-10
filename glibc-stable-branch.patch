@@ -158,6 +158,43 @@ index 0602a94895..fc1fd64b21 100644
    printf ("info: signals received during fork: %u\n", fork_signals);
    printf ("info: signals received during free: %u\n", free_signals);
    printf ("info: signals received during malloc: %u\n", malloc_signals);
+diff --git a/sysdeps/arm/be/nofpu/Implies b/sysdeps/arm/be/nofpu/Implies
+new file mode 100644
+index 0000000000..c90dd7fd5c
+--- /dev/null
++++ b/sysdeps/arm/be/nofpu/Implies
+@@ -0,0 +1 @@
++arm/nofpu
+diff --git a/sysdeps/arm/le/nofpu/Implies b/sysdeps/arm/le/nofpu/Implies
+new file mode 100644
+index 0000000000..c90dd7fd5c
+--- /dev/null
++++ b/sysdeps/arm/le/nofpu/Implies
+@@ -0,0 +1 @@
++arm/nofpu
+diff --git a/sysdeps/i386/sysdep.h b/sysdeps/i386/sysdep.h
+index b4bcd8fb6c..6094af8fec 100644
+--- a/sysdeps/i386/sysdep.h
++++ b/sysdeps/i386/sysdep.h
+@@ -61,7 +61,7 @@ lose: SYSCALL_PIC_SETUP							      \
+ 
+ # define SETUP_PIC_REG(reg) \
+   .ifndef GET_PC_THUNK(reg);						      \
+-  .section .gnu.linkonce.t.GET_PC_THUNK(reg),"ax",@progbits;		      \
++  .section .text.GET_PC_THUNK(reg),"axG",@progbits,GET_PC_THUNK(reg),comdat;  \
+   .globl GET_PC_THUNK(reg);						      \
+   .hidden GET_PC_THUNK(reg);						      \
+   .p2align 4;								      \
+@@ -97,7 +97,8 @@ GET_PC_THUNK(reg):							      \
+ 
+ # define SETUP_PIC_REG_STR(reg)						\
+   ".ifndef " GET_PC_THUNK_STR (reg) "\n"				\
+-  ".section .gnu.linkonce.t." GET_PC_THUNK_STR (reg) ",\"ax\",@progbits\n" \
++  ".section .text." GET_PC_THUNK_STR (reg) ",\"axG\",@progbits,"	\
++    GET_PC_THUNK_STR (reg) ",comdat\n"					\
+   ".globl " GET_PC_THUNK_STR (reg) "\n"					\
+   ".hidden " GET_PC_THUNK_STR (reg) "\n"				\
+   ".p2align 4\n"							\
 diff --git a/sysdeps/ieee754/ldbl-96/Makefile b/sysdeps/ieee754/ldbl-96/Makefile
 index 995e90d6da..318628aed6 100644
 --- a/sysdeps/ieee754/ldbl-96/Makefile
@@ -1321,6 +1358,44 @@ index cdfc0b1b58..a4cf1540fe 100644
      if (err)								\
        _ret = -_ret;							\
      _ret;								\
+diff --git a/sysdeps/unix/sysv/linux/msgctl.c b/sysdeps/unix/sysv/linux/msgctl.c
+index 27879e76cd..fd46aec1a0 100644
+--- a/sysdeps/unix/sysv/linux/msgctl.c
++++ b/sysdeps/unix/sysv/linux/msgctl.c
+@@ -21,6 +21,7 @@
+ #include <sysdep.h>
+ #include <shlib-compat.h>
+ #include <errno.h>
++#include <linux/posix_types.h>  /* For __kernel_mode_t.  */
+ 
+ #ifndef DEFAULT_VERSION
+ # ifndef __ASSUME_SYSVIPC_BROKEN_MODE_T
+@@ -61,7 +62,6 @@ __new_msgctl (int msqid, int cmd, struct msqid_ds *buf)
+ 
+   int ret = msgctl_syscall (msqid, cmd, buf);
+ 
+-#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+   if (ret >= 0)
+     {
+       switch (cmd)
+@@ -69,10 +69,16 @@ __new_msgctl (int msqid, int cmd, struct msqid_ds *buf)
+ 	case IPC_STAT:
+ 	case MSG_STAT:
+ 	case MSG_STAT_ANY:
++#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+ 	  buf->msg_perm.mode >>= 16;
++#else
++	  /* Old Linux kernel versions might not clear the mode padding.  */
++	  if (sizeof ((struct msqid_ds){0}.msg_perm.mode)
++	      != sizeof (__kernel_mode_t))
++	    buf->msg_perm.mode &= 0xFFFF;
++#endif
+ 	}
+     }
+-#endif
+ 
+   return ret;
+ }
 diff --git a/sysdeps/unix/sysv/linux/riscv/sysdep.h b/sysdeps/unix/sysv/linux/riscv/sysdep.h
 index 201bf9a91b..2bd9b16f32 100644
 --- a/sysdeps/unix/sysv/linux/riscv/sysdep.h
@@ -1479,3 +1554,242 @@ index 201bf9a91b..2bd9b16f32 100644
  	__asm__ volatile ( 						\
  	"scall\n\t" 							\
  	: "+r" (__a0)							\
+diff --git a/sysdeps/unix/sysv/linux/semctl.c b/sysdeps/unix/sysv/linux/semctl.c
+index 0c3eb0932f..30571af49f 100644
+--- a/sysdeps/unix/sysv/linux/semctl.c
++++ b/sysdeps/unix/sysv/linux/semctl.c
+@@ -22,6 +22,7 @@
+ #include <sysdep.h>
+ #include <shlib-compat.h>
+ #include <errno.h>
++#include <linux/posix_types.h>  /* For __kernel_mode_t.  */
+ 
+ /* Define a `union semun' suitable for Linux here.  */
+ union semun
+@@ -92,7 +93,6 @@ __new_semctl (int semid, int semnum, int cmd, ...)
+ 
+   int ret = semctl_syscall (semid, semnum, cmd, arg);
+ 
+-#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+   if (ret >= 0)
+     {
+       switch (cmd)
+@@ -100,10 +100,16 @@ __new_semctl (int semid, int semnum, int cmd, ...)
+         case IPC_STAT:
+         case SEM_STAT:
+         case SEM_STAT_ANY:
++#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+           arg.buf->sem_perm.mode >>= 16;
++#else
++	  /* Old Linux kernel versions might not clear the mode padding.  */
++	  if (sizeof ((struct semid_ds){0}.sem_perm.mode)
++	      != sizeof (__kernel_mode_t))
++	    arg.buf->sem_perm.mode &= 0xFFFF;
++#endif
+ 	}
+     }
+-#endif
+ 
+   return ret;
+ }
+diff --git a/sysdeps/unix/sysv/linux/shmctl.c b/sysdeps/unix/sysv/linux/shmctl.c
+index 39fa861e17..f41b359b8b 100644
+--- a/sysdeps/unix/sysv/linux/shmctl.c
++++ b/sysdeps/unix/sysv/linux/shmctl.c
+@@ -22,6 +22,7 @@
+ #include <sysdep.h>
+ #include <shlib-compat.h>
+ #include <errno.h>
++#include <linux/posix_types.h>  /* For __kernel_mode_t.  */
+ 
+ #ifndef DEFAULT_VERSION
+ # ifndef __ASSUME_SYSVIPC_BROKEN_MODE_T
+@@ -63,7 +64,6 @@ __new_shmctl (int shmid, int cmd, struct shmid_ds *buf)
+ 
+   int ret = shmctl_syscall (shmid, cmd, buf);
+ 
+-#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+   if (ret >= 0)
+     {
+       switch (cmd)
+@@ -71,10 +71,16 @@ __new_shmctl (int shmid, int cmd, struct shmid_ds *buf)
+         case IPC_STAT:
+         case SHM_STAT:
+         case SHM_STAT_ANY:
++#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+           buf->shm_perm.mode >>= 16;
++#else
++	  /* Old Linux kernel versions might not clear the mode padding.  */
++	  if (sizeof ((struct shmid_ds){0}.shm_perm.mode)
++	      != sizeof (__kernel_mode_t))
++	    buf->shm_perm.mode &= 0xFFFF;
++#endif
+ 	}
+     }
+-#endif
+ 
+   return ret;
+ }
+diff --git a/sysdeps/unix/sysv/linux/sparc/Makefile b/sysdeps/unix/sysv/linux/sparc/Makefile
+index b0d182a439..1475039677 100644
+--- a/sysdeps/unix/sysv/linux/sparc/Makefile
++++ b/sysdeps/unix/sysv/linux/sparc/Makefile
+@@ -11,8 +11,12 @@ ifeq ($(subdir),sysvipc)
+ sysdep_routines += getshmlba
+ endif
+ 
++ifeq ($(subdir),signal)
++sysdep_routines += sigreturn_stub
++endif
++
+ ifeq ($(subdir),nptl)
+ # pull in __syscall_error routine
+-libpthread-routines += sysdep
+-libpthread-shared-only-routines += sysdep
++libpthread-routines += sysdep sigreturn_stub
++libpthread-shared-only-routines += sysdep sigreturn_stub
+ endif
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/sigaction.c b/sysdeps/unix/sysv/linux/sparc/sparc32/sigaction.c
+index 6b2f664226..938aa7aa8c 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sparc32/sigaction.c
++++ b/sysdeps/unix/sysv/linux/sparc/sparc32/sigaction.c
+@@ -24,8 +24,8 @@
+ #include <kernel_sigaction.h>
+ #include <sysdep.h>
+ 
+-static void __rt_sigreturn_stub (void);
+-static void __sigreturn_stub (void);
++void __rt_sigreturn_stub (void);
++void __sigreturn_stub (void);
+ 
+ #define STUB(act, sigsetsize) \
+   (act) ? ((unsigned long)((act->sa_flags & SA_SIGINFO)	\
+@@ -35,25 +35,3 @@ static void __sigreturn_stub (void);
+   (sigsetsize)
+ 
+ #include <sysdeps/unix/sysv/linux/sigaction.c>
+-
+-static
+-inhibit_stack_protector
+-void
+-__rt_sigreturn_stub (void)
+-{
+-  __asm__ ("mov %0, %%g1\n\t"
+-	   "ta	0x10\n\t"
+-	   : /* no outputs */
+-	   : "i" (__NR_rt_sigreturn));
+-}
+-
+-static
+-inhibit_stack_protector
+-void
+-__sigreturn_stub (void)
+-{
+-  __asm__ ("mov %0, %%g1\n\t"
+-	   "ta	0x10\n\t"
+-	   : /* no outputs */
+-	   : "i" (__NR_sigreturn));
+-}
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/sigreturn_stub.S b/sysdeps/unix/sysv/linux/sparc/sparc32/sigreturn_stub.S
+new file mode 100644
+index 0000000000..727cc94737
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/sparc/sparc32/sigreturn_stub.S
+@@ -0,0 +1,34 @@
++/* Sigreturn stub function used on sa_restore field.
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++
++/* These functions must not change the register window or the stack
++   pointer [1].
++
++   [1] https://lkml.org/lkml/2016/5/27/465  */
++
++ENTRY (__rt_sigreturn_stub)
++	mov	__NR_rt_sigreturn, %g1
++	ta	0x10
++END (__rt_sigreturn_stub)
++
++ENTRY (__sigreturn_stub)
++	mov	__NR_sigreturn, %g1
++	ta	0x10
++END (__sigreturn_stub)
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/sigaction.c b/sysdeps/unix/sysv/linux/sparc/sparc64/sigaction.c
+index 9c0dc2a630..4e26172321 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sparc64/sigaction.c
++++ b/sysdeps/unix/sysv/linux/sparc/sparc64/sigaction.c
+@@ -22,21 +22,11 @@
+ #include <syscall.h>
+ #include <sysdep.h>
+ 
+-static void __rt_sigreturn_stub (void);
++/* Defined on sigreturn_stub.S.  */
++void __rt_sigreturn_stub (void);
+ 
+ #define STUB(act, sigsetsize) \
+   (((unsigned long) &__rt_sigreturn_stub) - 8),	\
+   (sigsetsize)
+ 
+ #include <sysdeps/unix/sysv/linux/sigaction.c>
+-
+-static
+-inhibit_stack_protector
+-void
+-__rt_sigreturn_stub (void)
+-{
+-  __asm__ ("mov %0, %%g1\n\t"
+-	   "ta	0x6d\n\t"
+-	   : /* no outputs */
+-	   : "i" (__NR_rt_sigreturn));
+-}
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/sigreturn_stub.S b/sysdeps/unix/sysv/linux/sparc/sparc64/sigreturn_stub.S
+new file mode 100644
+index 0000000000..add4766831
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/sparc/sparc64/sigreturn_stub.S
+@@ -0,0 +1,29 @@
++/* Sigreturn stub function used on sa_restore field.
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++
++/* This function must not change the register window or the stack
++   pointer [1].
++
++   [1] https://lkml.org/lkml/2016/5/27/465  */
++
++ENTRY (__rt_sigreturn_stub)
++	mov	__NR_rt_sigreturn, %g1
++	ta	0x6d
++END (__rt_sigreturn_stub)
