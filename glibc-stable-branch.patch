@@ -285,6 +285,18 @@ index 0000000000..f59b97769d
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
+index 9378387747..c8471947b9 100644
+--- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
++++ b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
+@@ -17,6 +17,7 @@
+ #define __NR_clock_nanosleep 115
+ #define __NR_clock_settime 112
+ #define __NR_clone 220
++#define __NR_clone3 435
+ #define __NR_close 57
+ #define __NR_connect 203
+ #define __NR_copy_file_range 285
 diff --git a/sysdeps/unix/sysv/linux/microblaze/sysdep.h b/sysdeps/unix/sysv/linux/microblaze/sysdep.h
 index ed873d9dd4..796663a23a 100644
 --- a/sysdeps/unix/sysv/linux/microblaze/sysdep.h
@@ -1801,3 +1813,18 @@ index 0000000000..add4766831
 +	mov	__NR_rt_sigreturn, %g1
 +	ta	0x6d
 +END (__rt_sigreturn_stub)
+diff --git a/sysdeps/unix/sysv/linux/syscall-names.list b/sysdeps/unix/sysv/linux/syscall-names.list
+index 36e087d8f4..3d89814003 100644
+--- a/sysdeps/unix/sysv/linux/syscall-names.list
++++ b/sysdeps/unix/sysv/linux/syscall-names.list
+@@ -21,8 +21,8 @@
+ # This file can list all potential system calls.  The names are only
+ # used if the installed kernel headers also provide them.
+ 
+-# The list of system calls is current as of Linux 5.4.
+-kernel 5.4
++# The list of system calls is current as of Linux 5.5.
++kernel 5.5
+ 
+ FAST_atomic_update
+ FAST_cmpxchg
