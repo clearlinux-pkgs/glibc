@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..472cba8cda 100644
+index 292fbc595a..918e9ebbaf 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,23 @@ See the end for copying conditions.
+@@ -4,6 +4,26 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -22,6 +22,9 @@ index 292fbc595a..472cba8cda 100644
 +  CVE-2020-10029: Trigonometric functions on x86 targets suffered from stack
 +  corruption when they were passed a pseudo-zero argument.  Reported by Guido
 +  Vranken / ForAllSecure Mayhem.
++
++  CVE-2020-1752: A use-after-free vulnerability in the glob function when
++  expanding ~user has been fixed.
 +
  
  Version 2.31
