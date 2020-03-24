@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..918e9ebbaf 100644
+index 292fbc595a..1595866b51 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,26 @@ See the end for copying conditions.
+@@ -4,6 +4,27 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -16,6 +16,7 @@ index 292fbc595a..918e9ebbaf 100644
 +  [25623] test-sysvmsg, test-sysvsem, test-sysvshm fail with 2.31 on 32 bit and
 +    old kernel
 +  [25635] arm: Wrong sysdep order selection for soft-fp
++  [25715] system() returns wrong errors when posix_spawn fails
 +
 +Security related changes:
 +
@@ -216,6 +217,143 @@ index cba9cd1819..4580cefb9f 100644
  		dirlen = home_len + rest_len;
  		dirname_modified = 1;
  	      }
+diff --git a/stdlib/tst-system.c b/stdlib/tst-system.c
+index b6c5aea08f..c8c1811349 100644
+--- a/stdlib/tst-system.c
++++ b/stdlib/tst-system.c
+@@ -17,14 +17,128 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include <stdlib.h>
++#include <unistd.h>
++#include <string.h>
++#include <signal.h>
++#include <paths.h>
+ 
++#include <support/capture_subprocess.h>
++#include <support/check.h>
++#include <support/temp_file.h>
++#include <support/support.h>
++
++static char *tmpdir;
++static long int namemax;
++
++static void
++do_prepare (int argc, char *argv[])
++{
++  tmpdir = support_create_temp_directory ("tst-system-");
++  /* Include the last '/0'.  */
++  namemax = pathconf (tmpdir, _PC_NAME_MAX) + 1;
++  TEST_VERIFY_EXIT (namemax != -1);
++}
++#define PREPARE do_prepare
++
++struct args
++{
++  const char *command;
++  int exit_status;
++  int term_sig;
++  const char *path;
++};
++
++static void
++call_system (void *closure)
++{
++  struct args *args = (struct args *) closure;
++  int ret;
++
++  if (args->path != NULL)
++    TEST_COMPARE (setenv ("PATH", args->path, 1), 0);
++  ret = system (args->command);
++  if (args->term_sig == 0)
++    {
++      /* Expect regular termination.  */
++      TEST_VERIFY (WIFEXITED (ret) != 0);
++      TEST_COMPARE (WEXITSTATUS (ret), args->exit_status);
++    }
++  else
++    {
++      /* status_or_signal < 0.  Expect termination by signal.  */
++      TEST_VERIFY (WIFSIGNALED (ret) != 0);
++      TEST_COMPARE (WTERMSIG (ret), args->term_sig);
++    }
++}
+ 
+ static int
+ do_test (void)
+ {
+-  return system (":");
+-}
++  TEST_VERIFY (system (NULL) != 0);
+ 
++  {
++    char cmd[namemax];
++    memset (cmd, 'a', sizeof(cmd));
++    cmd[sizeof(cmd) - 1] = '\0';
++
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (call_system,
++					 &(struct args) {
++					   cmd, 127, 0, tmpdir
++					 });
++    support_capture_subprocess_check (&result, "system", 0, sc_allow_stderr);
++
++    char *returnerr = xasprintf ("%s: 1: %s: not found\n",
++				 basename(_PATH_BSHELL), cmd);
++    TEST_COMPARE_STRING (result.err.buffer, returnerr);
++    free (returnerr);
++  }
++
++  {
++    char cmd[namemax + 1];
++    memset (cmd, 'a', sizeof(cmd));
++    cmd[sizeof(cmd) - 1] = '\0';
++
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (call_system,
++					 &(struct args) {
++					   cmd, 127, 0, tmpdir
++					 });
++    support_capture_subprocess_check (&result, "system", 0, sc_allow_stderr);
++
++    char *returnerr = xasprintf ("%s: 1: %s: File name too long\n",
++				 basename(_PATH_BSHELL), cmd);
++    TEST_COMPARE_STRING (result.err.buffer, returnerr);
++    free (returnerr);
++  }
++
++  {
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (call_system,
++					 &(struct args) {
++					   "kill -USR1 $$", 0, SIGUSR1
++					 });
++    support_capture_subprocess_check (&result, "system", 0, sc_allow_none);
++  }
++
++  {
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (call_system,
++					 &(struct args) { "echo ...", 0 });
++    support_capture_subprocess_check (&result, "system", 0, sc_allow_stdout);
++    TEST_COMPARE_STRING (result.out.buffer, "...\n");
++  }
++
++  {
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (call_system,
++					 &(struct args) { "exit 1", 1 });
++    support_capture_subprocess_check (&result, "system", 0, sc_allow_none);
++  }
++
++  TEST_COMPARE (system (":"), 0);
++
++  return 0;
++}
+ 
+-#define TEST_FUNCTION do_test ()
+-#include "../test-skeleton.c"
++#include <support/test-driver.c>
 diff --git a/sysdeps/arm/be/nofpu/Implies b/sysdeps/arm/be/nofpu/Implies
 new file mode 100644
 index 0000000000..c90dd7fd5c
@@ -337,6 +475,51 @@ index 0000000000..f59b97769d
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/posix/system.c b/sysdeps/posix/system.c
+index e613e6a344..a03f478fc7 100644
+--- a/sysdeps/posix/system.c
++++ b/sysdeps/posix/system.c
+@@ -101,7 +101,8 @@ cancel_handler (void *arg)
+ static int
+ do_system (const char *line)
+ {
+-  int status;
++  int status = -1;
++  int ret;
+   pid_t pid;
+   struct sigaction sa;
+ #ifndef _LIBC_REENTRANT
+@@ -144,14 +145,14 @@ do_system (const char *line)
+   __posix_spawnattr_setflags (&spawn_attr,
+ 			      POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK);
+ 
+-  status = __posix_spawn (&pid, SHELL_PATH, 0, &spawn_attr,
+-			  (char *const[]){ (char*) SHELL_NAME,
+-					   (char*) "-c",
+-					   (char *) line, NULL },
+-			  __environ);
++  ret = __posix_spawn (&pid, SHELL_PATH, 0, &spawn_attr,
++		       (char *const[]){ (char *) SHELL_NAME,
++					(char *) "-c",
++					(char *) line, NULL },
++		       __environ);
+   __posix_spawnattr_destroy (&spawn_attr);
+ 
+-  if (status == 0)
++  if (ret == 0)
+     {
+       /* Cancellation results in cleanup handlers running as exceptions in
+ 	 the block where they were installed, so it is safe to reference
+@@ -186,6 +187,9 @@ do_system (const char *line)
+     }
+   DO_UNLOCK ();
+ 
++  if (ret != 0)
++    __set_errno (ret);
++
+   return status;
+ }
+ 
 diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
 index 9378387747..c8471947b9 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
