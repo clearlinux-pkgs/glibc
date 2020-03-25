@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..1595866b51 100644
+index 292fbc595a..15c040a83e 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,27 @@ See the end for copying conditions.
+@@ -4,6 +4,30 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -23,6 +23,9 @@ index 292fbc595a..1595866b51 100644
 +  CVE-2020-10029: Trigonometric functions on x86 targets suffered from stack
 +  corruption when they were passed a pseudo-zero argument.  Reported by Guido
 +  Vranken / ForAllSecure Mayhem.
++
++  CVE-2020-1751: A defect in the PowerPC backtrace function could cause an
++  out-of-bounds write when executed in a signal frame context.
 +
 +  CVE-2020-1752: A use-after-free vulnerability in the glob function when
 +  expanding ~user has been fixed.
@@ -217,11 +220,32 @@ index cba9cd1819..4580cefb9f 100644
  		dirlen = home_len + rest_len;
  		dirname_modified = 1;
  	      }
+diff --git a/stdlib/Makefile b/stdlib/Makefile
+index 45214b59e4..4615f6dfe7 100644
+--- a/stdlib/Makefile
++++ b/stdlib/Makefile
+@@ -70,7 +70,7 @@ tests		:= tst-strtol tst-strtod testmb testrand testsort testdiv   \
+ 		   test-canon test-canon2 tst-strtoll tst-environ	    \
+ 		   tst-xpg-basename tst-random tst-random2 tst-bsearch	    \
+ 		   tst-limits tst-rand48 bug-strtod tst-setcontext	    \
+-		   tst-setcontext2 test-a64l tst-qsort tst-system testmb2   \
++		   tst-setcontext2 test-a64l tst-qsort testmb2              \
+ 		   bug-strtod2 tst-atof1 tst-atof2 tst-strtod2		    \
+ 		   tst-rand48-2 tst-makecontext tst-strtod5		    \
+ 		   tst-qsort2 tst-makecontext2 tst-strtod6 tst-unsetenv1    \
+@@ -92,6 +92,7 @@ tests		:= tst-strtol tst-strtod testmb testrand testsort testdiv   \
+ tests-internal	:= tst-strtod1i tst-strtod3 tst-strtod4 tst-strtod5i \
+ 		   tst-tls-atexit tst-tls-atexit-nodelete
+ tests-static	:= tst-secure-getenv
++tests-container := tst-system
+ 
+ ifeq ($(build-hardcoded-path-in-tests),yes)
+ tests += tst-empty-env
 diff --git a/stdlib/tst-system.c b/stdlib/tst-system.c
-index b6c5aea08f..c8c1811349 100644
+index b6c5aea08f..eddea33f4c 100644
 --- a/stdlib/tst-system.c
 +++ b/stdlib/tst-system.c
-@@ -17,14 +17,128 @@
+@@ -17,14 +17,130 @@
     <https://www.gnu.org/licenses/>.  */
  
  #include <stdlib.h>
@@ -298,7 +322,8 @@ index b6c5aea08f..c8c1811349 100644
 +					 });
 +    support_capture_subprocess_check (&result, "system", 0, sc_allow_stderr);
 +
-+    char *returnerr = xasprintf ("%s: 1: %s: not found\n",
++    char *returnerr = xasprintf ("%s: execing %s failed: "
++				 "No such file or directory",
 +				 basename(_PATH_BSHELL), cmd);
 +    TEST_COMPARE_STRING (result.err.buffer, returnerr);
 +    free (returnerr);
@@ -316,7 +341,8 @@ index b6c5aea08f..c8c1811349 100644
 +					 });
 +    support_capture_subprocess_check (&result, "system", 0, sc_allow_stderr);
 +
-+    char *returnerr = xasprintf ("%s: 1: %s: File name too long\n",
++    char *returnerr = xasprintf ("%s: execing %s failed: "
++				 "File name too long",
 +				 basename(_PATH_BSHELL), cmd);
 +    TEST_COMPARE_STRING (result.err.buffer, returnerr);
 +    free (returnerr);
@@ -326,7 +352,7 @@ index b6c5aea08f..c8c1811349 100644
 +    struct support_capture_subprocess result;
 +    result = support_capture_subprocess (call_system,
 +					 &(struct args) {
-+					   "kill -USR1 $$", 0, SIGUSR1
++					   "kill $$", 0, SIGTERM
 +					 });
 +    support_capture_subprocess_check (&result, "system", 0, sc_allow_none);
 +  }
@@ -346,7 +372,7 @@ index b6c5aea08f..c8c1811349 100644
 +    support_capture_subprocess_check (&result, "system", 0, sc_allow_none);
 +  }
 +
-+  TEST_COMPARE (system (":"), 0);
++  TEST_COMPARE (system (""), 0);
 +
 +  return 0;
 +}
@@ -354,6 +380,78 @@ index b6c5aea08f..c8c1811349 100644
 -#define TEST_FUNCTION do_test ()
 -#include "../test-skeleton.c"
 +#include <support/test-driver.c>
+diff --git a/support/shell-container.c b/support/shell-container.c
+index 509e0d69b1..201536d24e 100644
+--- a/support/shell-container.c
++++ b/support/shell-container.c
+@@ -135,6 +135,37 @@ copy_func (char **argv)
+ 
+ }
+ 
++/* Emulate the 'exit' builtin.  The exit value is optional.  */
++static int
++exit_func (char **argv)
++{
++  int exit_val = 0;
++
++  if (argv[0] != 0)
++    exit_val = atoi (argv[0]) & 0xff;
++  exit (exit_val);
++  return 0;
++}
++
++/* Emulate the "/bin/kill" command.  Options are ignored.  */
++static int
++kill_func (char **argv)
++{
++  int signum = SIGTERM;
++  int i;
++
++  for (i = 0; argv[i]; i++)
++    {
++      pid_t pid;
++      if (strcmp (argv[i], "$$") == 0)
++	pid = getpid ();
++      else
++	pid = atoi (argv[i]);
++      kill (pid, signum);
++    }
++  return 0;
++}
++
+ /* This is a list of all the built-in commands we understand.  */
+ static struct {
+   const char *name;
+@@ -143,6 +174,8 @@ static struct {
+   { "true", true_func },
+   { "echo", echo_func },
+   { "cp", copy_func },
++  { "exit", exit_func },
++  { "kill", kill_func },
+   { NULL, NULL }
+ };
+ 
+@@ -238,7 +271,7 @@ run_command_array (char **argv)
+ 
+       fprintf (stderr, "sh: execing %s failed: %s",
+ 	       argv[0], strerror (errno));
+-      exit (1);
++      exit (127);
+     }
+ 
+   waitpid (pid, &status, 0);
+@@ -251,6 +284,11 @@ run_command_array (char **argv)
+       if (rv)
+ 	exit (rv);
+     }
++  else if (WIFSIGNALED (status))
++    {
++      int sig = WTERMSIG (status);
++      raise (sig);
++    }
+   else
+     exit (1);
+ }
 diff --git a/sysdeps/arm/be/nofpu/Implies b/sysdeps/arm/be/nofpu/Implies
 new file mode 100644
 index 0000000000..c90dd7fd5c
