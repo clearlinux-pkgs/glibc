@@ -489,33 +489,31 @@ index 0000000000..c90dd7fd5c
 +++ b/sysdeps/arm/le/nofpu/Implies
 @@ -0,0 +1 @@
 +arm/nofpu
-diff --git a/sysdeps/generic/unwind-arch.h b/sysdeps/generic/unwind-arch.h
-new file mode 100644
-index 0000000000..d712e5e11d
---- /dev/null
+diff --git a/sysdeps/unix/sysv/linux/nios2/kernel-features.h b/sysdeps/generic/unwind-arch.h
+similarity index 72%
+rename from sysdeps/unix/sysv/linux/nios2/kernel-features.h
+rename to sysdeps/generic/unwind-arch.h
+index d68d114981..d712e5e11d 100644
+--- a/sysdeps/unix/sysv/linux/nios2/kernel-features.h
 +++ b/sysdeps/generic/unwind-arch.h
-@@ -0,0 +1,30 @@
+@@ -1,6 +1,5 @@
+-/* Set flags signalling availability of kernel features based on given
+-   kernel version number.  NIOS2 version.
+-   Copyright (C) 2019-2020 Free Software Foundation, Inc.
 +/* Return backtrace of current program state.  Arch-specific bits.
 +   Copyright (C) 2020 Free Software Foundation, Inc.
-+   This file is part of the GNU C Library.
-+
-+   The GNU C Library is free software; you can redistribute it and/or
-+   modify it under the terms of the GNU Lesser General Public
-+   License as published by the Free Software Foundation; either
-+   version 2.1 of the License, or (at your option) any later version.
-+
-+   The GNU C Library is distributed in the hope that it will be useful,
-+   but WITHOUT ANY WARRANTY; without even the implied warranty of
-+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-+   Lesser General Public License for more details.
-+
-+   You should have received a copy of the GNU Lesser General Public
-+   License along with the GNU C Library; if not, see
-+   <https://www.gnu.org/licenses/>.  */
-+
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -17,6 +16,15 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include_next <kernel-features.h>
 +#ifndef _UNWIND_ARCH_H
 +#define _UNWIND_ARCH_H
-+
+ 
+-#undef __ASSUME_SYSVIPC_DEFAULT_IPC_64
 +#include <unwind.h>
 +
 +static inline void *
