@@ -83,6 +83,18 @@ index cc4b9a5c90..69cf4c23c8 100644
  
        /* Check whether we make any progress.  */
        _Unwind_Word cfa = unwind_getcfa (ctx);
+diff --git a/include/sys/prctl.h b/include/sys/prctl.h
+index 0920ed642b..d33f3a290e 100644
+--- a/include/sys/prctl.h
++++ b/include/sys/prctl.h
+@@ -4,6 +4,7 @@
+ # ifndef _ISOMAC
+ 
+ extern int __prctl (int __option, ...);
++libc_hidden_proto (__prctl)
+ 
+ # endif /* !_ISOMAC */
+ #endif
 diff --git a/malloc/tst-mallocfork2.c b/malloc/tst-mallocfork2.c
 index 0602a94895..fc1fd64b21 100644
 --- a/malloc/tst-mallocfork2.c
@@ -328,6 +340,192 @@ index 5985b6744b..3496af4040 100644
  endif
  
  # These files quiet sNaNs in a way that is optimized away without
+diff --git a/misc/Makefile b/misc/Makefile
+index e0465980c7..e167e199eb 100644
+--- a/misc/Makefile
++++ b/misc/Makefile
+@@ -87,7 +87,7 @@ tests := tst-dirname tst-tsearch tst-fdset tst-mntent tst-hsearch \
+ 	 tst-preadvwritev tst-preadvwritev64 tst-makedev tst-empty \
+ 	 tst-preadvwritev2 tst-preadvwritev64v2 tst-warn-wide \
+ 	 tst-ldbl-warn tst-ldbl-error tst-dbl-efgcvt tst-ldbl-efgcvt \
+-	 tst-mntent-autofs
++	 tst-mntent-autofs tst-syscalls
+ 
+ # Tests which need libdl.
+ ifeq (yes,$(build-shared))
+diff --git a/misc/tst-syscalls.c b/misc/tst-syscalls.c
+new file mode 100644
+index 0000000000..cfcd382320
+--- /dev/null
++++ b/misc/tst-syscalls.c
+@@ -0,0 +1,167 @@
++/* Test for syscall interfaces.
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* This test verifies that the x32 system call handling zero-extends
++   unsigned 32-bit arguments to the 64-bit argument registers for
++   system calls (bug 25810).  The bug is specific to x32, but the test
++   should pass on all architectures.  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <fcntl.h>
++#include <sys/mman.h>
++#include <support/check.h>
++#include <support/xunistd.h>
++
++/* On x32, this can be passed in a single 64-bit integer register.  */
++struct Array
++{
++  size_t length;
++  void *ptr;
++};
++
++static int error_count;
++
++__attribute__ ((noclone, noinline))
++struct Array
++allocate (size_t bytes)
++{
++  if (!bytes)
++    return __extension__ (struct Array) {0, 0};
++
++  void *p = mmap (0x0, bytes, PROT_READ | PROT_WRITE,
++		  MAP_PRIVATE | MAP_ANON, -1, 0);
++  if (p == MAP_FAILED)
++    return __extension__ (struct Array) {0, 0};
++
++  return __extension__ (struct Array) {bytes, p};
++}
++
++__attribute__ ((noclone, noinline))
++void
++deallocate (struct Array b)
++{
++  /* On x32, the 64-bit integer register containing `b' may be copied
++     to another 64-bit integer register to pass the second argument to
++     munmap.  */
++  if (b.length && munmap (b.ptr, b.length))
++    {
++      printf ("munmap error: %m\n");
++      error_count++;
++    }
++}
++
++__attribute__ ((noclone, noinline))
++void *
++do_mmap (void *addr, size_t length)
++{
++  return mmap (addr, length, PROT_READ | PROT_WRITE,
++	       MAP_PRIVATE | MAP_ANON, -1, 0);
++}
++
++__attribute__ ((noclone, noinline))
++void *
++reallocate (struct Array b)
++{
++  /* On x32, the 64-bit integer register containing `b' may be copied
++     to another 64-bit integer register to pass the second argument to
++     do_mmap.  */
++  if (b.length)
++    return do_mmap (b.ptr, b.length);
++  return NULL;
++}
++
++__attribute__ ((noclone, noinline))
++void
++protect (struct Array b)
++{
++  if (b.length)
++    {
++      /* On x32, the 64-bit integer register containing `b' may be copied
++	 to another 64-bit integer register to pass the second argument
++	 to mprotect.  */
++      if (mprotect (b.ptr, b.length,
++		    PROT_READ | PROT_WRITE | PROT_EXEC))
++	{
++	  printf ("mprotect error: %m\n");
++	  error_count++;
++	}
++    }
++}
++
++__attribute__ ((noclone, noinline))
++ssize_t
++do_read (int fd, void *ptr, struct Array b)
++{
++  /* On x32, the 64-bit integer register containing `b' may be copied
++     to another 64-bit integer register to pass the second argument to
++     read.  */
++  if (b.length)
++    return read (fd, ptr, b.length);
++  return 0;
++}
++
++__attribute__ ((noclone, noinline))
++ssize_t
++do_write (int fd, void *ptr, struct Array b)
++{
++  /* On x32, the 64-bit integer register containing `b' may be copied
++     to another 64-bit integer register to pass the second argument to
++     write.  */
++  if (b.length)
++    return write (fd, ptr, b.length);
++  return 0;
++}
++
++static int
++do_test (void)
++{
++  struct Array array;
++
++  array = allocate (1);
++  protect (array);
++  deallocate (array);
++  void *p = reallocate (array);
++  if (p == MAP_FAILED)
++    {
++      printf ("mmap error: %m\n");
++      error_count++;
++    }
++  array.ptr = p;
++  protect (array);
++  deallocate (array);
++
++  int fd = xopen ("/dev/null", O_RDWR, 0);
++  char buf[2];
++  array.ptr = buf;
++  if (do_read (fd, array.ptr, array) == -1)
++    {
++      printf ("read error: %m\n");
++      error_count++;
++    }
++  if (do_write (fd, array.ptr, array) == -1)
++    {
++      printf ("write error: %m\n");
++      error_count++;
++    }
++  xclose (fd);
++
++  return error_count ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
 diff --git a/posix/glob.c b/posix/glob.c
 index cba9cd1819..4580cefb9f 100644
 --- a/posix/glob.c
@@ -1158,6 +1356,210 @@ index e613e6a344..a03f478fc7 100644
    return status;
  }
  
+diff --git a/sysdeps/unix/make-syscalls.sh b/sysdeps/unix/make-syscalls.sh
+index c07626677f..4f6c3490a2 100644
+--- a/sysdeps/unix/make-syscalls.sh
++++ b/sysdeps/unix/make-syscalls.sh
+@@ -30,6 +30,7 @@
+ # P: optionally-NULL pointer to typed object (e.g., 3rd argument to sigaction)
+ # s: non-NULL string (e.g., 1st arg to open)
+ # S: optionally-NULL string (e.g., 1st arg to acct)
++# U: unsigned long int (32-bit types are zero-extended to 64-bit types)
+ # v: vararg scalar (e.g., optional 3rd arg to open)
+ # V: byte-per-page vector (3rd arg to mincore)
+ # W: wait status, optionally-NULL pointer to int (e.g., 2nd arg of wait4)
+@@ -184,6 +185,27 @@ while read file srcfile caller syscall args strong weak; do
+   ?:?????????) nargs=9;;
+   esac
+ 
++  # Derive the unsigned long int arguments from the argument signature
++  ulong_arg_1=0
++  ulong_arg_2=0
++  ulong_count=0
++  for U in $(echo $args | sed -e "s/.*:/:/" | grep -ob U)
++  do
++    ulong_count=$(expr $ulong_count + 1)
++    ulong_arg=$(echo $U | sed -e "s/:U//")
++    case $ulong_count in
++    1)
++      ulong_arg_1=$ulong_arg
++      ;;
++    2)
++      ulong_arg_2=$ulong_arg
++      ;;
++    *)
++      echo >&2 "$0: Too many unsigned long int arguments for syscall ($strong $weak)"
++      exit 2
++    esac
++  done
++
+   # Make sure only the first syscall rule is used, if multiple dirs
+   # define the same syscall.
+   echo ''
+@@ -245,6 +267,8 @@ while read file srcfile caller syscall args strong weak; do
+ 	\$(make-target-directory)
+ 	(echo '#define SYSCALL_NAME $syscall'; \\
+ 	 echo '#define SYSCALL_NARGS $nargs'; \\
++	 echo '#define SYSCALL_ULONG_ARG_1 $ulong_arg_1'; \\
++	 echo '#define SYSCALL_ULONG_ARG_2 $ulong_arg_2'; \\
+ 	 echo '#define SYSCALL_SYMBOL $strong'; \\
+ 	 echo '#define SYSCALL_NOERRNO $noerrno'; \\
+ 	 echo '#define SYSCALL_ERRVAL $errval'; \\
+diff --git a/sysdeps/unix/syscall-template.S b/sysdeps/unix/syscall-template.S
+index cf6c7a58fb..f807a8603f 100644
+--- a/sysdeps/unix/syscall-template.S
++++ b/sysdeps/unix/syscall-template.S
+@@ -25,6 +25,12 @@
+    defining a few macros:
+ 	SYSCALL_NAME		syscall name
+ 	SYSCALL_NARGS		number of arguments this call takes
++	SYSCALL_ULONG_ARG_1	the first unsigned long int argument this
++				call takes.  0 means that there are no
++				unsigned long int arguments.
++	SYSCALL_ULONG_ARG_2	the second unsigned long int argument this
++				call takes.  0 means that there is at most
++				one unsigned long int argument.
+ 	SYSCALL_SYMBOL		primary symbol name
+ 	SYSCALL_NOERRNO		1 to define a no-errno version (see below)
+ 	SYSCALL_ERRVAL		1 to define an error-value version (see below)
+@@ -44,9 +50,31 @@
+ /* This indirection is needed so that SYMBOL gets macro-expanded.  */
+ #define syscall_hidden_def(SYMBOL)		hidden_def (SYMBOL)
+ 
+-#define T_PSEUDO(SYMBOL, NAME, N)		PSEUDO (SYMBOL, NAME, N)
+-#define T_PSEUDO_NOERRNO(SYMBOL, NAME, N)	PSEUDO_NOERRNO (SYMBOL, NAME, N)
+-#define T_PSEUDO_ERRVAL(SYMBOL, NAME, N)	PSEUDO_ERRVAL (SYMBOL, NAME, N)
++/* If PSEUDOS_HAVE_ULONG_INDICES is defined, PSEUDO and T_PSEUDO macros
++   have 2 extra arguments for unsigned long int arguments:
++     Extra argument 1: Position of the first unsigned long int argument.
++     Extra argument 2: Position of the second unsigned long int argument.
++ */
++#ifndef PSEUDOS_HAVE_ULONG_INDICES
++# undef SYSCALL_ULONG_ARG_1
++# define SYSCALL_ULONG_ARG_1 0
++#endif
++
++#if SYSCALL_ULONG_ARG_1
++# define T_PSEUDO(SYMBOL, NAME, N, U1, U2) \
++  PSEUDO (SYMBOL, NAME, N, U1, U2)
++# define T_PSEUDO_NOERRNO(SYMBOL, NAME, N, U1, U2) \
++  PSEUDO_NOERRNO (SYMBOL, NAME, N, U1, U2)
++# define T_PSEUDO_ERRVAL(SYMBOL, NAME, N, U1, U2) \
++  PSEUDO_ERRVAL (SYMBOL, NAME, N, U1, U2)
++#else
++# define T_PSEUDO(SYMBOL, NAME, N) \
++  PSEUDO (SYMBOL, NAME, N)
++# define T_PSEUDO_NOERRNO(SYMBOL, NAME, N) \
++  PSEUDO_NOERRNO (SYMBOL, NAME, N)
++# define T_PSEUDO_ERRVAL(SYMBOL, NAME, N) \
++  PSEUDO_ERRVAL (SYMBOL, NAME, N)
++#endif
+ #define T_PSEUDO_END(SYMBOL)			PSEUDO_END (SYMBOL)
+ #define T_PSEUDO_END_NOERRNO(SYMBOL)		PSEUDO_END_NOERRNO (SYMBOL)
+ #define T_PSEUDO_END_ERRVAL(SYMBOL)		PSEUDO_END_ERRVAL (SYMBOL)
+@@ -56,7 +84,12 @@
+ /* This kind of system call stub never returns an error.
+    We return the return value register to the caller unexamined.  */
+ 
++# if SYSCALL_ULONG_ARG_1
++T_PSEUDO_NOERRNO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS,
++		  SYSCALL_ULONG_ARG_1, SYSCALL_ULONG_ARG_2)
++# else
+ T_PSEUDO_NOERRNO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)
++# endif
+ 	ret_NOERRNO
+ T_PSEUDO_END_NOERRNO (SYSCALL_SYMBOL)
+ 
+@@ -66,7 +99,12 @@ T_PSEUDO_END_NOERRNO (SYSCALL_SYMBOL)
+    value, or zero for success.  We may massage the kernel's return value
+    to meet that ABI, but we never set errno here.  */
+ 
++# if SYSCALL_ULONG_ARG_1
++T_PSEUDO_ERRVAL (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS,
++		 SYSCALL_ULONG_ARG_1, SYSCALL_ULONG_ARG_2)
++# else
+ T_PSEUDO_ERRVAL (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)
++# endif
+ 	ret_ERRVAL
+ T_PSEUDO_END_ERRVAL (SYSCALL_SYMBOL)
+ 
+@@ -75,7 +113,12 @@ T_PSEUDO_END_ERRVAL (SYSCALL_SYMBOL)
+ /* This is a "normal" system call stub: if there is an error,
+    it returns -1 and sets errno.  */
+ 
++# if SYSCALL_ULONG_ARG_1
++T_PSEUDO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS,
++	  SYSCALL_ULONG_ARG_1, SYSCALL_ULONG_ARG_2)
++# else
+ T_PSEUDO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)
++# endif
+ 	ret
+ T_PSEUDO_END (SYSCALL_SYMBOL)
+ 
+diff --git a/sysdeps/unix/syscalls.list b/sysdeps/unix/syscalls.list
+index e28e801c7a..6b22b2cb45 100644
+--- a/sysdeps/unix/syscalls.list
++++ b/sysdeps/unix/syscalls.list
+@@ -39,27 +39,27 @@ kill		-	kill		i:ii	__kill		kill
+ link		-	link		i:ss	__link		link
+ listen		-	listen		i:ii	__listen	listen
+ lseek		-	lseek		i:iii	__libc_lseek	__lseek lseek
+-madvise		-	madvise		i:pii	__madvise	madvise
++madvise		-	madvise		i:pUi	__madvise	madvise
+ mkdir		-	mkdir		i:si	__mkdir		mkdir
+-mmap		-	mmap		b:aniiii __mmap		mmap
+-mprotect	-	mprotect	i:aii	__mprotect	mprotect
+-munmap		-	munmap		i:ai	__munmap	munmap
++mmap		-	mmap		b:aUiiii __mmap		mmap
++mprotect	-	mprotect	i:aUi	__mprotect	mprotect
++munmap		-	munmap		i:aU	__munmap	munmap
+ open		-	open		Ci:siv	__libc_open __open open
+ profil		-	profil		i:piii	__profil	profil
+ ptrace		-	ptrace		i:iiii	ptrace
+-read		-	read		Ci:ibn	__libc_read	__read read
+-readlink	-	readlink	i:spi	__readlink	readlink
++read		-	read		Ci:ibU	__libc_read	__read read
++readlink	-	readlink	i:spU	__readlink	readlink
+ readv		-	readv		Ci:ipi	__readv		readv
+ reboot		-	reboot		i:i	reboot
+-recv		-	recv		Ci:ibni	__libc_recv	recv
+-recvfrom	-	recvfrom	Ci:ibniBN	__libc_recvfrom __recvfrom recvfrom
++recv		-	recv		Ci:ibUi	__libc_recv	recv
++recvfrom	-	recvfrom	Ci:ibUiBN	__libc_recvfrom __recvfrom recvfrom
+ recvmsg		-	recvmsg		Ci:ipi	__libc_recvmsg	__recvmsg recvmsg
+ rename		-	rename		i:ss	rename
+ rmdir		-	rmdir		i:s	__rmdir		rmdir
+ select		-	select		Ci:iPPPP	__select	__libc_select select
+-send		-	send		Ci:ibni	__libc_send	__send send
++send		-	send		Ci:ibUi	__libc_send	__send send
+ sendmsg		-	sendmsg		Ci:ipi	__libc_sendmsg	__sendmsg sendmsg
+-sendto		-	sendto		Ci:ibnibn	__libc_sendto	__sendto sendto
++sendto		-	sendto		Ci:ibUibn	__libc_sendto	__sendto sendto
+ setdomain	-	setdomainname	i:si	setdomainname
+ setegid		-	setegid		i:i	__setegid	setegid
+ seteuid		-	seteuid		i:i	__seteuid	seteuid
+@@ -94,5 +94,5 @@ uname		-	uname		i:p	__uname		uname
+ unlink		-	unlink		i:s	__unlink	unlink
+ utimes		-	utimes		i:sp	__utimes	utimes
+ vhangup		-	vhangup		i:i	vhangup
+-write		-	write		Ci:ibn	__libc_write	__write write
++write		-	write		Ci:ibU	__libc_write	__write write
+ writev		-	writev		Ci:ipi	__writev	writev
+diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
+index f12b7b1a2d..5fbde369c3 100644
+--- a/sysdeps/unix/sysv/linux/Makefile
++++ b/sysdeps/unix/sysv/linux/Makefile
+@@ -60,7 +60,9 @@ sysdep_routines += adjtimex clone umount umount2 readahead \
+ 		   setfsuid setfsgid epoll_pwait signalfd \
+ 		   eventfd eventfd_read eventfd_write prlimit \
+ 		   personality epoll_wait tee vmsplice splice \
+-		   open_by_handle_at mlock2 pkey_mprotect pkey_set pkey_get
++		   open_by_handle_at mlock2 pkey_mprotect pkey_set pkey_get \
++		   prctl \
++		   process_vm_readv process_vm_writev
+ 
+ CFLAGS-gethostid.c = -fexceptions
+ CFLAGS-tee.c = -fexceptions -fasynchronous-unwind-tables
 diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
 index 9378387747..c8471947b9 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
@@ -2404,6 +2806,258 @@ index 27879e76cd..fd46aec1a0 100644
  
    return ret;
  }
+diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc32/sysdep.h b/sysdeps/unix/sysv/linux/powerpc/powerpc32/sysdep.h
+index 725dfafde8..ffc150851e 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/powerpc32/sysdep.h
++++ b/sysdeps/unix/sysv/linux/powerpc/powerpc32/sysdep.h
+@@ -134,47 +134,47 @@
+ # define LOADARGS_0(name, dummy)					      \
+ 	r0 = name
+ # define LOADARGS_1(name, __arg1) \
+-	long int arg1 = (long int) (__arg1);	\
++	long int _arg1 = (long int) (__arg1);	\
+   LOADARGS_0(name, 0);					   \
+ 	extern void __illegally_sized_syscall_arg1 (void); \
+ 	if (__builtin_classify_type (__arg1) != 5 && sizeof (__arg1) > 4) \
+ 	  __illegally_sized_syscall_arg1 (); \
+-	r3 = arg1
++	r3 = _arg1
+ # define LOADARGS_2(name, __arg1, __arg2) \
+-	long int arg2 = (long int) (__arg2); \
++	long int _arg2 = (long int) (__arg2); \
+ 	LOADARGS_1(name, __arg1); \
+ 	extern void __illegally_sized_syscall_arg2 (void); \
+ 	if (__builtin_classify_type (__arg2) != 5 && sizeof (__arg2) > 4) \
+ 	  __illegally_sized_syscall_arg2 (); \
+-	r4 = arg2
++	r4 = _arg2
+ # define LOADARGS_3(name, __arg1, __arg2, __arg3) \
+-	long int arg3 = (long int) (__arg3); \
++	long int _arg3 = (long int) (__arg3); \
+ 	LOADARGS_2(name, __arg1, __arg2); \
+ 	extern void __illegally_sized_syscall_arg3 (void); \
+ 	if (__builtin_classify_type (__arg3) != 5 && sizeof (__arg3) > 4) \
+ 	  __illegally_sized_syscall_arg3 (); \
+-	r5 = arg3
++	r5 = _arg3
+ # define LOADARGS_4(name, __arg1, __arg2, __arg3, __arg4) \
+-	long int arg4 = (long int) (__arg4); \
++	long int _arg4 = (long int) (__arg4); \
+ 	LOADARGS_3(name, __arg1, __arg2, __arg3); \
+ 	extern void __illegally_sized_syscall_arg4 (void); \
+ 	if (__builtin_classify_type (__arg4) != 5 && sizeof (__arg4) > 4) \
+ 	  __illegally_sized_syscall_arg4 (); \
+-	r6 = arg4
++	r6 = _arg4
+ # define LOADARGS_5(name, __arg1, __arg2, __arg3, __arg4, __arg5) \
+-	long int arg5 = (long int) (__arg5); \
++	long int _arg5 = (long int) (__arg5); \
+ 	LOADARGS_4(name, __arg1, __arg2, __arg3, __arg4); \
+ 	extern void __illegally_sized_syscall_arg5 (void); \
+ 	if (__builtin_classify_type (__arg5) != 5 && sizeof (__arg5) > 4) \
+ 	  __illegally_sized_syscall_arg5 (); \
+-	r7 = arg5
++	r7 = _arg5
+ # define LOADARGS_6(name, __arg1, __arg2, __arg3, __arg4, __arg5, __arg6) \
+-	long int arg6 = (long int) (__arg6); \
++	long int _arg6 = (long int) (__arg6); \
+ 	LOADARGS_5(name, __arg1, __arg2, __arg3, __arg4, __arg5); \
+ 	extern void __illegally_sized_syscall_arg6 (void); \
+ 	if (__builtin_classify_type (__arg6) != 5 && sizeof (__arg6) > 4) \
+ 	  __illegally_sized_syscall_arg6 (); \
+-	r8 = arg6
++	r8 = _arg6
+ 
+ # define ASM_INPUT_0 "0" (r0)
+ # define ASM_INPUT_1 ASM_INPUT_0, "1" (r3)
+diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc64/sysdep.h b/sysdeps/unix/sysv/linux/powerpc/powerpc64/sysdep.h
+index ee7f43653d..8a3f1c43e4 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/powerpc64/sysdep.h
++++ b/sysdeps/unix/sysv/linux/powerpc/powerpc64/sysdep.h
+@@ -139,47 +139,47 @@
+ #define LOADARGS_0(name, dummy) \
+ 	r0 = name
+ #define LOADARGS_1(name, __arg1) \
+-	long int arg1 = (long int) (__arg1); \
++	long int _arg1 = (long int) (__arg1); \
+ 	LOADARGS_0(name, 0); \
+ 	extern void __illegally_sized_syscall_arg1 (void); \
+ 	if (__builtin_classify_type (__arg1) != 5 && sizeof (__arg1) > 8) \
+ 	  __illegally_sized_syscall_arg1 (); \
+-	r3 = arg1
++	r3 = _arg1
+ #define LOADARGS_2(name, __arg1, __arg2) \
+-	long int arg2 = (long int) (__arg2); \
++	long int _arg2 = (long int) (__arg2); \
+ 	LOADARGS_1(name, __arg1); \
+ 	extern void __illegally_sized_syscall_arg2 (void); \
+ 	if (__builtin_classify_type (__arg2) != 5 && sizeof (__arg2) > 8) \
+ 	  __illegally_sized_syscall_arg2 (); \
+-	r4 = arg2
++	r4 = _arg2
+ #define LOADARGS_3(name, __arg1, __arg2, __arg3) \
+-	long int arg3 = (long int) (__arg3); \
++	long int _arg3 = (long int) (__arg3); \
+ 	LOADARGS_2(name, __arg1, __arg2); \
+ 	extern void __illegally_sized_syscall_arg3 (void); \
+ 	if (__builtin_classify_type (__arg3) != 5 && sizeof (__arg3) > 8) \
+ 	  __illegally_sized_syscall_arg3 (); \
+-	r5 = arg3
++	r5 = _arg3
+ #define LOADARGS_4(name, __arg1, __arg2, __arg3, __arg4) \
+-	long int arg4 = (long int) (__arg4); \
++	long int _arg4 = (long int) (__arg4); \
+ 	LOADARGS_3(name, __arg1, __arg2, __arg3); \
+ 	extern void __illegally_sized_syscall_arg4 (void); \
+ 	if (__builtin_classify_type (__arg4) != 5 && sizeof (__arg4) > 8) \
+ 	  __illegally_sized_syscall_arg4 (); \
+-	r6 = arg4
++	r6 = _arg4
+ #define LOADARGS_5(name, __arg1, __arg2, __arg3, __arg4, __arg5) \
+-	long int arg5 = (long int) (__arg5); \
++	long int _arg5 = (long int) (__arg5); \
+ 	LOADARGS_4(name, __arg1, __arg2, __arg3, __arg4); \
+ 	extern void __illegally_sized_syscall_arg5 (void); \
+ 	if (__builtin_classify_type (__arg5) != 5 && sizeof (__arg5) > 8) \
+ 	  __illegally_sized_syscall_arg5 (); \
+-	r7 = arg5
++	r7 = _arg5
+ #define LOADARGS_6(name, __arg1, __arg2, __arg3, __arg4, __arg5, __arg6) \
+-	long int arg6 = (long int) (__arg6); \
++	long int _arg6 = (long int) (__arg6); \
+ 	LOADARGS_5(name, __arg1, __arg2, __arg3, __arg4, __arg5); \
+ 	extern void __illegally_sized_syscall_arg6 (void); \
+ 	if (__builtin_classify_type (__arg6) != 5 && sizeof (__arg6) > 8) \
+ 	  __illegally_sized_syscall_arg6 (); \
+-	r8 = arg6
++	r8 = _arg6
+ 
+ #define ASM_INPUT_0 "0" (r0)
+ #define ASM_INPUT_1 ASM_INPUT_0, "1" (r3)
+diff --git a/sysdeps/unix/sysv/linux/prctl.c b/sysdeps/unix/sysv/linux/prctl.c
+new file mode 100644
+index 0000000000..d5725f14cf
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/prctl.c
+@@ -0,0 +1,42 @@
++/* prctl - Linux specific syscall.
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <stdarg.h>
++#include <sys/prctl.h>
++
++/* Unconditionally read all potential arguments.  This may pass
++   garbage values to the kernel, but avoids the need for teaching
++   glibc the argument counts of individual options (including ones
++   that are added to the kernel in the future).  */
++
++int
++__prctl (int option, ...)
++{
++  va_list arg;
++  va_start (arg, option);
++  unsigned long int arg2 = va_arg (arg, unsigned long int);
++  unsigned long int arg3 = va_arg (arg, unsigned long int);
++  unsigned long int arg4 = va_arg (arg, unsigned long int);
++  unsigned long int arg5 = va_arg (arg, unsigned long int);
++  va_end (arg);
++  return INLINE_SYSCALL_CALL (prctl, option, arg2, arg3, arg4, arg5);
++}
++
++libc_hidden_def (__prctl)
++weak_alias (__prctl, prctl)
+diff --git a/sysdeps/unix/sysv/linux/process_vm_readv.c b/sysdeps/unix/sysv/linux/process_vm_readv.c
+new file mode 100644
+index 0000000000..e1377f7e50
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/process_vm_readv.c
+@@ -0,0 +1,32 @@
++/* process_vm_readv - Linux specific syscall.
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <unistd.h>
++#include <sysdep.h>
++#include <errno.h>
++#include <sys/uio.h>
++
++ssize_t
++process_vm_readv (pid_t pid, const struct iovec *local_iov,
++		  unsigned long int liovcnt,
++		  const struct iovec *remote_iov,
++		  unsigned long int riovcnt, unsigned long int flags)
++{
++  return INLINE_SYSCALL_CALL (process_vm_readv, pid, local_iov,
++			      liovcnt, remote_iov, riovcnt, flags);
++}
+diff --git a/sysdeps/unix/sysv/linux/process_vm_writev.c b/sysdeps/unix/sysv/linux/process_vm_writev.c
+new file mode 100644
+index 0000000000..944ab9b7f1
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/process_vm_writev.c
+@@ -0,0 +1,32 @@
++/* process_vm_writev - Linux specific syscall.
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <unistd.h>
++#include <sysdep.h>
++#include <errno.h>
++#include <sys/uio.h>
++
++ssize_t
++process_vm_writev (pid_t pid, const struct iovec *local_iov,
++		   unsigned long int liovcnt,
++		   const struct iovec *remote_iov,
++		   unsigned long int riovcnt, unsigned long int flags)
++{
++  return INLINE_SYSCALL_CALL (process_vm_writev, pid, local_iov,
++			      liovcnt, remote_iov, riovcnt, flags);
++}
 diff --git a/sysdeps/unix/sysv/linux/riscv/sysdep.h b/sysdeps/unix/sysv/linux/riscv/sysdep.h
 index 201bf9a91b..2bd9b16f32 100644
 --- a/sysdeps/unix/sysv/linux/riscv/sysdep.h
@@ -2816,3 +3470,270 @@ index 36e087d8f4..3d89814003 100644
  
  FAST_atomic_update
  FAST_cmpxchg
+diff --git a/sysdeps/unix/sysv/linux/syscalls.list b/sysdeps/unix/sysv/linux/syscalls.list
+index 5f1352ad43..52e6dafc86 100644
+--- a/sysdeps/unix/sysv/linux/syscalls.list
++++ b/sysdeps/unix/sysv/linux/syscalls.list
+@@ -28,25 +28,24 @@ inotify_add_watch	EXTRA	inotify_add_watch	i:isi	inotify_add_watch
+ inotify_init	EXTRA	inotify_init	i:	inotify_init
+ inotify_init1	EXTRA	inotify_init1	i:I	inotify_init1
+ inotify_rm_watch	EXTRA	inotify_rm_watch	i:ii	inotify_rm_watch
+-ioperm		-	ioperm		i:iii	ioperm
++ioperm		-	ioperm		i:UUi	ioperm
+ iopl		-	iopl		i:i	iopl
+ klogctl		EXTRA	syslog		i:isi	klogctl
+ lchown		-	lchown		i:sii	__lchown	lchown
+-mincore		-	mincore		i:anV	mincore
+-mlock		-	mlock		i:bn	mlock
++mincore		-	mincore		i:aUV	mincore
++mlock		-	mlock		i:bU	mlock
+ mlockall	-	mlockall	i:i	mlockall
+-mount		EXTRA	mount		i:sssip	__mount	mount
+-mremap		EXTRA	mremap		b:ainip	__mremap	mremap
+-munlock		-	munlock		i:ai	munlock
++mount		EXTRA	mount		i:sssUp	__mount	mount
++mremap		EXTRA	mremap		b:aUUip	__mremap	mremap
++munlock		-	munlock		i:aU	munlock
+ munlockall	-	munlockall	i:	munlockall
+ nfsservctl	EXTRA	nfsservctl	i:ipp	__compat_nfsservctl	nfsservctl@GLIBC_2.0:GLIBC_2.28
+ pipe		-	pipe		i:f	__pipe		pipe
+ pipe2		-	pipe2		i:fi	__pipe2		pipe2
+ pivot_root	EXTRA	pivot_root	i:ss	pivot_root
+-prctl		EXTRA	prctl		i:iiiii	__prctl		prctl
+ query_module	EXTRA	query_module	i:sipip	__compat_query_module	query_module@GLIBC_2.0:GLIBC_2.23
+ quotactl	EXTRA	quotactl	i:isip	quotactl
+-remap_file_pages -	remap_file_pages i:piiii	__remap_file_pages remap_file_pages
++remap_file_pages -	remap_file_pages i:pUiUi	__remap_file_pages remap_file_pages
+ sched_getp	-	sched_getparam	i:ip	__sched_getparam	sched_getparam
+ sched_gets	-	sched_getscheduler	i:i	__sched_getscheduler	sched_getscheduler
+ sched_primax	-	sched_get_priority_max	i:i	__sched_get_priority_max	sched_get_priority_max
+@@ -55,8 +54,8 @@ sched_rr_gi	-	sched_rr_get_interval	i:ip	__sched_rr_get_interval	sched_rr_get_in
+ sched_setp	-	sched_setparam	i:ip	__sched_setparam	sched_setparam
+ sched_sets	-	sched_setscheduler	i:iip	__sched_setscheduler	sched_setscheduler
+ sched_yield	-	sched_yield	i:	__sched_yield	sched_yield
+-sendfile	-	sendfile	i:iipi	sendfile
+-sendfile64	-	sendfile64	i:iipi	sendfile64
++sendfile	-	sendfile	i:iipU	sendfile
++sendfile64	-	sendfile64	i:iipU	sendfile64
+ setfsgid	EXTRA	setfsgid	i:i	setfsgid
+ setfsuid	EXTRA	setfsuid	i:i	setfsuid
+ setpgid		-	setpgid		i:ii	__setpgid	setpgid
+@@ -73,19 +72,19 @@ chown		-	chown		i:sii	__libc_chown	__chown chown
+ fchownat	-	fchownat	i:isiii	fchownat
+ linkat		-	linkat		i:isisi	linkat
+ mkdirat		-	mkdirat		i:isi	mkdirat
+-readlinkat	-	readlinkat	i:issi	readlinkat
++readlinkat	-	readlinkat	i:issU	readlinkat
+ symlinkat	-	symlinkat	i:sis	symlinkat
+ unlinkat	-	unlinkat	i:isi	unlinkat
+ 
+-setxattr	-	setxattr	i:sspii	setxattr
+-lsetxattr	-	lsetxattr	i:sspii	lsetxattr
+-fsetxattr	-	fsetxattr	i:ispii	fsetxattr
+-getxattr	-	getxattr	i:sspi	getxattr
+-lgetxattr	-	lgetxattr	i:sspi	lgetxattr
+-fgetxattr	-	fgetxattr	i:ispi	fgetxattr
+-listxattr	-	listxattr	i:ssi	listxattr
+-llistxattr	-	llistxattr	i:ssi	llistxattr
+-flistxattr	-	flistxattr	i:isi	flistxattr
++setxattr	-	setxattr	i:sspUi	setxattr
++lsetxattr	-	lsetxattr	i:sspUi	lsetxattr
++fsetxattr	-	fsetxattr	i:ispUi	fsetxattr
++getxattr	-	getxattr	i:sspU	getxattr
++lgetxattr	-	lgetxattr	i:sspU	lgetxattr
++fgetxattr	-	fgetxattr	i:ispU	fgetxattr
++listxattr	-	listxattr	i:ssU	listxattr
++llistxattr	-	llistxattr	i:ssU	llistxattr
++flistxattr	-	flistxattr	i:isU	flistxattr
+ removexattr	-	removexattr	i:ss	removexattr
+ lremovexattr	-	lremovexattr	i:ss	lremovexattr
+ fremovexattr	-	fremovexattr	i:is	fremovexattr
+@@ -102,8 +101,6 @@ name_to_handle_at EXTRA	name_to_handle_at i:isppi name_to_handle_at
+ 
+ setns		EXTRA	setns		i:ii	setns
+ 
+-process_vm_readv EXTRA	process_vm_readv i:ipipii process_vm_readv
+-process_vm_writev EXTRA	process_vm_writev i:ipipii process_vm_writev
+ memfd_create    EXTRA	memfd_create	i:si    memfd_create
+ pkey_alloc	EXTRA	pkey_alloc	i:ii	pkey_alloc
+ pkey_free	EXTRA	pkey_free	i:i	pkey_free
+diff --git a/sysdeps/unix/sysv/linux/x86_64/sysdep.h b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+index c2eb37e575..c7f740a1df 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/sysdep.h
++++ b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+@@ -61,13 +61,31 @@
+ #  define SYSCALL_ERROR_LABEL syscall_error
+ # endif
+ 
++/* PSEUDO and T_PSEUDO macros have 2 extra arguments for unsigned long
++   int arguments.  */
++# define PSEUDOS_HAVE_ULONG_INDICES 1
++
++# ifndef SYSCALL_ULONG_ARG_1
++#  define SYSCALL_ULONG_ARG_1 0
++#  define SYSCALL_ULONG_ARG_2 0
++# endif
++
+ # undef	PSEUDO
+-# define PSEUDO(name, syscall_name, args)				      \
+-  .text;								      \
+-  ENTRY (name)								      \
+-    DO_CALL (syscall_name, args);					      \
+-    cmpq $-4095, %rax;							      \
++# if SYSCALL_ULONG_ARG_1
++#  define PSEUDO(name, syscall_name, args, ulong_arg_1, ulong_arg_2) \
++  .text;							      \
++  ENTRY (name)							      \
++    DO_CALL (syscall_name, args, ulong_arg_1, ulong_arg_2);	      \
++    cmpq $-4095, %rax;						      \
+     jae SYSCALL_ERROR_LABEL
++# else
++#  define PSEUDO(name, syscall_name, args) \
++  .text;							      \
++  ENTRY (name)							      \
++    DO_CALL (syscall_name, args, 0, 0);				      \
++    cmpq $-4095, %rax;						      \
++    jae SYSCALL_ERROR_LABEL
++# endif
+ 
+ # undef	PSEUDO_END
+ # define PSEUDO_END(name)						      \
+@@ -75,10 +93,17 @@
+   END (name)
+ 
+ # undef	PSEUDO_NOERRNO
+-# define PSEUDO_NOERRNO(name, syscall_name, args) \
+-  .text;								      \
+-  ENTRY (name)								      \
+-    DO_CALL (syscall_name, args)
++# if SYSCALL_ULONG_ARG_1
++#  define PSEUDO_NOERRNO(name, syscall_name, args, ulong_arg_1, ulong_arg_2) \
++  .text;							      \
++  ENTRY (name)							      \
++    DO_CALL (syscall_name, args, ulong_arg_1, ulong_arg_2)
++# else
++#  define PSEUDO_NOERRNO(name, syscall_name, args) \
++  .text;							      \
++  ENTRY (name)							      \
++    DO_CALL (syscall_name, args, 0, 0)
++# endif
+ 
+ # undef	PSEUDO_END_NOERRNO
+ # define PSEUDO_END_NOERRNO(name) \
+@@ -87,11 +112,19 @@
+ # define ret_NOERRNO ret
+ 
+ # undef	PSEUDO_ERRVAL
+-# define PSEUDO_ERRVAL(name, syscall_name, args) \
+-  .text;								      \
+-  ENTRY (name)								      \
+-    DO_CALL (syscall_name, args);					      \
++# if SYSCALL_ULONG_ARG_1
++#  define PSEUDO_ERRVAL(name, syscall_name, args, ulong_arg_1, ulong_arg_2) \
++  .text;							\
++  ENTRY (name)							\
++    DO_CALL (syscall_name, args, ulong_arg_1, ulong_arg_2);	\
++    negq %rax
++# else
++#  define PSEUDO_ERRVAL(name, syscall_name, args) \
++  .text;							\
++  ENTRY (name)							\
++    DO_CALL (syscall_name, args, 0, 0);				\
+     negq %rax
++# endif
+ 
+ # undef	PSEUDO_END_ERRVAL
+ # define PSEUDO_END_ERRVAL(name) \
+@@ -163,8 +196,10 @@
+     Syscalls of more than 6 arguments are not supported.  */
+ 
+ # undef	DO_CALL
+-# define DO_CALL(syscall_name, args)		\
++# define DO_CALL(syscall_name, args, ulong_arg_1, ulong_arg_2) \
+     DOARGS_##args				\
++    ZERO_EXTEND_##ulong_arg_1			\
++    ZERO_EXTEND_##ulong_arg_2			\
+     movl $SYS_ify (syscall_name), %eax;		\
+     syscall;
+ 
+@@ -176,6 +211,14 @@
+ # define DOARGS_5 DOARGS_4
+ # define DOARGS_6 DOARGS_5
+ 
++# define ZERO_EXTEND_0 /* nothing */
++# define ZERO_EXTEND_1 /* nothing */
++# define ZERO_EXTEND_2 /* nothing */
++# define ZERO_EXTEND_3 /* nothing */
++# define ZERO_EXTEND_4 /* nothing */
++# define ZERO_EXTEND_5 /* nothing */
++# define ZERO_EXTEND_6 /* nothing */
++
+ #else	/* !__ASSEMBLER__ */
+ /* Define a macro which expands inline into the wrapper code for a system
+    call.  */
+@@ -210,12 +253,15 @@
+ /* Registers clobbered by syscall.  */
+ # define REGISTERS_CLOBBERED_BY_SYSCALL "cc", "r11", "cx"
+ 
+-/* Create a variable 'name' based on type 'X' to avoid explicit types.
+-   This is mainly used set use 64-bits arguments in x32.   */
+-#define TYPEFY(X, name) __typeof__ ((X) - (X)) name
+-/* Explicit cast the argument to avoid integer from pointer warning on
+-   x32.  */
+-#define ARGIFY(X) ((__typeof__ ((X) - (X))) (X))
++/* NB: This also works when X is an array.  For an array X,  type of
++   (X) - (X) is ptrdiff_t, which is signed, since size of ptrdiff_t
++   == size of pointer, cast is a NOP.   */
++#define TYPEFY1(X) __typeof__ ((X) - (X))
++/* Explicit cast the argument.  */
++#define ARGIFY(X) ((TYPEFY1 (X)) (X))
++/* Create a variable 'name' based on type of variable 'X' to avoid
++   explicit types.  */
++#define TYPEFY(X, name) __typeof__ (ARGIFY (X)) name
+ 
+ #undef INTERNAL_SYSCALL
+ #define INTERNAL_SYSCALL(name, err, nr, args...)			\
+diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h b/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h
+index 5bf9eed80b..62e6f8fe11 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h
++++ b/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h
+@@ -26,4 +26,39 @@
+ #undef LO_HI_LONG
+ #define LO_HI_LONG(val) (val)
+ 
++#ifdef __ASSEMBLER__
++/* Zero-extend 32-bit unsigned long int arguments to 64 bits.  */
++# undef ZERO_EXTEND_1
++# define ZERO_EXTEND_1 movl %edi, %edi;
++# undef ZERO_EXTEND_2
++# define ZERO_EXTEND_2 movl %esi, %esi;
++# undef ZERO_EXTEND_3
++# define ZERO_EXTEND_3 movl %edx, %edx;
++# if SYSCALL_ULONG_ARG_1 == 4 || SYSCALL_ULONG_ARG_2 == 4
++#  undef DOARGS_4
++#  define DOARGS_4 movl %ecx, %r10d;
++# else
++#  undef ZERO_EXTEND_4
++#  define ZERO_EXTEND_4 movl %r10d, %r10d;
++# endif
++# undef ZERO_EXTEND_5
++# define ZERO_EXTEND_5 movl %r8d, %r8d;
++# undef ZERO_EXTEND_6
++# define ZERO_EXTEND_6 movl %r9d, %r9d;
++#else /* !__ASSEMBLER__ */
++# undef ARGIFY
++/* Enforce zero-extension for pointers and array system call arguments.
++   For integer types, extend to int64_t (the full register) using a
++   regular cast, resulting in zero or sign extension based on the
++   signedness of the original type.  */
++# define ARGIFY(X) \
++ ({									\
++    _Pragma ("GCC diagnostic push");					\
++    _Pragma ("GCC diagnostic ignored \"-Wpointer-to-int-cast\"");	\
++    (__builtin_classify_type (X) == 5					\
++     ? (uintptr_t) (X) : (int64_t) (X));				\
++    _Pragma ("GCC diagnostic pop");					\
++  })
++#endif	/* __ASSEMBLER__ */
++
+ #endif /* linux/x86_64/x32/sysdep.h */
