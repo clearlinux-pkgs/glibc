@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..be2d8b1f61 100644
+index 292fbc595a..9bfd01ccb1 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,31 @@ See the end for copying conditions.
+@@ -4,6 +4,37 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -17,7 +17,13 @@ index 292fbc595a..be2d8b1f61 100644
 +  [25623] test-sysvmsg, test-sysvsem, test-sysvshm fail with 2.31 on 32 bit and
 +    old kernel
 +  [25635] arm: Wrong sysdep order selection for soft-fp
++  [25639] localedata: Some names of days and months wrongly spelt in
++    Occitan
 +  [25715] system() returns wrong errors when posix_spawn fails
++  [25810] x32: Incorrect syscall entries with pointer, off_t and size_t
++  [25896] Incorrect prctl
++  [25902] Bad LOADARGS_N
++  [25966] Incorrect access of __x86_shared_non_temporal_threshold for x32
 +
 +Security related changes:
 +
@@ -95,6 +101,37 @@ index 0920ed642b..d33f3a290e 100644
  
  # endif /* !_ISOMAC */
  #endif
+diff --git a/localedata/locales/oc_FR b/localedata/locales/oc_FR
+index d0d89a149e..ba9377ed41 100644
+--- a/localedata/locales/oc_FR
++++ b/localedata/locales/oc_FR
+@@ -92,7 +92,7 @@ day     "dimenge";/
+         "diluns";/
+         "dimars";/
+         "dim<U00E8>cres";/
+-        "dij<U00F3>us";/
++        "dij<U00F2>us";/
+         "divendres";/
+         "dissabte"
+ abmon   "gen.";/
+@@ -110,7 +110,7 @@ abmon   "gen.";/
+ alt_mon "geni<U00E8>r";/
+         "febri<U00E8>r";/
+         "mar<U00E7>";/
+-        "abrial";/
++        "abril";/
+         "mai";/
+         "junh";/
+         "julhet";/
+@@ -122,7 +122,7 @@ alt_mon "geni<U00E8>r";/
+ mon     "de geni<U00E8>r";/
+         "de febri<U00E8>r";/
+         "de mar<U00E7>";/
+-        "d<U2019>abrial";/
++        "d<U2019>abril";/
+         "de mai";/
+         "de junh";/
+         "de julhet";/
 diff --git a/malloc/tst-mallocfork2.c b/malloc/tst-mallocfork2.c
 index 0602a94895..fc1fd64b21 100644
 --- a/malloc/tst-mallocfork2.c
@@ -3737,3 +3774,34 @@ index 5bf9eed80b..62e6f8fe11 100644
 +#endif	/* __ASSEMBLER__ */
 +
  #endif /* linux/x86_64/x32/sysdep.h */
+diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+index c763b7d871..74953245aa 100644
+--- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+@@ -244,7 +244,7 @@ L(return):
+ 	ret
+ 
+ L(movsb):
+-	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
++	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
+ 	jae	L(more_8x_vec)
+ 	cmpq	%rsi, %rdi
+ 	jb	1f
+@@ -402,7 +402,7 @@ L(more_8x_vec):
+ 	addq	%r8, %rdx
+ #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
+ 	/* Check non-temporal store threshold.  */
+-	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
++	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
+ 	ja	L(large_forward)
+ #endif
+ L(loop_4x_vec_forward):
+@@ -454,7 +454,7 @@ L(more_8x_vec_backward):
+ 	subq	%r8, %rdx
+ #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
+ 	/* Check non-temporal store threshold.  */
+-	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
++	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
+ 	ja	L(large_backward)
+ #endif
+ L(loop_4x_vec_backward):
