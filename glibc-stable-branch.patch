@@ -1609,6 +1609,20 @@ index 9378387747..c8471947b9 100644
  #define __NR_close 57
  #define __NR_connect 203
  #define __NR_copy_file_range 285
+diff --git a/sysdeps/unix/sysv/linux/aarch64/localplt.data b/sysdeps/unix/sysv/linux/aarch64/localplt.data
+index a60053b914..08af68b5e8 100644
+--- a/sysdeps/unix/sysv/linux/aarch64/localplt.data
++++ b/sysdeps/unix/sysv/linux/aarch64/localplt.data
+@@ -7,6 +7,9 @@ libc.so: malloc
+ libc.so: memalign
+ libc.so: realloc
+ libm.so: matherr
++# If outline atomics are used, libgcc (built outside of glibc) may
++# call __getauxval using the PLT.
++libc.so: __getauxval ?
+ # The dynamic loader needs __tls_get_addr for TLS.
+ ld.so: __tls_get_addr
+ # The main malloc is interposed into the dynamic linker, for
 diff --git a/sysdeps/unix/sysv/linux/hppa/atomic-machine.h b/sysdeps/unix/sysv/linux/hppa/atomic-machine.h
 index 9d8ffbe860..bf61b66b70 100644
 --- a/sysdeps/unix/sysv/linux/hppa/atomic-machine.h
