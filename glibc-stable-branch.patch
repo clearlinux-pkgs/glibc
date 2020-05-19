@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..9bfd01ccb1 100644
+index 292fbc595a..24371e5745 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,37 @@ See the end for copying conditions.
+@@ -4,6 +4,38 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -24,6 +24,7 @@ index 292fbc595a..9bfd01ccb1 100644
 +  [25896] Incorrect prctl
 +  [25902] Bad LOADARGS_N
 +  [25966] Incorrect access of __x86_shared_non_temporal_threshold for x32
++  [25976] nss_compat: internal_end*ent may clobber errno, hiding ERANGE
 +
 +Security related changes:
 +
@@ -563,6 +564,184 @@ index 0000000000..cfcd382320
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/nss/nss_compat/compat-grp.c b/nss/nss_compat/compat-grp.c
+index a8de1e03b3..f8b19a5cf0 100644
+--- a/nss/nss_compat/compat-grp.c
++++ b/nss/nss_compat/compat-grp.c
+@@ -142,7 +142,7 @@ _nss_compat_setgrent (int stayopen)
+ }
+ 
+ 
+-static enum nss_status
++static enum nss_status __attribute_warn_unused_result__
+ internal_endgrent (ent_t *ent)
+ {
+   if (ent->stream != NULL)
+@@ -163,6 +163,15 @@ internal_endgrent (ent_t *ent)
+   return NSS_STATUS_SUCCESS;
+ }
+ 
++/* Like internal_endgrent, but preserve errno in all cases.  */
++static void
++internal_endgrent_noerror (ent_t *ent)
++{
++  int saved_errno = errno;
++  enum nss_status unused __attribute__ ((unused)) = internal_endgrent (ent);
++  __set_errno (saved_errno);
++}
++
+ enum nss_status
+ _nss_compat_endgrent (void)
+ {
+@@ -483,7 +492,7 @@ _nss_compat_getgrnam_r (const char *name, struct group *grp,
+   if (result == NSS_STATUS_SUCCESS)
+     result = internal_getgrnam_r (name, grp, &ent, buffer, buflen, errnop);
+ 
+-  internal_endgrent (&ent);
++  internal_endgrent_noerror (&ent);
+ 
+   return result;
+ }
+@@ -612,7 +621,7 @@ _nss_compat_getgrgid_r (gid_t gid, struct group *grp,
+   if (result == NSS_STATUS_SUCCESS)
+     result = internal_getgrgid_r (gid, grp, &ent, buffer, buflen, errnop);
+ 
+-  internal_endgrent (&ent);
++  internal_endgrent_noerror (&ent);
+ 
+   return result;
+ }
+diff --git a/nss/nss_compat/compat-initgroups.c b/nss/nss_compat/compat-initgroups.c
+index 939b25b33b..7591442ff9 100644
+--- a/nss/nss_compat/compat-initgroups.c
++++ b/nss/nss_compat/compat-initgroups.c
+@@ -133,7 +133,7 @@ internal_setgrent (ent_t *ent)
+ }
+ 
+ 
+-static enum nss_status
++static enum nss_status __attribute_warn_unused_result__
+ internal_endgrent (ent_t *ent)
+ {
+   if (ent->stream != NULL)
+@@ -157,6 +157,15 @@ internal_endgrent (ent_t *ent)
+   return NSS_STATUS_SUCCESS;
+ }
+ 
++/* Like internal_endgrent, but preserve errno in all cases.  */
++static void
++internal_endgrent_noerror (ent_t *ent)
++{
++  int saved_errno = errno;
++  enum nss_status unused __attribute__ ((unused)) = internal_endgrent (ent);
++  __set_errno (saved_errno);
++}
++
+ /* Add new group record.  */
+ static void
+ add_group (long int *start, long int *size, gid_t **groupsp, long int limit,
+@@ -501,7 +510,7 @@ _nss_compat_initgroups_dyn (const char *user, gid_t group, long int *start,
+  done:
+   scratch_buffer_free (&tmpbuf);
+ 
+-  internal_endgrent (&intern);
++  internal_endgrent_noerror (&intern);
+ 
+   return status;
+ }
+diff --git a/nss/nss_compat/compat-pwd.c b/nss/nss_compat/compat-pwd.c
+index ec3f35c594..bd5e707da0 100644
+--- a/nss/nss_compat/compat-pwd.c
++++ b/nss/nss_compat/compat-pwd.c
+@@ -259,7 +259,7 @@ _nss_compat_setpwent (int stayopen)
+ }
+ 
+ 
+-static enum nss_status
++static enum nss_status __attribute_warn_unused_result__
+ internal_endpwent (ent_t *ent)
+ {
+   if (ent->stream != NULL)
+@@ -287,6 +287,15 @@ internal_endpwent (ent_t *ent)
+   return NSS_STATUS_SUCCESS;
+ }
+ 
++/* Like internal_endpwent, but preserve errno in all cases.  */
++static void
++internal_endpwent_noerror (ent_t *ent)
++{
++  int saved_errno = errno;
++  enum nss_status unused __attribute__ ((unused)) = internal_endpwent (ent);
++  __set_errno (saved_errno);
++}
++
+ enum nss_status
+ _nss_compat_endpwent (void)
+ {
+@@ -822,7 +831,7 @@ _nss_compat_getpwnam_r (const char *name, struct passwd *pwd,
+   if (result == NSS_STATUS_SUCCESS)
+     result = internal_getpwnam_r (name, pwd, &ent, buffer, buflen, errnop);
+ 
+-  internal_endpwent (&ent);
++  internal_endpwent_noerror (&ent);
+ 
+   return result;
+ }
+@@ -1061,7 +1070,7 @@ _nss_compat_getpwuid_r (uid_t uid, struct passwd *pwd,
+   if (result == NSS_STATUS_SUCCESS)
+     result = internal_getpwuid_r (uid, pwd, &ent, buffer, buflen, errnop);
+ 
+-  internal_endpwent (&ent);
++  internal_endpwent_noerror (&ent);
+ 
+   return result;
+ }
+diff --git a/nss/nss_compat/compat-spwd.c b/nss/nss_compat/compat-spwd.c
+index f6b7a1ef15..d0e3c51b45 100644
+--- a/nss/nss_compat/compat-spwd.c
++++ b/nss/nss_compat/compat-spwd.c
+@@ -215,7 +215,7 @@ _nss_compat_setspent (int stayopen)
+ }
+ 
+ 
+-static enum nss_status
++static enum nss_status __attribute_warn_unused_result__
+ internal_endspent (ent_t *ent)
+ {
+   if (ent->stream != NULL)
+@@ -244,6 +244,15 @@ internal_endspent (ent_t *ent)
+   return NSS_STATUS_SUCCESS;
+ }
+ 
++/* Like internal_endspent, but preserve errno in all cases.  */
++static void
++internal_endspent_noerror (ent_t *ent)
++{
++  int saved_errno = errno;
++  enum nss_status unused __attribute__ ((unused)) = internal_endspent (ent);
++  __set_errno (saved_errno);
++}
++
+ enum nss_status
+ _nss_compat_endspent (void)
+ {
+@@ -261,7 +270,6 @@ _nss_compat_endspent (void)
+   return result;
+ }
+ 
+-
+ static enum nss_status
+ getspent_next_nss_netgr (const char *name, struct spwd *result, ent_t *ent,
+ 			 char *group, char *buffer, size_t buflen,
+@@ -786,7 +794,7 @@ _nss_compat_getspnam_r (const char *name, struct spwd *pwd,
+   if (result == NSS_STATUS_SUCCESS)
+     result = internal_getspnam_r (name, pwd, &ent, buffer, buflen, errnop);
+ 
+-  internal_endspent (&ent);
++  internal_endspent_noerror (&ent);
+ 
+   return result;
+ }
 diff --git a/posix/glob.c b/posix/glob.c
 index cba9cd1819..4580cefb9f 100644
 --- a/posix/glob.c
@@ -844,6 +1023,42 @@ index 509e0d69b1..201536d24e 100644
    else
      exit (1);
  }
+diff --git a/sysdeps/aarch64/strcpy.S b/sysdeps/aarch64/strcpy.S
+index 548130e413..a8ff52c072 100644
+--- a/sysdeps/aarch64/strcpy.S
++++ b/sysdeps/aarch64/strcpy.S
+@@ -234,8 +234,13 @@ L(entry_no_page_cross):
+ #endif
+ 	/* calculate the loc value */
+ 	cmeq	datav.16b, datav.16b, #0
++#ifdef __AARCH64EB__
++	mov	data1, datav.d[1]
++	mov	data2, datav.d[0]
++#else
+ 	mov	data1, datav.d[0]
+ 	mov	data2, datav.d[1]
++#endif
+ 	cmp	data1, 0
+ 	csel	data1, data1, data2, ne
+ 	mov	pos, 8
+diff --git a/sysdeps/aarch64/strnlen.S b/sysdeps/aarch64/strnlen.S
+index 5981247dd9..086a5c7e99 100644
+--- a/sysdeps/aarch64/strnlen.S
++++ b/sysdeps/aarch64/strnlen.S
+@@ -154,8 +154,13 @@ L(loop_end):
+ 	   byte.  */
+ 
+ 	cmeq	datav.16b, datav.16b, #0
++#ifdef __AARCH64EB__
++	mov	data1, datav.d[1]
++	mov	data2, datav.d[0]
++#else
+ 	mov	data1, datav.d[0]
+ 	mov	data2, datav.d[1]
++#endif
+ 	cmp	data1, 0
+ 	csel	data1, data1, data2, ne
+ 	sub	len, src, srcin
 diff --git a/sysdeps/arm/be/nofpu/Implies b/sysdeps/arm/be/nofpu/Implies
 new file mode 100644
 index 0000000000..c90dd7fd5c
