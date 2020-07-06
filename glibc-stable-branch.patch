@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..24371e5745 100644
+index 292fbc595a..0e2dc39523 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,38 @@ See the end for copying conditions.
+@@ -4,6 +4,39 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -23,6 +23,7 @@ index 292fbc595a..24371e5745 100644
 +  [25810] x32: Incorrect syscall entries with pointer, off_t and size_t
 +  [25896] Incorrect prctl
 +  [25902] Bad LOADARGS_N
++  [25933] Off by one error in __strncmp_avx2
 +  [25966] Incorrect access of __x86_shared_non_temporal_threshold for x32
 +  [25976] nss_compat: internal_end*ent may clobber errno, hiding ERANGE
 +
@@ -4034,3 +4035,37 @@ index c763b7d871..74953245aa 100644
  	ja	L(large_backward)
  #endif
  L(loop_4x_vec_backward):
+diff --git a/sysdeps/x86_64/multiarch/strcmp-avx2.S b/sysdeps/x86_64/multiarch/strcmp-avx2.S
+index 48d03a9f46..ee82fa3e19 100644
+--- a/sysdeps/x86_64/multiarch/strcmp-avx2.S
++++ b/sysdeps/x86_64/multiarch/strcmp-avx2.S
+@@ -591,7 +591,14 @@ L(loop_cross_page_2_vec):
+ 	movl	$(PAGE_SIZE / (VEC_SIZE * 4) - 1), %esi
+ 
+ 	testq	%rdi, %rdi
++# ifdef USE_AS_STRNCMP
++	/* At this point, if %rdi value is 0, it already tested
++	   VEC_SIZE*4+%r10 byte starting from %rax. This label
++	   checks whether strncmp maximum offset reached or not.  */
++	je	L(string_nbyte_offset_check)
++# else
+ 	je	L(back_to_loop)
++# endif
+ 	tzcntq	%rdi, %rcx
+ 	addq	%r10, %rcx
+ 	/* Adjust for number of bytes skipped.  */
+@@ -627,6 +634,14 @@ L(loop_cross_page_2_vec):
+ 	VZEROUPPER
+ 	ret
+ 
++# ifdef USE_AS_STRNCMP
++L(string_nbyte_offset_check):
++	leaq	(VEC_SIZE * 4)(%r10), %r10
++	cmpq	%r10, %r11
++	jbe	L(zero)
++	jmp	L(back_to_loop)
++# endif
++
+ 	.p2align 4
+ L(cross_page_loop):
+ 	/* Check one byte/dword at a time.  */
