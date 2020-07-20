@@ -3,7 +3,7 @@
 
 Name:           glibc
 Version:        2.31
-Release:        335
+Release:        336
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -277,6 +277,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
+    --enable-static-pie \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
 
@@ -327,6 +328,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
+    --enable-static-pie \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
 
@@ -375,6 +377,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
+    --enable-static-pie \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
 
@@ -424,6 +427,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
+    --enable-static-pie \
     libc_cv_slibdir=/usr/lib32 \
     libc_cv_complocaledir=/usr/share/locale \
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
@@ -916,6 +920,8 @@ popd
 /usr/lib64/crti.o
 /usr/lib64/crtn.o
 /usr/lib64/gcrt1.o
+/usr/lib64/grcrt1.o
+/usr/lib64/rcrt1.o
 /usr/lib64/libBrokenLocale.so
 /usr/lib64/libanl.so
 /usr/lib64/libc.so
