@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..daf4b727cd 100644
+index 292fbc595a..8a857061e1 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,44 @@ See the end for copying conditions.
+@@ -4,6 +4,45 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -26,6 +26,7 @@ index 292fbc595a..daf4b727cd 100644
 +  [25933] Off by one error in __strncmp_avx2
 +  [25966] Incorrect access of __x86_shared_non_temporal_threshold for x32
 +  [25976] nss_compat: internal_end*ent may clobber errno, hiding ERANGE
++  [26248] Incorrect argument types for INLINE_SETXID_SYSCALL
 +
 +Security related changes:
 +
@@ -567,6 +568,123 @@ index 0000000000..cfcd382320
 +  xclose (fd);
 +
 +  return error_count ? EXIT_FAILURE : EXIT_SUCCESS;
++}
++
++#include <support/test-driver.c>
+diff --git a/nptl/Makefile b/nptl/Makefile
+index 584e0ffd96..2df4c9098c 100644
+--- a/nptl/Makefile
++++ b/nptl/Makefile
+@@ -332,7 +332,7 @@ tests-internal := tst-rwlock19 tst-rwlock20 \
+ 		  tst-mutexpi8 tst-mutexpi8-static tst-cancel25
+ 
+ xtests = tst-setuid1 tst-setuid1-static tst-setuid2 \
+-	tst-mutexpp1 tst-mutexpp6 tst-mutexpp10
++	tst-mutexpp1 tst-mutexpp6 tst-mutexpp10 tst-setgroups
+ 
+ # This test can run into task limits because of a linux kernel bug
+ # and then cause the make process to fail too, see bug 24537.
+diff --git a/nptl/descr.h b/nptl/descr.h
+index 9dcf480bdf..5f1f35e9a4 100644
+--- a/nptl/descr.h
++++ b/nptl/descr.h
+@@ -94,7 +94,13 @@ struct pthread_unwind_buf
+ struct xid_command
+ {
+   int syscall_no;
+-  long int id[3];
++  /* Enforce zero-extension for the pointer argument in
++
++     int setgroups (size_t size, const gid_t *list);
++
++     The kernel XID arguments are unsigned and do not require sign
++     extension.  */
++  unsigned long int id[3];
+   volatile int cntr;
+   volatile int error; /* -1: no call yet, 0: success seen, >0: error seen.  */
+ };
+diff --git a/nptl/tst-setgroups.c b/nptl/tst-setgroups.c
+new file mode 100644
+index 0000000000..ae3c1b1ba0
+--- /dev/null
++++ b/nptl/tst-setgroups.c
+@@ -0,0 +1,79 @@
++/* Test setgroups as root and in the presence of threads (Bug 26248)
++   Copyright (C) 2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdlib.h>
++#include <limits.h>
++#include <grp.h>
++#include <errno.h>
++#include <error.h>
++#include <support/xthread.h>
++#include <support/support.h>
++#include <support/test-driver.h>
++#include <support/xunistd.h>
++
++/* The purpose of this test is to test the setgroups API as root and in
++   the presence of threads.  Once we create a thread the setgroups
++   implementation must ensure that all threads are set to the same
++   group and this operation should not fail. Lastly we test setgroups
++   with a zero sized group and a bad address and verify we get EPERM.  */
++
++static void *
++start_routine (void *args)
++{
++  return NULL;
++}
++
++static int
++do_test (void)
++{
++  int size;
++  /* NB: Stack address can be at 0xfffXXXXX on 32-bit OSes.  */
++  gid_t list[NGROUPS_MAX];
++  int status = EXIT_SUCCESS;
++
++  pthread_t thread = xpthread_create (NULL, start_routine, NULL);
++
++  size = getgroups (sizeof (list) / sizeof (list[0]), list);
++  if (size < 0)
++    {
++      status = EXIT_FAILURE;
++      error (0, errno, "getgroups failed");
++    }
++  if (setgroups (size, list) < 0)
++    {
++      if (errno == EPERM)
++	status = EXIT_UNSUPPORTED;
++      else
++	{
++	  status = EXIT_FAILURE;
++	  error (0, errno, "setgroups failed");
++	}
++    }
++
++  if (status == EXIT_SUCCESS && setgroups (0, list) < 0)
++    {
++      status = EXIT_FAILURE;
++      error (0, errno, "setgroups failed");
++    }
++
++  xpthread_join (thread);
++
++  return status;
 +}
 +
 +#include <support/test-driver.c>
