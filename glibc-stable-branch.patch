@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 292fbc595a..d3ffb82294 100644
+index 292fbc595a..c3901287d0 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,52 @@ See the end for copying conditions.
+@@ -4,6 +4,53 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -30,6 +30,7 @@ index 292fbc595a..d3ffb82294 100644
 +  [25976] nss_compat: internal_end*ent may clobber errno, hiding ERANGE
 +  [26248] Incorrect argument types for INLINE_SETXID_SYSCALL
 +  [26332] Incorrect cache line size load causes memory corruption in memset
++  [26383] bind_textdomain_codeset doesn't accept //TRANSLIT anymore
 +
 +Security related changes:
 +
@@ -158,23 +159,25 @@ index b8fe8c47df..30bf996d3a 100644
 +		 '$(run-program-env)' > $@; \
 +	$(evaluate-test)
 diff --git a/iconv/Versions b/iconv/Versions
-index 60ab10a277..8a5f4cf780 100644
+index 60ab10a277..d51af52fa3 100644
 --- a/iconv/Versions
 +++ b/iconv/Versions
-@@ -6,6 +6,7 @@ libc {
-   GLIBC_PRIVATE {
+@@ -7,6 +7,9 @@ libc {
      # functions shared with iconv program
      __gconv_get_alias_db; __gconv_get_cache; __gconv_get_modules_db;
-+    __gconv_open; __gconv_create_spec;
  
++    # functions used elsewhere in glibc
++    __gconv_open; __gconv_create_spec; __gconv_destroy_spec;
++
      # function used by the gconv modules
      __gconv_transliterate;
+   }
 diff --git a/iconv/gconv_charset.c b/iconv/gconv_charset.c
 new file mode 100644
-index 0000000000..6ccd0773cc
+index 0000000000..4ba0aa99f5
 --- /dev/null
 +++ b/iconv/gconv_charset.c
-@@ -0,0 +1,218 @@
+@@ -0,0 +1,228 @@
 +/* Charset name normalization.
 +   Copyright (C) 2020 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -393,11 +396,21 @@ index 0000000000..6ccd0773cc
 +  return ret;
 +}
 +libc_hidden_def (__gconv_create_spec)
++
++
++void
++__gconv_destroy_spec (struct gconv_spec *conv_spec)
++{
++  free (conv_spec->fromcode);
++  free (conv_spec->tocode);
++  return;
++}
++libc_hidden_def (__gconv_destroy_spec)
 diff --git a/iconv/gconv_charset.h b/iconv/gconv_charset.h
-index 348acc089b..b39b09aea1 100644
+index 348acc089b..e9c122cf7e 100644
 --- a/iconv/gconv_charset.h
 +++ b/iconv/gconv_charset.h
-@@ -19,9 +19,68 @@
+@@ -19,9 +19,41 @@
  
  #include <ctype.h>
  #include <locale.h>
@@ -431,33 +444,6 @@ index 348acc089b..b39b09aea1 100644
 +#define GCONV_IGNORE_ERRORS_SUFFIX "IGNORE"
 +
 +
-+/* This function accepts the charset names of the source and destination of the
-+   conversion and populates *conv_spec with an equivalent conversion
-+   specification that may later be used by __gconv_open.  The charset names
-+   might contain options in the form of suffixes that alter the conversion,
-+   e.g. "ISO-10646/UTF-8/TRANSLIT".  It processes the charset names, ignoring
-+   and truncating any suffix options in fromcode, and processing and truncating
-+   any suffix options in tocode.  Supported suffix options ("TRANSLIT" or
-+   "IGNORE") when found in tocode lead to the corresponding flag in *conv_spec
-+   to be set to true.  Unrecognized suffix options are silently discarded.  If
-+   the function succeeds, it returns conv_spec back to the caller.  It returns
-+   NULL upon failure.  */
-+struct gconv_spec *
-+__gconv_create_spec (struct gconv_spec *conv_spec, const char *fromcode,
-+                     const char *tocode);
-+libc_hidden_proto (__gconv_create_spec)
-+
-+
-+/* This function frees all heap memory allocated by __gconv_create_spec.  */
-+static void __attribute__ ((unused))
-+gconv_destroy_spec (struct gconv_spec *conv_spec)
-+{
-+  free (conv_spec->fromcode);
-+  free (conv_spec->tocode);
-+  return;
-+}
-+
-+
 +/* This function copies in-order, characters from the source 's' that are
 +   either alpha-numeric or one in one of these: "_-.,:/" - into the destination
 +   'wp' while dropping all other characters.  In the process, it converts all
@@ -468,7 +454,7 @@ index 348acc089b..b39b09aea1 100644
  {
    int slash_count = 0;
 diff --git a/iconv/gconv_int.h b/iconv/gconv_int.h
-index fbaf12cee2..e86938dae7 100644
+index fbaf12cee2..f721ce30ff 100644
 --- a/iconv/gconv_int.h
 +++ b/iconv/gconv_int.h
 @@ -75,6 +75,15 @@ struct gconv_module
@@ -487,7 +473,7 @@ index fbaf12cee2..e86938dae7 100644
  /* Flags for `gconv_open'.  */
  enum
  {
-@@ -136,10 +145,12 @@ __libc_lock_define (extern, __gconv_lock attribute_hidden)
+@@ -136,10 +145,33 @@ __libc_lock_define (extern, __gconv_lock attribute_hidden)
    })
  
  
@@ -501,6 +487,27 @@ index fbaf12cee2..e86938dae7 100644
 +extern int __gconv_open (struct gconv_spec *conv_spec,
 +                         __gconv_t *handle, int flags);
 +libc_hidden_proto (__gconv_open)
++
++/* This function accepts the charset names of the source and destination of the
++   conversion and populates *conv_spec with an equivalent conversion
++   specification that may later be used by __gconv_open.  The charset names
++   might contain options in the form of suffixes that alter the conversion,
++   e.g. "ISO-10646/UTF-8/TRANSLIT".  It processes the charset names, ignoring
++   and truncating any suffix options in fromcode, and processing and truncating
++   any suffix options in tocode.  Supported suffix options ("TRANSLIT" or
++   "IGNORE") when found in tocode lead to the corresponding flag in *conv_spec
++   to be set to true.  Unrecognized suffix options are silently discarded.  If
++   the function succeeds, it returns conv_spec back to the caller.  It returns
++   NULL upon failure.  */
++extern struct gconv_spec *
++__gconv_create_spec (struct gconv_spec *conv_spec, const char *fromcode,
++                     const char *tocode);
++libc_hidden_proto (__gconv_create_spec)
++
++/* This function frees all heap memory allocated by __gconv_create_spec.  */
++extern void
++__gconv_destroy_spec (struct gconv_spec *conv_spec);
++libc_hidden_proto (__gconv_destroy_spec)
  
  /* Free resources associated with transformation descriptor CD.  */
  extern int __gconv_close (__gconv_t cd)
@@ -612,7 +619,7 @@ index b39626d252..2878620957 100644
  }
 +libc_hidden_def (__gconv_open)
 diff --git a/iconv/iconv_open.c b/iconv/iconv_open.c
-index 687067070a..dd54bc12e0 100644
+index 687067070a..5b30055c04 100644
 --- a/iconv/iconv_open.c
 +++ b/iconv/iconv_open.c
 @@ -31,49 +31,15 @@
@@ -667,12 +674,12 @@ index 687067070a..dd54bc12e0 100644
 -    free (fromcode_conv);
 -  if (! tocode_usealloca)
 -    free (tocode_conv);
-+  gconv_destroy_spec (&conv_spec);
++  __gconv_destroy_spec (&conv_spec);
  
    if (__builtin_expect (res, __GCONV_OK) != __GCONV_OK)
      {
 diff --git a/iconv/iconv_prog.c b/iconv/iconv_prog.c
-index 9709e4a701..b4334faa57 100644
+index 9709e4a701..d59979759c 100644
 --- a/iconv/iconv_prog.c
 +++ b/iconv/iconv_prog.c
 @@ -39,6 +39,7 @@
@@ -768,7 +775,7 @@ index 9709e4a701..b4334faa57 100644
 -      if (cd == (iconv_t) -1)
 +      res = __gconv_open (&conv_spec, &cd, 0);
 +
-+      gconv_destroy_spec (&conv_spec);
++      __gconv_destroy_spec (&conv_spec);
 +
 +      if (res != __GCONV_OK)
  	{
@@ -1435,31 +1442,91 @@ index 0920ed642b..d33f3a290e 100644
  # endif /* !_ISOMAC */
  #endif
 diff --git a/intl/dcigettext.c b/intl/dcigettext.c
-index 465c8df34c..2e7c662bc7 100644
+index 465c8df34c..bd332e71da 100644
 --- a/intl/dcigettext.c
 +++ b/intl/dcigettext.c
-@@ -1119,11 +1119,16 @@ _nl_find_msg (struct loaded_l10nfile *domain_file,
+@@ -1119,11 +1119,19 @@ _nl_find_msg (struct loaded_l10nfile *domain_file,
  		      outcharset = encoding;
  
  # ifdef _LIBC
--		      /* We always want to use transliteration.  */
++
++		      struct gconv_spec conv_spec;
++
++                      __gconv_create_spec (&conv_spec, charset, outcharset);
++
+ 		      /* We always want to use transliteration.  */
 -		      outcharset = norm_add_slashes (outcharset, "TRANSLIT");
 -		      charset = norm_add_slashes (charset, "");
 -		      int r = __gconv_open (outcharset, charset, &convd->conv,
 -					    GCONV_AVOID_NOCONV);
++                      conv_spec.translit = true;
 +
-+		      struct gconv_spec conv_spec
-+		        = { .fromcode = norm_add_slashes (charset, ""),
-+		            .tocode = norm_add_slashes (outcharset, ""),
-+		            /* We always want to use transliteration.  */
-+		            .translit = true,
-+		            .ignore = false
-+		          };
 +		      int r = __gconv_open (&conv_spec, &convd->conv,
 +		                            GCONV_AVOID_NOCONV);
++
++                      __gconv_destroy_spec (&conv_spec);
++
  		      if (__builtin_expect (r != __GCONV_OK, 0))
  			{
  			  /* If the output encoding is the same there is
+diff --git a/intl/tst-codeset.c b/intl/tst-codeset.c
+index fd70432eca..e9f6e5e09f 100644
+--- a/intl/tst-codeset.c
++++ b/intl/tst-codeset.c
+@@ -22,13 +22,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <support/check.h>
+ 
+ static int
+ do_test (void)
+ {
+-  char *s;
+-  int result = 0;
+-
+   unsetenv ("LANGUAGE");
+   unsetenv ("OUTPUT_CHARSET");
+   setlocale (LC_ALL, "de_DE.ISO-8859-1");
+@@ -36,25 +34,21 @@ do_test (void)
+   bindtextdomain ("codeset", OBJPFX "domaindir");
+ 
+   /* Here we expect output in ISO-8859-1.  */
+-  s = gettext ("cheese");
+-  if (strcmp (s, "K\344se"))
+-    {
+-      printf ("call 1 returned: %s\n", s);
+-      result = 1;
+-    }
++  TEST_COMPARE_STRING (gettext ("cheese"), "K\344se");
+ 
++  /* Here we expect output in UTF-8.  */
+   bind_textdomain_codeset ("codeset", "UTF-8");
++  TEST_COMPARE_STRING (gettext ("cheese"), "K\303\244se");
+ 
+-  /* Here we expect output in UTF-8.  */
+-  s = gettext ("cheese");
+-  if (strcmp (s, "K\303\244se"))
+-    {
+-      printf ("call 2 returned: %s\n", s);
+-      result = 1;
+-    }
+-
+-  return result;
++  /* `a with umlaut' is transliterated to `ae'.  */
++  bind_textdomain_codeset ("codeset", "ASCII//TRANSLIT");
++  TEST_COMPARE_STRING (gettext ("cheese"), "Kaese");
++
++  /* Transliteration also works by default even if not set.  */
++  bind_textdomain_codeset ("codeset", "ASCII");
++  TEST_COMPARE_STRING (gettext ("cheese"), "Kaese");
++
++  return 0;
+ }
+ 
+-#define TEST_FUNCTION do_test ()
+-#include "../test-skeleton.c"
++#include <support/test-driver.c>
 diff --git a/localedata/locales/oc_FR b/localedata/locales/oc_FR
 index d0d89a149e..ba9377ed41 100644
 --- a/localedata/locales/oc_FR
