@@ -2664,6 +2664,36 @@ index 509e0d69b1..201536d24e 100644
    else
      exit (1);
  }
+diff --git a/sysdeps/aarch64/dl-machine.h b/sysdeps/aarch64/dl-machine.h
+index db3335e5ad..8ffa0d1c51 100644
+--- a/sysdeps/aarch64/dl-machine.h
++++ b/sysdeps/aarch64/dl-machine.h
+@@ -392,13 +392,6 @@ elf_machine_lazy_rel (struct link_map *map,
+   /* Check for unexpected PLT reloc type.  */
+   if (__builtin_expect (r_type == AARCH64_R(JUMP_SLOT), 1))
+     {
+-      if (map->l_mach.plt == 0)
+-	{
+-	  /* Prelinking.  */
+-	  *reloc_addr += l_addr;
+-	  return;
+-	}
+-
+       if (__glibc_unlikely (map->l_info[DT_AARCH64 (VARIANT_PCS)] != NULL))
+ 	{
+ 	  /* Check the symbol table for variant PCS symbols.  */
+@@ -422,7 +415,10 @@ elf_machine_lazy_rel (struct link_map *map,
+ 	    }
+ 	}
+ 
+-      *reloc_addr = map->l_mach.plt;
++      if (map->l_mach.plt == 0)
++	*reloc_addr += l_addr;
++      else
++	*reloc_addr = map->l_mach.plt;
+     }
+   else if (__builtin_expect (r_type == AARCH64_R(TLSDESC), 1))
+     {
 diff --git a/sysdeps/aarch64/memcpy.S b/sysdeps/aarch64/memcpy.S
 index d0d47e90b8..e0b4c4502f 100644
 --- a/sysdeps/aarch64/memcpy.S
