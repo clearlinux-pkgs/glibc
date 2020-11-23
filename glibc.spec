@@ -2,13 +2,13 @@
 %define glibc_target x86_64-generic-linux
 
 Name:           glibc
-Version:        2.31
+Version:        2.32
 Release:        344
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.31.tar.gz
+Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.32.tar.gz
 Source1:        langs.txt
 
 Patch1:                glibc-stable-branch.patch
@@ -203,7 +203,7 @@ GNU C library extra components.
 
 %patch1 -p1
 %patch4 -p1
-%patch7 -p1
+#%patch7 -p1
 %patch8 -p1
 %patch9 -p1
 %patch10 -p1
@@ -221,7 +221,7 @@ GNU C library extra components.
 %patch32 -p1
 %patch35 -p1
 %patch50 -p1
-%patch51 -p1
+#%patch51 -p1
 %patch52 -p1
 %patch53 -p1
 %patch54 -p1
@@ -243,7 +243,7 @@ export ASFLAGS="-Wa,-mbranches-within-32B-boundaries"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.31/configure \
+../glibc-2.32/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -294,7 +294,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 -Wa,-mbranches-wi
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.31/configure \
+../glibc-2.32/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -343,7 +343,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.31/configure \
+../glibc-2.32/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -392,7 +392,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -mstackrealign -g2  -Wl,-
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.31/configure \
+../glibc-2.32/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -451,22 +451,22 @@ popd
 
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.31.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.31.so
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.31.so
-cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.31.so
-ln -s libm-2.31.so %{buildroot}/usr/lib64/haswell/libm.so.6
-ln -s libmvec-2.31.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-ln -s libcrypt-2.31.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
-ln -s libc-2.31.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.32.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.32.so
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.32.so
+cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.32.so
+ln -s libm-2.32.so %{buildroot}/usr/lib64/haswell/libm.so.6
+ln -s libmvec-2.32.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+ln -s libcrypt-2.32.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+ln -s libc-2.32.so  %{buildroot}/usr/lib64/haswell/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
 mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
-cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.31.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.31.so
-ln -s libm-2.31.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
-ln -s libmvec-2.31.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.32.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.32.so
+ln -s libm-2.32.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
+ln -s libmvec-2.32.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
 popd
 
 
@@ -475,10 +475,6 @@ pushd ../glibc-buildroot
 
 make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
-for r in bootparam_prot.x nlm_prot.x rstat.x 	  yppasswd.x klm_prot.x rex.x sm_inter.x mount.x 	  rusers.x spray.x nfs_prot.x rquota.x key_prot.x; do
-    h=`echo $r|sed -e's,\.x$,.h,'`
-    install -m 0644 ./sunrpc/rpcsvc/$h %{buildroot}/usr/include/rpcsvc/
-done
 
 mkdir -p %{buildroot}/var/cache/locale
 
@@ -550,7 +546,6 @@ popd
 /usr/bin/locale
 /usr/bin/pcprofiledump
 /usr/bin/pldd
-/usr/bin/rpcgen
 /usr/bin/sotruss
 /usr/bin/sprof
 /usr/bin/tzselect
@@ -690,50 +685,50 @@ popd
 /usr/lib64/gconv/VISCII.so
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
-/usr/lib64/ld-2.31.so
+/usr/lib64/ld-2.32.so
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/libBrokenLocale-2.31.so
+/usr/lib64/libBrokenLocale-2.32.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
-/usr/lib64/libanl-2.31.so
+/usr/lib64/libanl-2.32.so
 /usr/lib64/libanl.so.1
-/usr/lib64/libc-2.31.so
+/usr/lib64/libc-2.32.so
 /usr/lib64/libc.so.6
-/usr/lib64/libcrypt-2.31.so
+/usr/lib64/libcrypt-2.32.so
 /usr/lib64/libcrypt.so.1
-/usr/lib64/libdl-2.31.so
+/usr/lib64/libdl-2.32.so
 /usr/lib64/libdl.so.2
-/usr/lib64/libm-2.31.so
+/usr/lib64/libm-2.32.so
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
-/usr/lib64/libnsl-2.31.so
+/usr/lib64/libnsl-2.32.so
 /usr/lib64/libnsl.so.1
-/usr/lib64/libnss_dns-2.31.so
+/usr/lib64/libnss_dns-2.32.so
 /usr/lib64/libnss_dns.so.2
-/usr/lib64/libnss_files-2.31.so
+/usr/lib64/libnss_files-2.32.so
 /usr/lib64/libnss_files.so.2
-/usr/lib64/libnss_hesiod-2.31.so
+/usr/lib64/libnss_hesiod-2.32.so
 /usr/lib64/libnss_hesiod.so.2
-/usr/lib64/libnss_compat-2.31.so
+/usr/lib64/libnss_compat-2.32.so
 /usr/lib64/libnss_compat.so
 /usr/lib64/libnss_compat.so.2
 /usr/lib64/libpcprofile.so
-/usr/lib64/libpthread-2.31.so
+/usr/lib64/libpthread-2.32.so
 /usr/lib64/libpthread.so.0
-/usr/lib64/libresolv-2.31.so
+/usr/lib64/libresolv-2.32.so
 /usr/lib64/libresolv.so.2
-/usr/lib64/librt-2.31.so
+/usr/lib64/librt-2.32.so
 /usr/lib64/librt.so.1
 /usr/lib64/libthread_db-1.0.so
 /usr/lib64/libthread_db.so.1
-/usr/lib64/libutil-2.31.so
+/usr/lib64/libutil-2.32.so
 /usr/lib64/libutil.so.1
-/usr/lib64/libmvec-2.31.so
+/usr/lib64/libmvec-2.32.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm-2.31.so
+/usr/lib64/haswell/libm-2.32.so
 /usr/lib64/haswell/libm.so.6
 
 /usr/bin/ldconfig
@@ -989,7 +984,7 @@ popd
 /usr/lib64/librpcsvc.a
 /usr/lib64/librt.a
 /usr/lib64/libutil.a
-/usr/lib64/libm-2.31.a
+/usr/lib64/libm-2.32.a
 /usr/lib64/libmvec.a
 
 
@@ -998,13 +993,13 @@ popd
 
 %files extras
 /usr/bin/makedb
-/usr/lib64/libnss_db-2.31.so
+/usr/lib64/libnss_db-2.32.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
-/usr/lib64/libnss_nis-2.31.so
+/usr/lib64/libnss_nis-2.32.so
 /usr/lib64/libnss_nis.so
 /usr/lib64/libnss_nis.so.2
-/usr/lib64/libnss_nisplus-2.31.so
+/usr/lib64/libnss_nisplus-2.32.so
 /usr/lib64/libnss_nisplus.so
 /usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
