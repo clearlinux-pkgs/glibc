@@ -57,6 +57,7 @@ BuildRequires:	gettext-dev
 BuildRequires:	bison
 BuildRequires:	gcc-dev32 gcc-libgcc32 gcc-libstdc++32
 BuildRequires:	python3-dev
+BuildRequires:  rpcsvc-proto-dev
 
 
 %description
@@ -150,6 +151,7 @@ GNU C library.
 License:        GPL-2.0
 Summary:        GNU C library
 Group:          devel
+Requires:	rpcsvc-proto-dev
 
 %description dev
 GNU C library.
@@ -906,7 +908,6 @@ popd
 /usr/include/nfs/
 /usr/include/protocols/
 /usr/include/rpc/
-/usr/include/rpcsvc/
 /usr/include/scsi/
 /usr/include/sys/
 /usr/lib64/Mcrt1.o
@@ -924,7 +925,7 @@ popd
 /usr/lib64/libcrypt.so
 /usr/lib64/libdl.so
 /usr/lib64/libm.so
-/usr/lib64/libnsl.so
+#/usr/lib64/libnsl.so
 /usr/lib64/libnss_dns.so
 /usr/lib64/libnss_files.so
 /usr/lib64/libnss_hesiod.so
@@ -958,8 +959,6 @@ popd
 /usr/lib32/libnss_dns.so.2
 /usr/lib32/libnss_files.so.2
 /usr/lib32/libnss_hesiod.so.2
-/usr/lib32/libnss_nis.so.2
-/usr/lib32/libnss_nisplus.so.2
 /usr/lib32/libpthread.so.0
 /usr/lib32/libresolv.so.2
 /usr/lib32/librt.so.1
@@ -977,11 +976,9 @@ popd
 #/usr/lib64/libieee.a
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
-/usr/lib64/libnsl.a
 /usr/lib64/libpthread.a
 /usr/lib64/libpthread_nonshared.a
 /usr/lib64/libresolv.a
-/usr/lib64/librpcsvc.a
 /usr/lib64/librt.a
 /usr/lib64/libutil.a
 /usr/lib64/libm-2.32.a
