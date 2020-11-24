@@ -993,12 +993,12 @@ popd
 /usr/lib64/libnss_db-2.32.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
-/usr/lib64/libnss_nis-2.32.so
-/usr/lib64/libnss_nis.so
-/usr/lib64/libnss_nis.so.2
-/usr/lib64/libnss_nisplus-2.32.so
-/usr/lib64/libnss_nisplus.so
-/usr/lib64/libnss_nisplus.so.2
+#/usr/lib64/libnss_nis-2.32.so
+#/usr/lib64/libnss_nis.so
+#/usr/lib64/libnss_nis.so.2
+#/usr/lib64/libnss_nisplus-2.32.so
+#/usr/lib64/libnss_nisplus.so
+#/usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
 
 %files -n libc6-dev
