@@ -1,13 +1,15 @@
 diff --git a/NEWS b/NEWS
-index 485b8ddffa..8b18675683 100644
+index 485b8ddffa..4da2a0cbda 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,20 @@ See the end for copying conditions.
+@@ -5,6 +5,22 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
 +The following bugs are resolved with this release:
 +
++  [26224] iconv hangs when converting some invalid inputs from several IBM
++    character sets (CVE-2020-27618)
 +  [26534] libm.so 2.32 SIGILL in pow() due to FMA4 instruction on non-FMA4
 +    system
 +  [26555] string: strerrorname_np does not return the documented value
@@ -23,6 +25,17 @@ index 485b8ddffa..8b18675683 100644
  Version 2.32
  
  Major new features:
+@@ -185,6 +201,10 @@ Security related changes:
+   Dytrych of the Cisco Security Assessment and Penetration Team (See
+   TALOS-2020-1019).
+ 
++  CVE-2020-27618: An infinite loop has been fixed in the iconv program when
++  invoked with input containing redundant shift sequences in the IBM1364,
++  IBM1371, IBM1388, IBM1390, or IBM1399 character sets.
++
+ The following bugs are resolved with this release:
+ 
+   [9809] localedata: ckb_IQ: new Kurdish Sorani locale
 diff --git a/debug/Makefile b/debug/Makefile
 index 3a60d7af7a..0036edd187 100644
 --- a/debug/Makefile
@@ -241,6 +254,64 @@ index b4334faa57..d59979759c 100644
  
        if (res != __GCONV_OK)
  	{
+diff --git a/iconv/tst-iconv_prog.sh b/iconv/tst-iconv_prog.sh
+index 8298136b7f..d8db7b335c 100644
+--- a/iconv/tst-iconv_prog.sh
++++ b/iconv/tst-iconv_prog.sh
+@@ -102,12 +102,16 @@ hangarray=(
+ "\x00\x80;-c;IBM1161;UTF-8//TRANSLIT//IGNORE"
+ "\x00\xdb;-c;IBM1162;UTF-8//TRANSLIT//IGNORE"
+ "\x00\x70;-c;IBM12712;UTF-8//TRANSLIT//IGNORE"
+-# These are known hangs that are yet to be fixed:
+-# "\x00\x0f;-c;IBM1364;UTF-8"
+-# "\x00\x0f;-c;IBM1371;UTF-8"
+-# "\x00\x0f;-c;IBM1388;UTF-8"
+-# "\x00\x0f;-c;IBM1390;UTF-8"
+-# "\x00\x0f;-c;IBM1399;UTF-8"
++"\x00\x0f;-c;IBM1364;UTF-8"
++"\x0e\x0e;-c;IBM1364;UTF-8"
++"\x00\x0f;-c;IBM1371;UTF-8"
++"\x0e\x0e;-c;IBM1371;UTF-8"
++"\x00\x0f;-c;IBM1388;UTF-8"
++"\x0e\x0e;-c;IBM1388;UTF-8"
++"\x00\x0f;-c;IBM1390;UTF-8"
++"\x0e\x0e;-c;IBM1390;UTF-8"
++"\x00\x0f;-c;IBM1399;UTF-8"
++"\x0e\x0e;-c;IBM1399;UTF-8"
+ "\x00\x53;-c;IBM16804;UTF-8//TRANSLIT//IGNORE"
+ "\x00\x41;-c;IBM274;UTF-8//TRANSLIT//IGNORE"
+ "\x00\x41;-c;IBM275;UTF-8//TRANSLIT//IGNORE"
+diff --git a/iconvdata/ibm1364.c b/iconvdata/ibm1364.c
+index 49e7267ab4..521f0825b7 100644
+--- a/iconvdata/ibm1364.c
++++ b/iconvdata/ibm1364.c
+@@ -158,24 +158,14 @@ enum
+ 									      \
+     if (__builtin_expect (ch, 0) == SO)					      \
+       {									      \
+-	/* Shift OUT, change to DBCS converter.  */			      \
+-	if (curcs == db)						      \
+-	  {								      \
+-	    result = __GCONV_ILLEGAL_INPUT;				      \
+-	    break;							      \
+-	  }								      \
++	/* Shift OUT, change to DBCS converter (redundant escape okay).  */   \
+ 	curcs = db;							      \
+ 	++inptr;							      \
+ 	continue;							      \
+       }									      \
+     if (__builtin_expect (ch, 0) == SI)					      \
+       {									      \
+-	/* Shift IN, change to SBCS converter.  */			      \
+-	if (curcs == sb)						      \
+-	  {								      \
+-	    result = __GCONV_ILLEGAL_INPUT;				      \
+-	    break;							      \
+-	  }								      \
++	/* Shift IN, change to SBCS converter (redundant escape okay).  */    \
+ 	curcs = sb;							      \
+ 	++inptr;							      \
+ 	continue;							      \
 diff --git a/intl/dcigettext.c b/intl/dcigettext.c
 index 2e7c662bc7..bd332e71da 100644
 --- a/intl/dcigettext.c
