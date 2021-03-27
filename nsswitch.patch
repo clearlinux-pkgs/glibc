@@ -1,0 +1,22 @@
+--- glibc-2.33/nss/nss_database.c~	2021-02-01 17:15:33.000000000 +0000
++++ glibc-2.33/nss/nss_database.c	2021-03-26 19:00:19.641587013 +0000
+@@ -303,6 +303,8 @@
+ {
+   FILE *fp = fopen (_PATH_NSSWITCH_CONF, "rce");
+   if (fp == NULL)
++	  fp = fopen ("/usr/share/defaults/etc/nsswitch.conf", "rce");
++  if (fp == NULL)
+     switch (errno)
+       {
+       case EACCES:
+@@ -375,8 +377,8 @@
+       return true;
+     }
+ 
+-  struct file_change_detection initial;
+-  if (!__file_change_detection_for_path (&initial, _PATH_NSSWITCH_CONF))
++  struct file_change_detection initial, initial2;
++  if (!__file_change_detection_for_path (&initial, _PATH_NSSWITCH_CONF) && !__file_change_detection_for_path (&initial2, "/usr/share/defaults/etc/nsswitch.conf"))
+     return false;
+ 
+   __libc_lock_lock (local->lock);

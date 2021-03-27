@@ -1,14 +1,15 @@
 %define keepstatic 1
 %define glibc_target x86_64-generic-linux
+%define abi_package %{nil}
 
 Name:           glibc
-Version:        2.32
+Version:        2.33
 Release:        350
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.32.tar.gz
+Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.33.tar.gz
 Source1:        langs.txt
 
 Patch1:                glibc-stable-branch.patch
@@ -16,7 +17,8 @@ Patch1:                glibc-stable-branch.patch
 Patch4:		0001-Set-host.conf-multi-to-on-by-default.patch
 Patch7:		ldconfig-format-new.patch
 Patch8:		0001-sysdeps-unix-Add-support-for-usr-lib32-as-a-system-l.patch
-Patch9:		nsswitch-altfiles.patch
+#Patch9:		nsswitch-altfiles.patch
+Patch9:		nsswitch.patch
 Patch10:	ld-so-cache-in-var.patch
 Patch11:	fewerlocales.patch
 Patch12:	mkdir-ldconfig.patch
@@ -30,7 +32,7 @@ Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch28:	stateless.patch
-Patch29:	nsswitch-altfiles-bugfix.patch
+#Patch29:	nsswitch-altfiles-bugfix.patch
 Patch32:	mathlto.patch
 Patch35:	vzeroupper-2.27.patch
 # backports of libm work
@@ -203,11 +205,10 @@ GNU C library extra components.
 %prep
 %setup -q
 
-%patch1 -p1
+#%patch1 -p1
 %patch4 -p1
 #%patch7 -p1
 %patch8 -p1
-%patch9 -p1
 %patch10 -p1
 %patch12 -p1
 %patch13 -p1
@@ -219,7 +220,6 @@ GNU C library extra components.
 %patch24 -p1
 %patch26 -p1
 %patch28 -p1
-%patch29 -p1
 %patch32 -p1
 %patch35 -p1
 %patch50 -p1
@@ -233,6 +233,8 @@ GNU C library extra components.
 %patch62 -p1
 
 
+%patch9 -p1
+
 %build
 export SOURCE_DATE_EPOCH=1484361909
 export LANG=C
@@ -245,7 +247,7 @@ export ASFLAGS="-Wa,-mbranches-within-32B-boundaries"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.32/configure \
+../glibc-2.33/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -296,7 +298,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 -Wa,-mbranches-wi
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.32/configure \
+../glibc-2.33/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -345,7 +347,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.32/configure \
+../glibc-2.33/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -394,7 +396,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -mstackrealign -g2  -Wl,-
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.32/configure \
+../glibc-2.33/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -453,22 +455,22 @@ popd
 
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.32.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.32.so
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.32.so
-cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.32.so
-ln -s libm-2.32.so %{buildroot}/usr/lib64/haswell/libm.so.6
-ln -s libmvec-2.32.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-ln -s libcrypt-2.32.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
-ln -s libc-2.32.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.33.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.33.so
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.33.so
+cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.33.so
+ln -s libm-2.33.so %{buildroot}/usr/lib64/haswell/libm.so.6
+ln -s libmvec-2.33.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+ln -s libcrypt-2.33.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+ln -s libc-2.33.so  %{buildroot}/usr/lib64/haswell/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
 mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
-cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.32.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.32.so
-ln -s libm-2.32.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
-ln -s libmvec-2.32.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.33.so
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.33.so
+ln -s libm-2.33.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
+ln -s libmvec-2.33.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
 popd
 
 
@@ -502,12 +504,12 @@ pushd localedata
 mkdir -p %{buildroot}/usr/share/locale
 langs_list=%{SOURCE1}
 
-while IFS= read -r lang
-do
-  I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/$lang -c -f charmaps/UTF-8 $lang.UTF-8
-  mv %{buildroot}/usr/share/locale/$lang.utf8 %{buildroot}/usr/share/locale/$lang.UTF-8
-done < $langs_list
-popd
+#while IFS= read -r lang
+#do
+#  I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/$lang -c -f charmaps/UTF-8 $lang.UTF-8
+#  mv %{buildroot}/usr/share/locale/$lang.utf8 %{buildroot}/usr/share/locale/$lang.UTF-8
+#done < $langs_list
+#popd
 
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/share/locale/locale-archive
 
@@ -522,13 +524,13 @@ mv %{buildroot}/sbin/sln %{buildroot}/usr/bin/sln
 mv %{buildroot}/sbin/ldconfig %{buildroot}/usr/bin/ldconfig
 mv %{buildroot}/usr/sbin/nscd %{buildroot}/usr/bin/nscd
 mv %{buildroot}/usr/sbin/iconvconfig %{buildroot}/usr/bin/iconvconfig
-mv %{buildroot}/usr/sbin/zdump %{buildroot}/usr/bin/zdump
-mv %{buildroot}/usr/sbin/zic %{buildroot}/usr/bin/zic
+#mv %{buildroot}/usr/sbin/zdump %{buildroot}/usr/bin/zdump
+mv %{buildroot}/usr/sbin/* %{buildroot}/usr/bin/
 
 
 %check
 pushd ../glibc-buildroot
-make check %{?_smp_mflags} || :
+#make check %{?_smp_mflags} || :
 popd
 
 %files bin
@@ -562,8 +564,8 @@ popd
 
 %files -n libc6
 %dir /usr/share/locale
-/usr/share/locale/C.UTF-8
-/usr/share/locale/en_US.UTF-8
+#/usr/share/locale/C.UTF-8
+#/usr/share/locale/en_US.UTF-8
 /usr/lib64/audit/sotruss-lib.so
 /usr/lib64/gconv/ANSI_X3.110.so
 /usr/lib64/gconv/ARMSCII-8.so
@@ -687,50 +689,50 @@ popd
 /usr/lib64/gconv/VISCII.so
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
-/usr/lib64/ld-2.32.so
+/usr/lib64/ld-2.33.so
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/libBrokenLocale-2.32.so
+/usr/lib64/libBrokenLocale-2.33.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
-/usr/lib64/libanl-2.32.so
+/usr/lib64/libanl-2.33.so
 /usr/lib64/libanl.so.1
-/usr/lib64/libc-2.32.so
+/usr/lib64/libc-2.33.so
 /usr/lib64/libc.so.6
-/usr/lib64/libcrypt-2.32.so
+/usr/lib64/libcrypt-2.33.so
 /usr/lib64/libcrypt.so.1
-/usr/lib64/libdl-2.32.so
+/usr/lib64/libdl-2.33.so
 /usr/lib64/libdl.so.2
-/usr/lib64/libm-2.32.so
+/usr/lib64/libm-2.33.so
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
-/usr/lib64/libnsl-2.32.so
+/usr/lib64/libnsl-2.33.so
 /usr/lib64/libnsl.so.1
-/usr/lib64/libnss_dns-2.32.so
+/usr/lib64/libnss_dns-2.33.so
 /usr/lib64/libnss_dns.so.2
-/usr/lib64/libnss_files-2.32.so
+/usr/lib64/libnss_files-2.33.so
 /usr/lib64/libnss_files.so.2
-/usr/lib64/libnss_hesiod-2.32.so
+/usr/lib64/libnss_hesiod-2.33.so
 /usr/lib64/libnss_hesiod.so.2
-/usr/lib64/libnss_compat-2.32.so
+/usr/lib64/libnss_compat-2.33.so
 /usr/lib64/libnss_compat.so
 /usr/lib64/libnss_compat.so.2
 /usr/lib64/libpcprofile.so
-/usr/lib64/libpthread-2.32.so
+/usr/lib64/libpthread-2.33.so
 /usr/lib64/libpthread.so.0
-/usr/lib64/libresolv-2.32.so
+/usr/lib64/libresolv-2.33.so
 /usr/lib64/libresolv.so.2
-/usr/lib64/librt-2.32.so
+/usr/lib64/librt-2.33.so
 /usr/lib64/librt.so.1
 /usr/lib64/libthread_db-1.0.so
 /usr/lib64/libthread_db.so.1
-/usr/lib64/libutil-2.32.so
+/usr/lib64/libutil-2.33.so
 /usr/lib64/libutil.so.1
-/usr/lib64/libmvec-2.32.so
+/usr/lib64/libmvec-2.33.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm-2.32.so
+/usr/lib64/haswell/libm-2.33.so
 /usr/lib64/haswell/libm.so.6
 
 /usr/bin/ldconfig
@@ -744,11 +746,11 @@ popd
 # TODO: SPLIT!
 %files locale
 /usr/share/locale
-%exclude /usr/share/locale/C.UTF-8
+#%exclude /usr/share/locale/C.UTF-8
 # NOTE: en_US.UTF-8 locale files are installed by libc6; avoid installing them
 # in the -locale subpackage, because it triggers a bug in librpm that can
 # corrupt file permissions and therefore lead to corrupt swupd update content...
-%exclude /usr/share/locale/en_US.UTF-8
+#%exclude /usr/share/locale/en_US.UTF-8
 %exclude /usr/share/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
@@ -981,7 +983,7 @@ popd
 /usr/lib64/libresolv.a
 /usr/lib64/librt.a
 /usr/lib64/libutil.a
-/usr/lib64/libm-2.32.a
+/usr/lib64/libm-2.33.a
 /usr/lib64/libmvec.a
 
 
@@ -990,13 +992,13 @@ popd
 
 %files extras
 /usr/bin/makedb
-/usr/lib64/libnss_db-2.32.so
+/usr/lib64/libnss_db-2.33.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
-#/usr/lib64/libnss_nis-2.32.so
+#/usr/lib64/libnss_nis-2.33.so
 #/usr/lib64/libnss_nis.so
 #/usr/lib64/libnss_nis.so.2
-#/usr/lib64/libnss_nisplus-2.32.so
+#/usr/lib64/libnss_nisplus-2.33.so
 #/usr/lib64/libnss_nisplus.so
 #/usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
