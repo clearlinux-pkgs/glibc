@@ -2,6 +2,9 @@
 %define glibc_target x86_64-generic-linux
 %define abi_package %{nil}
 
+
+%define __strip /bin/true
+
 Name:           glibc
 Version:        2.33
 Release:        351
@@ -205,7 +208,7 @@ GNU C library extra components.
 %prep
 %setup -q
 
-#%patch1 -p1
+%patch1 -p1
 %patch4 -p1
 #%patch7 -p1
 %patch8 -p1
