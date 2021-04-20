@@ -8,4 +8,4 @@
 +zonetabtype=zone
  
  usage="Usage: tzselect [--version] [--help] [-c COORD] [-n LIMIT]
- Select a time zone interactively.
+ Select a timezone interactively.

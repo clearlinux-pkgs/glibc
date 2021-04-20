@@ -7,8 +7,8 @@
 +CFLAGS-.o += -fno-stack-protector  -falign-functions=32
 +
  # Installed header files.
- headers		:= math.h bits/mathcalls.h bits/mathinline.h bits/huge_val.h \
- 		   bits/huge_valf.h bits/huge_vall.h bits/inf.h bits/nan.h \
+ headers		:= math.h bits/mathcalls.h \
+ 		   fpu_control.h complex.h bits/cmathcalls.h fenv.h \
 --- glibc-2.25/crypt/Makefile~	2017-02-05 15:28:43.000000000 +0000
 +++ glibc-2.25/crypt/Makefile	2017-07-30 18:45:58.396204712 +0000
 @@ -22,6 +22,8 @@

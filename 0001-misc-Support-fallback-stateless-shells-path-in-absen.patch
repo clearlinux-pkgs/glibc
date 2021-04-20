@@ -27,7 +27,7 @@ index fc2c43b..238875f 100644
 +		fp = fopen(_PATH_SHELLS2, "rce");
 +	if (fp == NULL)
  		goto init_okshells_noclose;
- 	if (fstat64(fileno(fp), &statb) == -1) {
+ 	if (__fstat64(fileno(fp), &statb) == -1) {
  	init_okshells:
 diff --git a/sysdeps/unix/sysv/linux/paths.h b/sysdeps/unix/sysv/linux/paths.h
 index 1342ab3..a808fcb 100644
