@@ -166,7 +166,7 @@ License:        GPL-2.0
 Summary:        GNU C library
 Group:          devel
 Provides:	libc6-dev
-Requires: glibc-dev
+Requires:       glibc-dev = %{version}-%{release}
 
 %description -n libc6-dev
 GNU C library.
@@ -175,8 +175,8 @@ GNU C library.
 License:        GPL-2.0
 Summary:        GNU C library
 Group:          devel
-Requires:	glibc-libc32
-Requires:	libc6-dev
+Requires:       glibc-libc32 = %{version}-%{release}
+Requires:       libc6-dev = %{version}-%{release}
 
 %description dev32
 GNU C library.
