@@ -44,8 +44,8 @@ Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
 Patch52:	spin-smarter.patch
 Patch53: 	nostackshrink.patch
-Patch54: 	0001-Compile-branred.c-with-mprefer-vector-width-128.patch
-Patch55: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
+Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
+Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 
 # Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
