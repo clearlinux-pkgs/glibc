@@ -217,7 +217,7 @@ GNU C library extra components.
 %patch13 -p1
 %patch14 -p1
 %patch17 -p1
-%patch18 -p1
+#%patch18 -p1
 %patch20 -p1
 %patch21 -p1
 %patch24 -p1
