@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 71f5d20324..6f32249818 100644
+index 71f5d20324..769aeb24b7 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,23 @@ See the end for copying conditions.
+@@ -5,6 +5,26 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -22,6 +22,9 @@ index 71f5d20324..6f32249818 100644
 +  [27304] pthread_cond_destroy does not pass private flag to futex system calls
 +  [27537] test-container: Always copy test-specific support files
 +  [27577] elf/ld.so --help doesn't work
++  [27648] FAIL: misc/tst-select
++  [27651] Performance regression after updating to 2.33
++  [27706] select fails to update timeout on error
 +
  Version 2.33
  
@@ -42,7 +45,7 @@ index 06ee8ae26a..f21bf04e47 100644
 +
  #endif
 diff --git a/elf/Makefile b/elf/Makefile
-index 5d666b1b0c..4b92f8b305 100644
+index 5d666b1b0c..28e18aea5d 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
 @@ -66,7 +66,7 @@ elide-routines.os = $(all-dl-routines) dl-support enbl-secure dl-origin \
@@ -93,7 +96,16 @@ index 5d666b1b0c..4b92f8b305 100644
  
  cpp-srcs-left := $(all-rtld-routines:=.os)
  lib := rtld
-@@ -1902,3 +1907,18 @@ $(objpfx)list-tunables.out: tst-rtld-list-tunables.sh $(objpfx)ld.so
+@@ -1653,8 +1658,6 @@ $(objpfx)tst-nodelete-dlclose.out: $(objpfx)tst-nodelete-dlclose-dso.so \
+ 
+ tst-env-setuid-ENV = MALLOC_CHECK_=2 MALLOC_MMAP_THRESHOLD_=4096 \
+ 		     LD_HWCAP_MASK=0x1
+-tst-env-setuid-tunables-ENV = \
+-	GLIBC_TUNABLES=glibc.malloc.check=2:glibc.malloc.mmap_threshold=4096
+ 
+ $(objpfx)tst-debug1: $(libdl)
+ $(objpfx)tst-debug1.out: $(objpfx)tst-debug1mod1.so
+@@ -1902,3 +1905,18 @@ $(objpfx)list-tunables.out: tst-rtld-list-tunables.sh $(objpfx)ld.so
  	cmp tst-rtld-list-tunables.exp \
  	    $(objpfx)/tst-rtld-list-tunables.out > $@; \
  	$(evaluate-test)
@@ -608,7 +620,7 @@ index 3a5e13c739..d3820e0063 100644
 +
  #endif /* _DL_MAIN */
 diff --git a/elf/dl-tunable-types.h b/elf/dl-tunable-types.h
-index 3fcc0806f5..626ca334be 100644
+index 3fcc0806f5..39bf738d93 100644
 --- a/elf/dl-tunable-types.h
 +++ b/elf/dl-tunable-types.h
 @@ -38,8 +38,8 @@ typedef enum
@@ -622,11 +634,33 @@ index 3fcc0806f5..626ca334be 100644
  } tunable_type_t;
  
  /* Security level for tunables.  This decides what to do with individual
+@@ -81,4 +81,21 @@ struct _tunable
+ 
+ typedef struct _tunable tunable_t;
+ 
++static __always_inline bool
++unsigned_tunable_type (tunable_type_code_t t)
++{
++  switch (t)
++    {
++    case TUNABLE_TYPE_INT_32:
++      return false;
++    case TUNABLE_TYPE_UINT_64:
++    case TUNABLE_TYPE_SIZE_T:
++      return true;
++    case TUNABLE_TYPE_STRING:
++    default:
++      break;
++    }
++  __builtin_unreachable ();
++}
++
+ #endif
 diff --git a/elf/dl-tunables.c b/elf/dl-tunables.c
-index b1a50b8469..a2be9cde2f 100644
+index b1a50b8469..8009e54ee5 100644
 --- a/elf/dl-tunables.c
 +++ b/elf/dl-tunables.c
-@@ -93,87 +93,45 @@ get_next_env (char **envp, char **name, size_t *namelen, char **val,
+@@ -93,88 +93,49 @@ get_next_env (char **envp, char **name, size_t *namelen, char **val,
    return NULL;
  }
  
@@ -695,19 +729,21 @@ index b1a50b8469..a2be9cde2f 100644
 +    }
  
 -  switch (cur->type.type_code)
++  bool unsigned_cmp = unsigned_tunable_type (cur->type.type_code);
++
 +  val = valp->numval;
 +  min = minp != NULL ? *minp : cur->type.min;
 +  max = maxp != NULL ? *maxp : cur->type.max;
 +
 +  /* We allow only increasingly restrictive bounds.  */
-+  if (min < cur->type.min)
++  if (tunable_val_lt (min, cur->type.min, unsigned_cmp))
 +    min = cur->type.min;
 +
-+  if (max > cur->type.max)
++  if (tunable_val_gt (max, cur->type.max, unsigned_cmp))
 +    max = cur->type.max;
 +
 +  /* Skip both bounds if they're inconsistent.  */
-+  if (min > max)
++  if (tunable_val_gt (min, max, unsigned_cmp))
      {
 -    case TUNABLE_TYPE_INT_32:
 -	{
@@ -736,19 +772,21 @@ index b1a50b8469..a2be9cde2f 100644
 -      __builtin_unreachable ();
 +      min = cur->type.min;
 +      max = cur->type.max;
-+    }
-+
-+  /* Write everything out if the value and the bounds are valid.  */
-+  if (min <= val && val <= max)
-+    {
-+      cur->val.numval = val;
-+      cur->type.min = min;
-+      cur->type.max = max;
-+      cur->initialized = true;
      }
++
++  /* Bail out if the bounds are not valid.  */
++  if (tunable_val_lt (val, min, unsigned_cmp)
++      || tunable_val_lt (max, val, unsigned_cmp))
++    return;
++
++  cur->val.numval = val;
++  cur->type.min = min;
++  cur->type.max = max;
++  cur->initialized = true;
  }
  
-@@ -182,24 +140,18 @@ do_tunable_update_val (tunable_t *cur, const void *valp,
+ /* Validate range of the input value and initialize the tunable CUR if it looks
+@@ -182,24 +143,18 @@ do_tunable_update_val (tunable_t *cur, const void *valp,
  static void
  tunable_initialize (tunable_t *cur, const char *strval)
  {
@@ -779,8 +817,95 @@ index b1a50b8469..a2be9cde2f 100644
  {
    tunable_t *cur = &tunable_list[id];
  
+@@ -219,6 +174,7 @@ parse_tunables (char *tunestr, char *valstring)
+     return;
+ 
+   char *p = tunestr;
++  size_t off = 0;
+ 
+   while (true)
+     {
+@@ -232,7 +188,11 @@ parse_tunables (char *tunestr, char *valstring)
+       /* If we reach the end of the string before getting a valid name-value
+ 	 pair, bail out.  */
+       if (p[len] == '\0')
+-	return;
++	{
++	  if (__libc_enable_secure)
++	    tunestr[off] = '\0';
++	  return;
++	}
+ 
+       /* We did not find a valid name-value pair before encountering the
+ 	 colon.  */
+@@ -258,35 +218,28 @@ parse_tunables (char *tunestr, char *valstring)
+ 
+ 	  if (tunable_is_name (cur->name, name))
+ 	    {
+-	      /* If we are in a secure context (AT_SECURE) then ignore the tunable
+-		 unless it is explicitly marked as secure.  Tunable values take
+-		 precedence over their envvar aliases.  */
++	      /* If we are in a secure context (AT_SECURE) then ignore the
++		 tunable unless it is explicitly marked as secure.  Tunable
++		 values take precedence over their envvar aliases.  We write
++		 the tunables that are not SXID_ERASE back to TUNESTR, thus
++		 dropping all SXID_ERASE tunables and any invalid or
++		 unrecognized tunables.  */
+ 	      if (__libc_enable_secure)
+ 		{
+-		  if (cur->security_level == TUNABLE_SECLEVEL_SXID_ERASE)
++		  if (cur->security_level != TUNABLE_SECLEVEL_SXID_ERASE)
+ 		    {
+-		      if (p[len] == '\0')
+-			{
+-			  /* Last tunable in the valstring.  Null-terminate and
+-			     return.  */
+-			  *name = '\0';
+-			  return;
+-			}
+-		      else
+-			{
+-			  /* Remove the current tunable from the string.  We do
+-			     this by overwriting the string starting from NAME
+-			     (which is where the current tunable begins) with
+-			     the remainder of the string.  We then have P point
+-			     to NAME so that we continue in the correct
+-			     position in the valstring.  */
+-			  char *q = &p[len + 1];
+-			  p = name;
+-			  while (*q != '\0')
+-			    *name++ = *q++;
+-			  name[0] = '\0';
+-			  len = 0;
+-			}
++		      if (off > 0)
++			tunestr[off++] = ':';
++
++		      const char *n = cur->name;
++
++		      while (*n != '\0')
++			tunestr[off++] = *n++;
++
++		      tunestr[off++] = '=';
++
++		      for (size_t j = 0; j < len; j++)
++			tunestr[off++] = value[j];
+ 		    }
+ 
+ 		  if (cur->security_level != TUNABLE_SECLEVEL_NONE)
+@@ -299,9 +252,7 @@ parse_tunables (char *tunestr, char *valstring)
+ 	    }
+ 	}
+ 
+-      if (p[len] == '\0')
+-	return;
+-      else
++      if (p[len] != '\0')
+ 	p += len + 1;
+     }
+ }
 diff --git a/elf/dl-tunables.h b/elf/dl-tunables.h
-index 971376ba8d..ba7ae6b52e 100644
+index 971376ba8d..3880e4aab6 100644
 --- a/elf/dl-tunables.h
 +++ b/elf/dl-tunables.h
 @@ -33,9 +33,11 @@ __tunables_init (char **unused __attribute__ ((unused)))
@@ -861,6 +986,31 @@ index 971376ba8d..ba7ae6b52e 100644
  })
  
  /* Namespace sanity for callback functions.  Use this macro to keep the
+@@ -114,6 +115,24 @@ rtld_hidden_proto (__tunable_set_val)
+ /* The default value for TUNABLES_FRONTEND.  */
+ # define TUNABLES_FRONTEND_yes TUNABLES_FRONTEND_valstring
+ 
++static __always_inline bool
++tunable_val_lt (tunable_num_t lhs, tunable_num_t rhs, bool unsigned_cmp)
++{
++  if (unsigned_cmp)
++    return (uintmax_t) lhs < (uintmax_t) rhs;
++  else
++    return lhs < rhs;
++}
++
++static __always_inline bool
++tunable_val_gt (tunable_num_t lhs, tunable_num_t rhs, bool unsigned_cmp)
++{
++  if (unsigned_cmp)
++    return (uintmax_t) lhs > (uintmax_t) rhs;
++  else
++    return lhs > rhs;
++}
++
+ /* Compare two name strings, bounded by the name hardcoded in glibc.  */
+ static __always_inline bool
+ tunable_is_name (const char *orig, const char *envname)
 diff --git a/elf/dl-tunables.list b/elf/dl-tunables.list
 index 3cf0ad83ec..8ddd4a2314 100644
 --- a/elf/dl-tunables.list
@@ -1001,6 +1151,391 @@ index 0000000000..56eb371c96
 +{
 +  return 0;
 +}
+diff --git a/elf/tst-env-setuid-tunables.c b/elf/tst-env-setuid-tunables.c
+index 50bef8683d..05619c9adc 100644
+--- a/elf/tst-env-setuid-tunables.c
++++ b/elf/tst-env-setuid-tunables.c
+@@ -25,35 +25,76 @@
+ #include "config.h"
+ #undef _LIBC
+ 
+-#define test_parent test_parent_tunables
+-#define test_child test_child_tunables
+-
+-static int test_child_tunables (void);
+-static int test_parent_tunables (void);
+-
+-#include "tst-env-setuid.c"
+-
+-#define CHILD_VALSTRING_VALUE "glibc.malloc.mmap_threshold=4096"
+-#define PARENT_VALSTRING_VALUE \
+-  "glibc.malloc.check=2:glibc.malloc.mmap_threshold=4096"
++#include <errno.h>
++#include <fcntl.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <sys/wait.h>
++#include <unistd.h>
++#include <intprops.h>
++#include <array_length.h>
++
++#include <support/check.h>
++#include <support/support.h>
++#include <support/test-driver.h>
++#include <support/capture_subprocess.h>
++
++const char *teststrings[] =
++{
++  "glibc.malloc.check=2:glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.check=2:glibc.malloc.check=2:glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.check=2:glibc.malloc.mmap_threshold=4096:glibc.malloc.check=2",
++  "glibc.malloc.perturb=0x800",
++  "glibc.malloc.perturb=0x800:glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.perturb=0x800:not_valid.malloc.check=2:glibc.malloc.mmap_threshold=4096",
++  "glibc.not_valid.check=2:glibc.malloc.mmap_threshold=4096",
++  "not_valid.malloc.check=2:glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.garbage=2:glibc.maoc.mmap_threshold=4096:glibc.malloc.check=2",
++  "glibc.malloc.check=4:glibc.malloc.garbage=2:glibc.maoc.mmap_threshold=4096",
++  ":glibc.malloc.garbage=2:glibc.malloc.check=1",
++  "glibc.malloc.check=1:glibc.malloc.check=2",
++  "not_valid.malloc.check=2",
++  "glibc.not_valid.check=2",
++};
++
++const char *resultstrings[] =
++{
++  "glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.perturb=0x800",
++  "glibc.malloc.perturb=0x800:glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.perturb=0x800:glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.mmap_threshold=4096",
++  "glibc.malloc.mmap_threshold=4096",
++  "",
++  "",
++  "",
++  "",
++  "",
++  "",
++};
+ 
+ static int
+-test_child_tunables (void)
++test_child (int off)
+ {
+   const char *val = getenv ("GLIBC_TUNABLES");
+ 
+ #if HAVE_TUNABLES
+-  if (val != NULL && strcmp (val, CHILD_VALSTRING_VALUE) == 0)
++  if (val != NULL && strcmp (val, resultstrings[off]) == 0)
+     return 0;
+ 
+   if (val != NULL)
+-    printf ("Unexpected GLIBC_TUNABLES VALUE %s\n", val);
++    printf ("[%d] Unexpected GLIBC_TUNABLES VALUE %s\n", off, val);
+ 
+   return 1;
+ #else
+   if (val != NULL)
+     {
+-      printf ("GLIBC_TUNABLES not cleared\n");
++      printf ("[%d] GLIBC_TUNABLES not cleared\n", off);
+       return 1;
+     }
+   return 0;
+@@ -61,15 +102,48 @@ test_child_tunables (void)
+ }
+ 
+ static int
+-test_parent_tunables (void)
++do_test (int argc, char **argv)
+ {
+-  const char *val = getenv ("GLIBC_TUNABLES");
++  /* Setgid child process.  */
++  if (argc == 2)
++    {
++      if (getgid () == getegid ())
++	/* This can happen if the file system is mounted nosuid.  */
++	FAIL_UNSUPPORTED ("SGID failed: GID and EGID match (%jd)\n",
++			  (intmax_t) getgid ());
+ 
+-  if (val != NULL && strcmp (val, PARENT_VALSTRING_VALUE) == 0)
+-    return 0;
++      int ret = test_child (atoi (argv[1]));
+ 
+-  if (val != NULL)
+-    printf ("Unexpected GLIBC_TUNABLES VALUE %s\n", val);
++      if (ret != 0)
++	exit (1);
+ 
+-  return 1;
++      exit (EXIT_SUCCESS);
++    }
++  else
++    {
++      int ret = 0;
++
++      /* Spawn tests.  */
++      for (int i = 0; i < array_length (teststrings); i++)
++	{
++	  char buf[INT_BUFSIZE_BOUND (int)];
++
++	  printf ("Spawned test for %s (%d)\n", teststrings[i], i);
++	  snprintf (buf, sizeof (buf), "%d\n", i);
++	  if (setenv ("GLIBC_TUNABLES", teststrings[i], 1) != 0)
++	    exit (1);
++
++	  int status = support_capture_subprogram_self_sgid (buf);
++
++	  /* Bail out early if unsupported.  */
++	  if (WEXITSTATUS (status) == EXIT_UNSUPPORTED)
++	    return EXIT_UNSUPPORTED;
++
++	  ret |= status;
++	}
++      return ret;
++    }
+ }
++
++#define TEST_FUNCTION_ARGV do_test
++#include <support/test-driver.c>
+diff --git a/elf/tst-env-setuid.c b/elf/tst-env-setuid.c
+index 60ae0ca380..49b5e319e2 100644
+--- a/elf/tst-env-setuid.c
++++ b/elf/tst-env-setuid.c
+@@ -29,173 +29,12 @@
+ #include <sys/wait.h>
+ #include <unistd.h>
+ 
++#include <support/check.h>
+ #include <support/support.h>
+ #include <support/test-driver.h>
++#include <support/capture_subprocess.h>
+ 
+ static char SETGID_CHILD[] = "setgid-child";
+-#define CHILD_STATUS 42
+-
+-/* Return a GID which is not our current GID, but is present in the
+-   supplementary group list.  */
+-static gid_t
+-choose_gid (void)
+-{
+-  const int count = 64;
+-  gid_t groups[count];
+-  int ret = getgroups (count, groups);
+-  if (ret < 0)
+-    {
+-      printf ("getgroups: %m\n");
+-      exit (1);
+-    }
+-  gid_t current = getgid ();
+-  for (int i = 0; i < ret; ++i)
+-    {
+-      if (groups[i] != current)
+-	return groups[i];
+-    }
+-  return 0;
+-}
+-
+-/* Spawn and execute a program and verify that it returns the CHILD_STATUS.  */
+-static pid_t
+-do_execve (char **args)
+-{
+-  pid_t kid = vfork ();
+-
+-  if (kid < 0)
+-    {
+-      printf ("vfork: %m\n");
+-      return -1;
+-    }
+-
+-  if (kid == 0)
+-    {
+-      /* Child process.  */
+-      execve (args[0], args, environ);
+-      _exit (-errno);
+-    }
+-
+-  if (kid < 0)
+-    return 1;
+-
+-  int status;
+-
+-  if (waitpid (kid, &status, 0) < 0)
+-    {
+-      printf ("waitpid: %m\n");
+-      return 1;
+-    }
+-
+-  if (WEXITSTATUS (status) == EXIT_UNSUPPORTED)
+-    return EXIT_UNSUPPORTED;
+-
+-  if (!WIFEXITED (status) || WEXITSTATUS (status) != CHILD_STATUS)
+-    {
+-      printf ("Unexpected exit status %d from child process\n",
+-	      WEXITSTATUS (status));
+-      return 1;
+-    }
+-  return 0;
+-}
+-
+-/* Copies the executable into a restricted directory, so that we can
+-   safely make it SGID with the TARGET group ID.  Then runs the
+-   executable.  */
+-static int
+-run_executable_sgid (gid_t target)
+-{
+-  char *dirname = xasprintf ("%s/tst-tunables-setuid.%jd",
+-			     test_dir, (intmax_t) getpid ());
+-  char *execname = xasprintf ("%s/bin", dirname);
+-  int infd = -1;
+-  int outfd = -1;
+-  int ret = 0;
+-  if (mkdir (dirname, 0700) < 0)
+-    {
+-      printf ("mkdir: %m\n");
+-      goto err;
+-    }
+-  infd = open ("/proc/self/exe", O_RDONLY);
+-  if (infd < 0)
+-    {
+-      printf ("open (/proc/self/exe): %m\n");
+-      goto err;
+-    }
+-  outfd = open (execname, O_WRONLY | O_CREAT | O_EXCL, 0700);
+-  if (outfd < 0)
+-    {
+-      printf ("open (%s): %m\n", execname);
+-      goto err;
+-    }
+-  char buf[4096];
+-  for (;;)
+-    {
+-      ssize_t rdcount = read (infd, buf, sizeof (buf));
+-      if (rdcount < 0)
+-	{
+-	  printf ("read: %m\n");
+-	  goto err;
+-	}
+-      if (rdcount == 0)
+-	break;
+-      char *p = buf;
+-      char *end = buf + rdcount;
+-      while (p != end)
+-	{
+-	  ssize_t wrcount = write (outfd, buf, end - p);
+-	  if (wrcount == 0)
+-	    errno = ENOSPC;
+-	  if (wrcount <= 0)
+-	    {
+-	      printf ("write: %m\n");
+-	      goto err;
+-	    }
+-	  p += wrcount;
+-	}
+-    }
+-  if (fchown (outfd, getuid (), target) < 0)
+-    {
+-      printf ("fchown (%s): %m\n", execname);
+-      goto err;
+-    }
+-  if (fchmod (outfd, 02750) < 0)
+-    {
+-      printf ("fchmod (%s): %m\n", execname);
+-      goto err;
+-    }
+-  if (close (outfd) < 0)
+-    {
+-      printf ("close (outfd): %m\n");
+-      goto err;
+-    }
+-  if (close (infd) < 0)
+-    {
+-      printf ("close (infd): %m\n");
+-      goto err;
+-    }
+-
+-  char *args[] = {execname, SETGID_CHILD, NULL};
+-
+-  ret = do_execve (args);
+-
+-err:
+-  if (outfd >= 0)
+-    close (outfd);
+-  if (infd >= 0)
+-    close (infd);
+-  if (execname)
+-    {
+-      unlink (execname);
+-      free (execname);
+-    }
+-  if (dirname)
+-    {
+-      rmdir (dirname);
+-      free (dirname);
+-    }
+-  return ret;
+-}
+ 
+ #ifndef test_child
+ static int
+@@ -256,40 +95,32 @@ do_test (int argc, char **argv)
+   if (argc == 2 && strcmp (argv[1], SETGID_CHILD) == 0)
+     {
+       if (getgid () == getegid ())
+-	{
+-	  /* This can happen if the file system is mounted nosuid.  */
+-	  fprintf (stderr, "SGID failed: GID and EGID match (%jd)\n",
+-		   (intmax_t) getgid ());
+-	  exit (EXIT_UNSUPPORTED);
+-	}
++	/* This can happen if the file system is mounted nosuid.  */
++	FAIL_UNSUPPORTED ("SGID failed: GID and EGID match (%jd)\n",
++			  (intmax_t) getgid ());
+ 
+       int ret = test_child ();
+ 
+       if (ret != 0)
+ 	exit (1);
+ 
+-      exit (CHILD_STATUS);
++      exit (EXIT_SUCCESS);
+     }
+   else
+     {
+       if (test_parent () != 0)
+ 	exit (1);
+ 
+-      /* Try running a setgid program.  */
+-      gid_t target = choose_gid ();
+-      if (target == 0)
+-	{
+-	  fprintf (stderr,
+-		   "Could not find a suitable GID for user %jd, skipping test\n",
+-		   (intmax_t) getuid ());
+-	  exit (0);
+-	}
++      int status = support_capture_subprogram_self_sgid (SETGID_CHILD);
+ 
+-      return run_executable_sgid (target);
+-    }
++      if (WEXITSTATUS (status) == EXIT_UNSUPPORTED)
++	return EXIT_UNSUPPORTED;
++
++      if (!WIFEXITED (status))
++	FAIL_EXIT1 ("Unexpected exit status %d from child process\n", status);
+ 
+-  /* Something went wrong and our argv was corrupted.  */
+-  _exit (1);
++      return 0;
++    }
+ }
+ 
+ #define TEST_FUNCTION_ARGV do_test
 diff --git a/elf/tst-rtld-list-tunables.exp b/elf/tst-rtld-list-tunables.exp
 index 4f3f7ee4e3..9f66c52885 100644
 --- a/elf/tst-rtld-list-tunables.exp
@@ -1014,6 +1549,22 @@ index 4f3f7ee4e3..9f66c52885 100644
  glibc.malloc.mmap_threshold: 0x0 (min: 0x0, max: 0x[f]+)
  glibc.malloc.mxfast: 0x0 (min: 0x0, max: 0x[f]+)
  glibc.malloc.perturb: 0 (min: 0, max: 255)
+diff --git a/include/time.h b/include/time.h
+index caf2af5e74..e0636132a6 100644
+--- a/include/time.h
++++ b/include/time.h
+@@ -502,6 +502,11 @@ time_now (void)
+   __clock_gettime (TIME_CLOCK_GETTIME_CLOCKID, &ts);
+   return ts.tv_sec;
+ }
++
++#define NSEC_PER_SEC    1000000000L  /* Nanoseconds per second.  */
++#define USEC_PER_SEC    1000000L     /* Microseconds per second.  */
++#define NSEC_PER_USEC   1000L        /* Nanoseconds per microsecond.  */
++
+ #endif
+ 
+ #endif
 diff --git a/io/Makefile b/io/Makefile
 index b7bebe923f..d145d88f4e 100644
 --- a/io/Makefile
@@ -1248,6 +1799,168 @@ index d8c768abcc..605ddd78cd 100644
  
  where 'glibc' is the top namespace, 'cpu' is the tunable namespace and the
  remaining arguments are the same as the short form macros.
+diff --git a/misc/Makefile b/misc/Makefile
+index b08d7c68ab..05ad034baf 100644
+--- a/misc/Makefile
++++ b/misc/Makefile
+@@ -88,7 +88,7 @@ tests := tst-dirname tst-tsearch tst-fdset tst-mntent tst-hsearch \
+ 	 tst-preadvwritev tst-preadvwritev64 tst-makedev tst-empty \
+ 	 tst-preadvwritev2 tst-preadvwritev64v2 tst-warn-wide \
+ 	 tst-ldbl-warn tst-ldbl-error tst-dbl-efgcvt tst-ldbl-efgcvt \
+-	 tst-mntent-autofs tst-syscalls tst-mntent-escape
++	 tst-mntent-autofs tst-syscalls tst-mntent-escape tst-select
+ 
+ # Tests which need libdl.
+ ifeq (yes,$(build-shared))
+diff --git a/misc/tst-select.c b/misc/tst-select.c
+new file mode 100644
+index 0000000000..52aa26651f
+--- /dev/null
++++ b/misc/tst-select.c
+@@ -0,0 +1,143 @@
++/* Test for select timeout.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <support/capture_subprocess.h>
++#include <support/check.h>
++#include <support/support.h>
++#include <support/timespec.h>
++#include <support/xunistd.h>
++#include <support/xtime.h>
++#include <support/xsignal.h>
++
++struct child_args
++{
++  int fds[2][2];
++  struct timeval tmo;
++};
++
++static void
++alarm_handler (int signum)
++{
++  /* Do nothing.  */
++}
++
++static void
++do_test_child (void *clousure)
++{
++  struct child_args *args = (struct child_args *) clousure;
++
++  close (args->fds[0][1]);
++  close (args->fds[1][0]);
++
++  fd_set rfds;
++  FD_ZERO (&rfds);
++  FD_SET (args->fds[0][0], &rfds);
++
++  struct timespec ts = xclock_now (CLOCK_REALTIME);
++  ts = timespec_add (ts, (struct timespec) { args->tmo.tv_sec, 0 });
++
++  int r = select (args->fds[0][0] + 1, &rfds, NULL, NULL, &args->tmo);
++  TEST_COMPARE (r, 0);
++
++  if (support_select_modifies_timeout ())
++    {
++      TEST_COMPARE (args->tmo.tv_sec, 0);
++      TEST_COMPARE (args->tmo.tv_usec, 0);
++    }
++
++  TEST_TIMESPEC_NOW_OR_AFTER (CLOCK_REALTIME, ts);
++
++  xwrite (args->fds[1][1], "foo", 3);
++}
++
++static void
++do_test_child_alarm (void *clousure)
++{
++  struct sigaction act = { .sa_handler = alarm_handler };
++  xsigaction (SIGALRM, &act, NULL);
++  alarm (1);
++
++  struct timeval tv = { .tv_sec = 10, .tv_usec = 0 };
++  int r = select (0, NULL, NULL, NULL, &tv);
++  TEST_COMPARE (r, -1);
++  TEST_COMPARE (errno, EINTR);
++
++  if (support_select_modifies_timeout ())
++    TEST_VERIFY (tv.tv_sec < 10);
++}
++
++static int
++do_test (void)
++{
++  struct child_args args;
++
++  xpipe (args.fds[0]);
++  xpipe (args.fds[1]);
++
++  /* The child select should timeout and write on its pipe end.  */
++  args.tmo = (struct timeval) { .tv_sec = 0, .tv_usec = 250000 };
++  {
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (do_test_child, &args);
++    support_capture_subprocess_check (&result, "tst-select-child", 0,
++				      sc_allow_none);
++  }
++
++  if (support_select_normalizes_timeout ())
++    {
++      /* This is handled as 1 second instead of failing with EINVAL.  */
++      args.tmo = (struct timeval) { .tv_sec = 0, .tv_usec = 1000000 };
++      struct support_capture_subprocess result;
++      result = support_capture_subprocess (do_test_child, &args);
++      support_capture_subprocess_check (&result, "tst-select-child", 0,
++					sc_allow_none);
++    }
++
++  /* Same as before, but simulating polling.  */
++  args.tmo = (struct timeval) { .tv_sec = 0, .tv_usec = 0 };
++  {
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (do_test_child, &args);
++    support_capture_subprocess_check (&result, "tst-select-child", 0,
++				      sc_allow_none);
++  }
++
++  xclose (args.fds[0][0]);
++  xclose (args.fds[1][1]);
++
++  {
++    struct support_capture_subprocess result;
++    result = support_capture_subprocess (do_test_child_alarm, NULL);
++    support_capture_subprocess_check (&result, "tst-select-child", 0,
++				      sc_allow_none);
++  }
++
++  {
++    fd_set rfds;
++    FD_ZERO (&rfds);
++    FD_SET (args.fds[1][0], &rfds);
++
++    int r = select (args.fds[1][0] + 1, &rfds, NULL, NULL, &args.tmo);
++    TEST_COMPARE (r, 1);
++  }
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/nptl/Makefile b/nptl/Makefile
 index 0282e07390..5b036eb8a7 100644
 --- a/nptl/Makefile
@@ -1540,6 +2253,236 @@ index f1d73f8765..fea271869e 100644
  passwd: test2
  group: files
 +hosts: test1
+diff --git a/stdlib/tst-secure-getenv.c b/stdlib/tst-secure-getenv.c
+index c9ec03866f..5567c9ae21 100644
+--- a/stdlib/tst-secure-getenv.c
++++ b/stdlib/tst-secure-getenv.c
+@@ -30,167 +30,12 @@
+ #include <sys/wait.h>
+ #include <unistd.h>
+ 
++#include <support/check.h>
+ #include <support/support.h>
++#include <support/capture_subprocess.h>
+ #include <support/test-driver.h>
+ 
+ static char MAGIC_ARGUMENT[] = "run-actual-test";
+-#define MAGIC_STATUS 19
+-
+-/* Return a GID which is not our current GID, but is present in the
+-   supplementary group list.  */
+-static gid_t
+-choose_gid (void)
+-{
+-  int count = getgroups (0, NULL);
+-  if (count < 0)
+-    {
+-      printf ("getgroups: %m\n");
+-      exit (1);
+-    }
+-  gid_t *groups;
+-  groups = xcalloc (count, sizeof (*groups));
+-  int ret = getgroups (count, groups);
+-  if (ret < 0)
+-    {
+-      printf ("getgroups: %m\n");
+-      exit (1);
+-    }
+-  gid_t current = getgid ();
+-  gid_t not_current = 0;
+-  for (int i = 0; i < ret; ++i)
+-    {
+-      if (groups[i] != current)
+-        {
+-          not_current = groups[i];
+-          break;
+-        }
+-    }
+-  free (groups);
+-  return not_current;
+-}
+-
+-
+-/* Copies the executable into a restricted directory, so that we can
+-   safely make it SGID with the TARGET group ID.  Then runs the
+-   executable.  */
+-static int
+-run_executable_sgid (gid_t target)
+-{
+-  char *dirname = xasprintf ("%s/secure-getenv.%jd",
+-			     test_dir, (intmax_t) getpid ());
+-  char *execname = xasprintf ("%s/bin", dirname);
+-  int infd = -1;
+-  int outfd = -1;
+-  int ret = -1;
+-  if (mkdir (dirname, 0700) < 0)
+-    {
+-      printf ("mkdir: %m\n");
+-      goto err;
+-    }
+-  infd = open ("/proc/self/exe", O_RDONLY);
+-  if (infd < 0)
+-    {
+-      printf ("open (/proc/self/exe): %m\n");
+-      goto err;
+-    }
+-  outfd = open (execname, O_WRONLY | O_CREAT | O_EXCL, 0700);
+-  if (outfd < 0)
+-    {
+-      printf ("open (%s): %m\n", execname);
+-      goto err;
+-    }
+-  char buf[4096];
+-  for (;;)
+-    {
+-      ssize_t rdcount = read (infd, buf, sizeof (buf));
+-      if (rdcount < 0)
+-	{
+-	  printf ("read: %m\n");
+-	  goto err;
+-	}
+-      if (rdcount == 0)
+-	break;
+-      char *p = buf;
+-      char *end = buf + rdcount;
+-      while (p != end)
+-	{
+-	  ssize_t wrcount = write (outfd, buf, end - p);
+-	  if (wrcount == 0)
+-	    errno = ENOSPC;
+-	  if (wrcount <= 0)
+-	    {
+-	      printf ("write: %m\n");
+-	      goto err;
+-	    }
+-	  p += wrcount;
+-	}
+-    }
+-  if (fchown (outfd, getuid (), target) < 0)
+-    {
+-      printf ("fchown (%s): %m\n", execname);
+-      goto err;
+-    }
+-  if (fchmod (outfd, 02750) < 0)
+-    {
+-      printf ("fchmod (%s): %m\n", execname);
+-      goto err;
+-    }
+-  if (close (outfd) < 0)
+-    {
+-      printf ("close (outfd): %m\n");
+-      goto err;
+-    }
+-  if (close (infd) < 0)
+-    {
+-      printf ("close (infd): %m\n");
+-      goto err;
+-    }
+-
+-  int kid = fork ();
+-  if (kid < 0)
+-    {
+-      printf ("fork: %m\n");
+-      goto err;
+-    }
+-  if (kid == 0)
+-    {
+-      /* Child process.  */
+-      char *args[] = { execname, MAGIC_ARGUMENT, NULL };
+-      execve (execname, args, environ);
+-      printf ("execve (%s): %m\n", execname);
+-      _exit (1);
+-    }
+-  int status;
+-  if (waitpid (kid, &status, 0) < 0)
+-    {
+-      printf ("waitpid: %m\n");
+-      goto err;
+-    }
+-  if (!WIFEXITED (status) || WEXITSTATUS (status) != MAGIC_STATUS)
+-    {
+-      printf ("Unexpected exit status %d from child process\n",
+-	      status);
+-      goto err;
+-    }
+-  ret = 0;
+-
+-err:
+-  if (outfd >= 0)
+-    close (outfd);
+-  if (infd >= 0)
+-    close (infd);
+-  if (execname)
+-    {
+-      unlink (execname);
+-      free (execname);
+-    }
+-  if (dirname)
+-    {
+-      rmdir (dirname);
+-      free (dirname);
+-    }
+-  return ret;
+-}
+ 
+ static int
+ do_test (void)
+@@ -212,15 +57,15 @@ do_test (void)
+       exit (1);
+     }
+ 
+-  gid_t target = choose_gid ();
+-  if (target == 0)
+-    {
+-      fprintf (stderr,
+-	       "Could not find a suitable GID for user %jd, skipping test\n",
+-	       (intmax_t) getuid ());
+-      exit (0);
+-    }
+-  return run_executable_sgid (target);
++  int status = support_capture_subprogram_self_sgid (MAGIC_ARGUMENT);
++
++  if (WEXITSTATUS (status) == EXIT_UNSUPPORTED)
++    return EXIT_UNSUPPORTED;
++
++  if (!WIFEXITED (status))
++    FAIL_EXIT1 ("Unexpected exit status %d from child process\n", status);
++
++  return 0;
+ }
+ 
+ static void
+@@ -229,23 +74,15 @@ alternative_main (int argc, char **argv)
+   if (argc == 2 && strcmp (argv[1], MAGIC_ARGUMENT) == 0)
+     {
+       if (getgid () == getegid ())
+-	{
+-	  /* This can happen if the file system is mounted nosuid.  */
+-	  fprintf (stderr, "SGID failed: GID and EGID match (%jd)\n",
+-		  (intmax_t) getgid ());
+-	  exit (MAGIC_STATUS);
+-	}
++	/* This can happen if the file system is mounted nosuid.  */
++	FAIL_UNSUPPORTED ("SGID failed: GID and EGID match (%jd)\n",
++		   (intmax_t) getgid ());
+       if (getenv ("PATH") == NULL)
+-	{
+-	  printf ("PATH variable not present\n");
+-	  exit (3);
+-	}
++	FAIL_EXIT (3, "PATH variable not present\n");
+       if (secure_getenv ("PATH") != NULL)
+-	{
+-	  printf ("PATH variable not filtered out\n");
+-	  exit (4);
+-	}
+-      exit (MAGIC_STATUS);
++	FAIL_EXIT (4, "PATH variable not filtered out\n");
++
++      exit (EXIT_SUCCESS);
+     }
+ }
+ 
 diff --git a/string/rawmemchr.c b/string/rawmemchr.c
 index 59bbeeaa42..b8523118e5 100644
 --- a/string/rawmemchr.c
@@ -1584,6 +2527,379 @@ index 59bbeeaa42..b8523118e5 100644
  weak_alias (__rawmemchr, rawmemchr)
 +
 +DIAG_POP_NEEDS_COMMENT;
+diff --git a/sunrpc/svcauth_des.c b/sunrpc/svcauth_des.c
+index 7607abc818..25a85c9097 100644
+--- a/sunrpc/svcauth_des.c
++++ b/sunrpc/svcauth_des.c
+@@ -58,7 +58,6 @@
+ 
+ #define debug(msg)		/*printf("svcauth_des: %s\n", msg) */
+ 
+-#define USEC_PER_SEC ((uint32_t) 1000000L)
+ #define BEFORE(t1, t2) timercmp(t1, t2, <)
+ 
+ /*
+diff --git a/support/Makefile b/support/Makefile
+index bb9889efb4..fc5d9d4c79 100644
+--- a/support/Makefile
++++ b/support/Makefile
+@@ -67,6 +67,8 @@ libsupport-routines = \
+   support_quote_string \
+   support_record_failure \
+   support_run_diff \
++  support_select_modifies_timeout \
++  support_select_normalizes_timeout \
+   support_set_small_thread_stack_size \
+   support_shared_allocate \
+   support_small_stack_thread_attribute \
+diff --git a/support/capture_subprocess.h b/support/capture_subprocess.h
+index 8969d4a99a..4be430f099 100644
+--- a/support/capture_subprocess.h
++++ b/support/capture_subprocess.h
+@@ -41,6 +41,12 @@ struct support_capture_subprocess support_capture_subprocess
+ struct support_capture_subprocess support_capture_subprogram
+   (const char *file, char *const argv[]);
+ 
++/* Copy the running program into a setgid binary and run it with CHILD_ID
++   argument.  If execution is successful, return the exit status of the child
++   program, otherwise return a non-zero failure exit code.  */
++int support_capture_subprogram_self_sgid
++  (char *child_id);
++
+ /* Deallocate the subprocess data captured by
+    support_capture_subprocess.  */
+ void support_capture_subprocess_free (struct support_capture_subprocess *);
+diff --git a/support/subprocess.h b/support/subprocess.h
+index 11cfc6a07f..40d82c7e4d 100644
+--- a/support/subprocess.h
++++ b/support/subprocess.h
+@@ -38,6 +38,11 @@ struct support_subprocess support_subprocess
+ struct support_subprocess support_subprogram
+   (const char *file, char *const argv[]);
+ 
++/* Invoke program FILE with ARGV arguments by using posix_spawn and wait for it
++   to complete.  Return program exit status.  */
++int support_subprogram_wait
++  (const char *file, char *const argv[]);
++
+ /* Wait for the subprocess indicated by PROC::PID.  Return the status
+    indicate by waitpid call.  */
+ int support_process_wait (struct support_subprocess *proc);
+diff --git a/support/support.h b/support/support.h
+index 9cbc455720..8c7890e0a6 100644
+--- a/support/support.h
++++ b/support/support.h
+@@ -23,6 +23,7 @@
+ #ifndef SUPPORT_H
+ #define SUPPORT_H
+ 
++#include <stdbool.h>
+ #include <stddef.h>
+ #include <sys/cdefs.h>
+ /* For mode_t.  */
+@@ -129,6 +130,14 @@ extern void support_copy_file (const char *from, const char *to);
+ extern ssize_t support_copy_file_range (int, off64_t *, int, off64_t *,
+ 					size_t, unsigned int);
+ 
++/* Return true if select modify the timeout to reflect the amount of time
++   no slept.  */
++extern bool support_select_modifies_timeout (void);
++
++/* Return true if select normalize the timeout input by taking in account
++   tv_usec larger than 1000000.  */
++extern bool support_select_normalizes_timeout (void);
++
+ __END_DECLS
+ 
+ #endif /* SUPPORT_H */
+diff --git a/support/support_capture_subprocess.c b/support/support_capture_subprocess.c
+index a7afa0e70b..27bfd19c93 100644
+--- a/support/support_capture_subprocess.c
++++ b/support/support_capture_subprocess.c
+@@ -20,11 +20,14 @@
+ #include <support/capture_subprocess.h>
+ 
+ #include <errno.h>
++#include <fcntl.h>
+ #include <stdlib.h>
+ #include <support/check.h>
+ #include <support/xunistd.h>
+ #include <support/xsocket.h>
+ #include <support/xspawn.h>
++#include <support/support.h>
++#include <support/test-driver.h>
+ 
+ static void
+ transfer (const char *what, struct pollfd *pfd, struct xmemstream *stream)
+@@ -36,7 +39,7 @@ transfer (const char *what, struct pollfd *pfd, struct xmemstream *stream)
+       if (ret < 0)
+         {
+           support_record_failure ();
+-          printf ("error: reading from subprocess %s: %m", what);
++          printf ("error: reading from subprocess %s: %m\n", what);
+           pfd->events = 0;
+           pfd->revents = 0;
+         }
+@@ -102,6 +105,129 @@ support_capture_subprogram (const char *file, char *const argv[])
+   return result;
+ }
+ 
++/* Copies the executable into a restricted directory, so that we can
++   safely make it SGID with the TARGET group ID.  Then runs the
++   executable.  */
++static int
++copy_and_spawn_sgid (char *child_id, gid_t gid)
++{
++  char *dirname = xasprintf ("%s/tst-tunables-setuid.%jd",
++			     test_dir, (intmax_t) getpid ());
++  char *execname = xasprintf ("%s/bin", dirname);
++  int infd = -1;
++  int outfd = -1;
++  int ret = 1, status = 1;
++
++  TEST_VERIFY (mkdir (dirname, 0700) == 0);
++  if (support_record_failure_is_failed ())
++    goto err;
++
++  infd = open ("/proc/self/exe", O_RDONLY);
++  if (infd < 0)
++    FAIL_UNSUPPORTED ("unsupported: Cannot read binary from procfs\n");
++
++  outfd = open (execname, O_WRONLY | O_CREAT | O_EXCL, 0700);
++  TEST_VERIFY (outfd >= 0);
++  if (support_record_failure_is_failed ())
++    goto err;
++
++  char buf[4096];
++  for (;;)
++    {
++      ssize_t rdcount = read (infd, buf, sizeof (buf));
++      TEST_VERIFY (rdcount >= 0);
++      if (support_record_failure_is_failed ())
++	goto err;
++      if (rdcount == 0)
++	break;
++      char *p = buf;
++      char *end = buf + rdcount;
++      while (p != end)
++	{
++	  ssize_t wrcount = write (outfd, buf, end - p);
++	  if (wrcount == 0)
++	    errno = ENOSPC;
++	  TEST_VERIFY (wrcount > 0);
++	  if (support_record_failure_is_failed ())
++	    goto err;
++	  p += wrcount;
++	}
++    }
++  TEST_VERIFY (fchown (outfd, getuid (), gid) == 0);
++  if (support_record_failure_is_failed ())
++    goto err;
++  TEST_VERIFY (fchmod (outfd, 02750) == 0);
++  if (support_record_failure_is_failed ())
++    goto err;
++  TEST_VERIFY (close (outfd) == 0);
++  if (support_record_failure_is_failed ())
++    goto err;
++  TEST_VERIFY (close (infd) == 0);
++  if (support_record_failure_is_failed ())
++    goto err;
++
++  /* We have the binary, now spawn the subprocess.  Avoid using
++     support_subprogram because we only want the program exit status, not the
++     contents.  */
++  ret = 0;
++
++  char * const args[] = {execname, child_id, NULL};
++
++  status = support_subprogram_wait (args[0], args);
++
++err:
++  if (outfd >= 0)
++    close (outfd);
++  if (infd >= 0)
++    close (infd);
++  if (execname != NULL)
++    {
++      unlink (execname);
++      free (execname);
++    }
++  if (dirname != NULL)
++    {
++      rmdir (dirname);
++      free (dirname);
++    }
++
++  if (ret != 0)
++    FAIL_EXIT1("Failed to make sgid executable for test\n");
++
++  return status;
++}
++
++int
++support_capture_subprogram_self_sgid (char *child_id)
++{
++  gid_t target = 0;
++  const int count = 64;
++  gid_t groups[count];
++
++  /* Get a GID which is not our current GID, but is present in the
++     supplementary group list.  */
++  int ret = getgroups (count, groups);
++  if (ret < 0)
++    FAIL_UNSUPPORTED("Could not get group list for user %jd\n",
++		     (intmax_t) getuid ());
++
++  gid_t current = getgid ();
++  for (int i = 0; i < ret; ++i)
++    {
++      if (groups[i] != current)
++	{
++	  target = groups[i];
++	  break;
++	}
++    }
++
++  if (target == 0)
++    FAIL_UNSUPPORTED("Could not find a suitable GID for user %jd\n",
++		     (intmax_t) getuid ());
++
++  return copy_and_spawn_sgid (child_id, target);
++}
++
+ void
+ support_capture_subprocess_free (struct support_capture_subprocess *p)
+ {
+diff --git a/support/support_select_modifies_timeout.c b/support/support_select_modifies_timeout.c
+new file mode 100644
+index 0000000000..653ea2cc98
+--- /dev/null
++++ b/support/support_select_modifies_timeout.c
+@@ -0,0 +1,29 @@
++/* Return whether select modifies the timeout.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/support.h>
++
++bool
++support_select_modifies_timeout (void)
++{
++#ifdef __linux__
++  return true;
++#else
++  return false;
++#endif
++}
+diff --git a/support/support_select_normalizes_timeout.c b/support/support_select_normalizes_timeout.c
+new file mode 100644
+index 0000000000..987f9b035e
+--- /dev/null
++++ b/support/support_select_normalizes_timeout.c
+@@ -0,0 +1,29 @@
++/* Return whether select normalizes the timeout.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/support.h>
++
++bool
++support_select_normalizes_timeout (void)
++{
++#ifdef __linux__
++  return true;
++#else
++  return false;
++#endif
++}
+diff --git a/support/support_subprocess.c b/support/support_subprocess.c
+index 88489a3357..89e767ae47 100644
+--- a/support/support_subprocess.c
++++ b/support/support_subprocess.c
+@@ -27,7 +27,7 @@
+ #include <support/subprocess.h>
+ 
+ static struct support_subprocess
+-support_suprocess_init (void)
++support_subprocess_init (void)
+ {
+   struct support_subprocess result;
+ 
+@@ -48,7 +48,7 @@ support_suprocess_init (void)
+ struct support_subprocess
+ support_subprocess (void (*callback) (void *), void *closure)
+ {
+-  struct support_subprocess result = support_suprocess_init ();
++  struct support_subprocess result = support_subprocess_init ();
+ 
+   result.pid = xfork ();
+   if (result.pid == 0)
+@@ -71,7 +71,7 @@ support_subprocess (void (*callback) (void *), void *closure)
+ struct support_subprocess
+ support_subprogram (const char *file, char *const argv[])
+ {
+-  struct support_subprocess result = support_suprocess_init ();
++  struct support_subprocess result = support_subprocess_init ();
+ 
+   posix_spawn_file_actions_t fa;
+   /* posix_spawn_file_actions_init does not fail.  */
+@@ -84,7 +84,7 @@ support_subprogram (const char *file, char *const argv[])
+   xposix_spawn_file_actions_addclose (&fa, result.stdout_pipe[1]);
+   xposix_spawn_file_actions_addclose (&fa, result.stderr_pipe[1]);
+ 
+-  result.pid = xposix_spawn (file, &fa, NULL, argv, NULL);
++  result.pid = xposix_spawn (file, &fa, NULL, argv, environ);
+ 
+   xclose (result.stdout_pipe[1]);
+   xclose (result.stderr_pipe[1]);
+@@ -92,6 +92,19 @@ support_subprogram (const char *file, char *const argv[])
+   return result;
+ }
+ 
++int
++support_subprogram_wait (const char *file, char *const argv[])
++{
++  posix_spawn_file_actions_t fa;
++
++  posix_spawn_file_actions_init (&fa);
++  struct support_subprocess res = support_subprocess_init ();
++
++  res.pid = xposix_spawn (file, &fa, NULL, argv, environ);
++
++  return support_process_wait (&res);
++}
++
+ int
+ support_process_wait (struct support_subprocess *proc)
+ {
 diff --git a/support/test-container.c b/support/test-container.c
 index 28cc44d9f1..94498d3901 100644
 --- a/support/test-container.c
@@ -2067,6 +3383,115 @@ index 696616e779..e9bd3684db 100644
  #define HWCAP_S390_DFLT         262144
 +#define HWCAP_S390_VXRS_PDE2    524288
 +#define HWCAP_S390_NNPA         1048576
+diff --git a/sysdeps/unix/sysv/linux/select.c b/sysdeps/unix/sysv/linux/select.c
+index 415aa87d3c..dc16a816ed 100644
+--- a/sysdeps/unix/sysv/linux/select.c
++++ b/sysdeps/unix/sysv/linux/select.c
+@@ -33,13 +33,35 @@ int
+ __select64 (int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+ 	    struct __timeval64 *timeout)
+ {
+-  struct __timespec64 ts64, *pts64 = NULL;
+-  if (timeout != NULL)
++  __time64_t s = timeout != NULL ? timeout->tv_sec : 0;
++  int32_t us = timeout != NULL ? timeout->tv_usec : 0;
++  int32_t ns;
++
++  if (s < 0 || us < 0)
++    return INLINE_SYSCALL_ERROR_RETURN_VALUE (EINVAL);
++
++  /* Normalize the timeout, as legacy Linux __NR_select and __NR__newselect.
++     Different than syscall, it also handle possible overflow.  */
++  if (us / USEC_PER_SEC > INT64_MAX - s)
++    {
++      s = INT64_MAX;
++      ns = NSEC_PER_SEC - 1;
++    }
++  else
+     {
+-      ts64 = timeval64_to_timespec64 (*timeout);
+-      pts64 = &ts64;
++      s += us / USEC_PER_SEC;
++      us = us % USEC_PER_SEC;
++      ns = us * NSEC_PER_USEC;
+     }
+ 
++  struct __timespec64 ts64, *pts64 = NULL;
++   if (timeout != NULL)
++     {
++       ts64.tv_sec = s;
++       ts64.tv_nsec = ns;
++       pts64 = &ts64;
++     }
++
+ #ifndef __NR_pselect6_time64
+ # define __NR_pselect6_time64 __NR_pselect6
+ #endif
+@@ -52,10 +74,10 @@ __select64 (int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+          (though the pselect() glibc call suppresses this behavior).
+          Since select() on Linux has the same behavior as the pselect6
+          syscall, we update the timeout here.  */
+-      if (r == 0 || errno != ENOSYS)
++      if (r >= 0 || errno != ENOSYS)
+ 	{
+ 	  if (timeout != NULL)
+-	    TIMEVAL_TO_TIMESPEC (timeout, &ts64);
++	    TIMESPEC_TO_TIMEVAL (timeout, &ts64);
+ 	  return r;
+ 	}
+ 
+@@ -64,14 +86,15 @@ __select64 (int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+ 
+ #ifndef __ASSUME_TIME64_SYSCALLS
+   struct timespec ts32, *pts32 = NULL;
+-  if (timeout != NULL)
++  if (pts64 != NULL)
+     {
+-      if (! in_time_t_range (timeout->tv_sec))
++      if (! in_time_t_range (pts64->tv_sec))
+ 	{
+ 	  __set_errno (EINVAL);
+ 	  return -1;
+ 	}
+-      ts32 = valid_timespec64_to_timespec (ts64);
++      ts32.tv_sec = s;
++      ts32.tv_nsec = ns;
+       pts32 = &ts32;
+     }
+ # ifndef __ASSUME_PSELECT
+@@ -84,7 +107,7 @@ __select64 (int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+   r = SYSCALL_CANCEL (pselect6, nfds, readfds, writefds, exceptfds, pts32,
+ 		      NULL);
+ # endif
+-  if (r >= 0 && timeout != NULL)
++  if (timeout != NULL)
+     *timeout = valid_timespec_to_timeval64 (ts32);
+ #endif
+ 
+@@ -105,7 +128,7 @@ __select (int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+       ptv64 = &tv64;
+     }
+   int r = __select64 (nfds, readfds, writefds, exceptfds, ptv64);
+-  if (r >= 0 && timeout != NULL)
++  if (timeout != NULL)
+     /* The remanining timeout will be always less the input TIMEOUT.  */
+     *timeout = valid_timeval64_to_timeval (tv64);
+   return r;
+diff --git a/sysdeps/unix/sysv/linux/sys/prctl.h b/sysdeps/unix/sysv/linux/sys/prctl.h
+index 00817ff0f1..c9048c7cdb 100644
+--- a/sysdeps/unix/sysv/linux/sys/prctl.h
++++ b/sysdeps/unix/sysv/linux/sys/prctl.h
+@@ -25,10 +25,6 @@
+    we're picking up...  */
+ 
+ /* Memory tagging control operations (for AArch64).  */
+-#ifndef PR_TAGGED_ADDR_ENABLE
+-# define PR_TAGGED_ADDR_ENABLE	(1UL << 8)
+-#endif
+-
+ #ifndef PR_MTE_TCF_SHIFT
+ # define PR_MTE_TCF_SHIFT	1
+ # define PR_MTE_TCF_NONE	(0UL << PR_MTE_TCF_SHIFT)
 diff --git a/sysdeps/x86/Makefile b/sysdeps/x86/Makefile
 index dd82674342..d231263051 100644
 --- a/sysdeps/x86/Makefile
@@ -2551,6 +3976,23 @@ index aaf524cb56..49ef4aa612 100644
  #  define ISA_V4	GNU_PROPERTY_X86_ISA_1_V4
  # else
  #  define ISA_V4	0
+diff --git a/sysdeps/x86/tst-cpu-features-supports.c b/sysdeps/x86/tst-cpu-features-supports.c
+index 79d803eb29..cc0d2b2d56 100644
+--- a/sysdeps/x86/tst-cpu-features-supports.c
++++ b/sysdeps/x86/tst-cpu-features-supports.c
+@@ -59,9 +59,9 @@ do_test (int argc, char **argv)
+   fails += CHECK_SUPPORTS (aes, AES);
+ #endif
+ #if __GNUC_PREREQ (11, 1)
+-  fails += CHECK_SUPPORTS (amx_bf16, AMX_BF16);
+-  fails += CHECK_SUPPORTS (amx_int8, AMX_INT8);
+-  fails += CHECK_SUPPORTS (amx_tile, AMX_TILE);
++  fails += CHECK_SUPPORTS (amx-bf16, AMX_BF16);
++  fails += CHECK_SUPPORTS (amx-int8, AMX_INT8);
++  fails += CHECK_SUPPORTS (amx-tile, AMX_TILE);
+ #endif
+   fails += CHECK_SUPPORTS (avx, AVX);
+   fails += CHECK_SUPPORTS (avx2, AVX2);
 diff --git a/sysdeps/x86/tst-sysconf-cache-linesize-static.c b/sysdeps/x86/tst-sysconf-cache-linesize-static.c
 new file mode 100644
 index 0000000000..152ae68821
