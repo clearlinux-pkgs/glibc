@@ -507,12 +507,12 @@ pushd localedata
 mkdir -p %{buildroot}/usr/share/locale
 langs_list=%{SOURCE1}
 
-#while IFS= read -r lang
-#do
-#  I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/$lang -c -f charmaps/UTF-8 $lang.UTF-8
-#  mv %{buildroot}/usr/share/locale/$lang.utf8 %{buildroot}/usr/share/locale/$lang.UTF-8
-#done < $langs_list
-#popd
+while IFS= read -r lang
+do
+  I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/$lang -c -f charmaps/UTF-8 $lang.UTF-8
+  mv %{buildroot}/usr/share/locale/$lang.utf8 %{buildroot}/usr/share/locale/$lang.UTF-8
+done < $langs_list
+popd
 
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/share/locale/locale-archive
 
