@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.33
-Release:        357
+Release:        358
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
