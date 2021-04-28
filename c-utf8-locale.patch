@@ -1,9 +1,10 @@
 Taken from Fedora's current C.UTF-8 locale definition:
 https://src.fedoraproject.org/rpms/glibc/raw/master/f/glibc-c-utf8-locale.patch
 
-diff -Nru glibc-2.28/localedata/SUPPORTED glibc-2.28~/localedata/SUPPORTED
---- glibc-2.28/localedata/SUPPORTED	2018-07-31 22:10:47.000000000 -0700
-+++ glibc-2.28~/localedata/SUPPORTED	2019-01-08 23:19:38.034680961 -0800
+diff --git a/localedata/SUPPORTED b/localedata/SUPPORTED
+index 8ca023e..2a78391 100644
+--- a/localedata/SUPPORTED
++++ b/localedata/SUPPORTED
 @@ -1,6 +1,7 @@
  # This file names the currently supported and somewhat tested locales.
  # If you have any additions please file a glibc bug report.
@@ -12,9 +13,11 @@ diff -Nru glibc-2.28/localedata/SUPPORTED glibc-2.28~/localedata/SUPPORTED
  aa_DJ.UTF-8/UTF-8 \
  aa_DJ/ISO-8859-1 \
  aa_ER/UTF-8 \
-diff -Nru glibc-2.28/localedata/locales/C glibc-2.28~/localedata/locales/C
---- glibc-2.28/localedata/locales/C	1969-12-31 16:00:00.000000000 -0800
-+++ glibc-2.28~/localedata/locales/C	2019-01-07 11:23:17.379590862 -0800
+diff --git a/localedata/locales/C b/localedata/locales/C
+new file mode 100644
+index 0000000..fdf460e
+--- /dev/null
++++ b/localedata/locales/C
 @@ -0,0 +1,238 @@
 +escape_char /
 +comment_char %
@@ -61,21 +64,21 @@ diff -Nru glibc-2.28/localedata/locales/C glibc-2.28~/localedata/locales/C
 +<U0000>
 +..
 +<UFFFF>
-+<U10000>
++<U00010000>
 +..
-+<U1FFFF>
-+<U20000>
++<U0001FFFF>
++<U00020000>
 +..
-+<U2FFFF>
-+<UE0000>
++<U0002FFFF>
++<U000E0000>
 +..
-+<UEFFFF>
-+<UF0000>
++<U000EFFFF>
++<U000F0000>
 +..
-+<UFFFFF>
-+<U100000>
++<U000FFFFF>
++<U00100000>
 +..
-+<U10FFFF>
++<U0010FFFF>
 +UNDEFINED
 +order_end
 +END LC_COLLATE
