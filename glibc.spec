@@ -437,6 +437,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-static-pie \
     libc_cv_slibdir=/usr/lib32 \
     libc_cv_complocaledir=/usr/share/locale \
+    libc_cv_can_use_register_asm_ebp=no \
     CC="gcc -m32" CXX="g++ -m32" i686-linux-gnu
 
 
