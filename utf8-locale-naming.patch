@@ -1,0 +1,25 @@
+diff --git a/localedata/Makefile b/localedata/Makefile
+index 14e04cd3..d0cf1913 100644
+--- a/localedata/Makefile
++++ b/localedata/Makefile
+@@ -434,14 +434,17 @@ define build-one-locale
+ 	   || [ "$$charset" = 'SHIFT_JISX0213' ]; then \
+ 	   flags="$$flags --no-warnings=ascii"; \
+ 	fi; \
+-	echo -n `echo $$locale | sed 's/\([^.\@]*\).*/\1/'`; \
++	out_locale=`echo $$locale | sed 's/\([^.\@]*\).*/\1/'`; \
++	out_modifier=`echo $$locale | sed 's/\([^\@]*\)\(\@.*\)*/\2/'`; \
++	echo -n "$$out_locale"; \
+ 	echo -n ".$$charset"; \
+-	echo -n `echo $$locale | sed 's/\([^\@]*\)\(\@.*\)*/\2/'`; \
++	echo -n "$$out_modifier"; \
+ 	echo -n '...'; \
+ 	input=`echo $$locale | sed 's/\([^.]*\)[^@]*\(.*\)/\1\2/'`; \
++	output="$$out_locale.$$charset$$out_modifier"; \
+ 	$(LOCALEDEF) $$flags --alias-file=../intl/locale.alias \
+ 		     -i locales/$$input -f charmaps/$$charset \
+-		     $(addprefix --prefix=,$(install_root)) $$locale \
++		     $(addprefix --prefix=,$(install_root)) $$output \
+ 	&& echo ' done';
+ endef
+ 

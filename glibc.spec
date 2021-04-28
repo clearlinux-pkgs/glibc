@@ -47,7 +47,9 @@ Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 # Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
 # Required for linux-steam-integration
 Patch61: 	fix-ld-audit-performance.patch
+
 Patch62:	c-utf8-locale.patch
+Patch63:	utf8-locale-naming.patch
 
 # cves: patches 101 through 200
 
@@ -231,6 +233,7 @@ GNU C library extra components.
 %patch56 -p1
 %patch61 -p1
 %patch62 -p1
+%patch63 -p1
 
 
 %patch9 -p1
@@ -506,11 +509,8 @@ popd
 
 ## Generate UTF-8 locale-related data
 make -s -O %{?_smp_mflags} localedata/install-locale-files DESTDIR=%{buildroot} install_root=%{buildroot}
-for origpath in %{buildroot}/usr/share/locale/*.utf8; do
-  dir=$(dirname $origpath)
-  base=$(basename $origpath)
-  lang="${base%.utf8}"
-  mv -v "$origpath" "$dir"/"$lang".UTF-8
+for origpath in %{buildroot}/usr/share/locale/*.utf8*; do
+  rename -v .utf8 .UTF-8 "$origpath"
 done
 
 # Reduce footprint of localedata, since `make localedata/install-locale-files`
