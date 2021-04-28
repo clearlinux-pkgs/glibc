@@ -59,6 +59,7 @@ BuildRequires:	gettext-dev
 BuildRequires:	bison
 BuildRequires:	gcc-dev32 gcc-libgcc32 gcc-libstdc++32
 BuildRequires:	python3-dev
+BuildRequires:	util-linux
 #BuildRequires:  rpcsvc-proto-dev
 
 
@@ -512,6 +513,10 @@ for origpath in %{buildroot}/usr/share/locale/*.utf8; do
   lang="${base%.utf8}"
   mv -v "$origpath" "$dir"/"$lang".UTF-8
 done
+
+# Reduce footprint of localedata, since `make localedata/install-locale-files`
+# passes the `--no-hard-links` option to `localedef`.
+hardlink %{buildroot}/usr/share/locale
 
 popd # ../glibc-buildroot
 
