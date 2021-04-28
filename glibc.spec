@@ -11,7 +11,6 @@ Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
 Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.33.tar.gz
-Source1:        langs.txt
 
 Patch1:                glibc-stable-branch.patch
 
@@ -239,6 +238,11 @@ GNU C library extra components.
 %build
 export SOURCE_DATE_EPOCH=1484361909
 export LANG=C
+
+# Keep only the UTF-8 locales...
+supported=./localedata/SUPPORTED
+sed -nr '/^(#|SUPPORTED-LOCALES=|.*\/UTF-8)/p' $supported > $supported.new
+mv -v $supported.new $supported
 
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
@@ -486,7 +490,7 @@ mkdir -p %{buildroot}/var/cache/locale
 
 iconvconfig --prefix=%{buildroot}
 
-make localedata/install-locales  DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
+make -s -O localedata/install-locales  DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
 # Make ldconfig not fail
 install -d %{buildroot}/var/cache/ldconfig
@@ -499,19 +503,17 @@ for f in benchtests/*; do [ -x $f -a ! -d $f ] && cp -a $f %{buildroot}/usr/lib6
 pushd %{buildroot}/usr/bin
 find ../lib64/glibc/benchmarks -type f -exec ln -s {} . \;
 popd
-popd
 
-pushd localedata
-# Generate out of locale-archive an (en_US.) UTF-8 locale
-mkdir -p %{buildroot}/usr/share/locale
-langs_list=%{SOURCE1}
+## Generate UTF-8 locale-related data
+make -s -O %{?_smp_mflags} localedata/install-locale-files DESTDIR=%{buildroot} install_root=%{buildroot}
+for origpath in %{buildroot}/usr/share/locale/*.utf8; do
+  dir=$(dirname $origpath)
+  base=$(basename $origpath)
+  lang="${base%.utf8}"
+  mv -v "$origpath" "$dir"/"$lang".UTF-8
+done
 
-while IFS= read -r lang
-do
-  I18NPATH=. GCONV_PATH=../../glibc-buildroot/iconvdata LC_ALL=C ../../glibc-buildroot/locale/localedef --no-archive --prefix=%{buildroot} --alias-file=../intl/locale.alias -i locales/$lang -c -f charmaps/UTF-8 $lang.UTF-8
-  mv %{buildroot}/usr/share/locale/$lang.utf8 %{buildroot}/usr/share/locale/$lang.UTF-8
-done < $langs_list
-popd
+popd # ../glibc-buildroot
 
 ln -sfv /var/cache/locale/locale-archive %{buildroot}/usr/share/locale/locale-archive
 
@@ -566,8 +568,8 @@ popd
 
 %files -n libc6
 %dir /usr/share/locale
-#/usr/share/locale/C.UTF-8
-#/usr/share/locale/en_US.UTF-8
+/usr/share/locale/C.UTF-8
+/usr/share/locale/en_US.UTF-8
 /usr/lib64/audit/sotruss-lib.so
 /usr/lib64/gconv/ANSI_X3.110.so
 /usr/lib64/gconv/ARMSCII-8.so
@@ -748,11 +750,11 @@ popd
 # TODO: SPLIT!
 %files locale
 /usr/share/locale
-#%exclude /usr/share/locale/C.UTF-8
+%exclude /usr/share/locale/C.UTF-8
 # NOTE: en_US.UTF-8 locale files are installed by libc6; avoid installing them
 # in the -locale subpackage, because it triggers a bug in librpm that can
 # corrupt file permissions and therefore lead to corrupt swupd update content...
-#%exclude /usr/share/locale/en_US.UTF-8
+%exclude /usr/share/locale/en_US.UTF-8
 %exclude /usr/share/locale/locale-archive
 %exclude /var/cache/locale/locale-archive
 %{_datadir}/i18n
