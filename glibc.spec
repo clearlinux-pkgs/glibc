@@ -20,7 +20,6 @@ Patch8:		0001-sysdeps-unix-Add-support-for-usr-lib32-as-a-system-l.patch
 #Patch9:		nsswitch-altfiles.patch
 Patch9:		nsswitch.patch
 Patch10:	ld-so-cache-in-var.patch
-Patch11:	fewerlocales.patch
 Patch12:	mkdir-ldconfig.patch
 Patch13:	locale-var-cache.patch
 Patch14:	nonscd.patch
