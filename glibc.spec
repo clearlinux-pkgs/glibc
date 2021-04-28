@@ -3,8 +3,6 @@
 %define abi_package %{nil}
 
 
-%define __strip /bin/true
-
 Name:           glibc
 Version:        2.33
 Release:        356
