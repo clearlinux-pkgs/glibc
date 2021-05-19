@@ -899,6 +899,7 @@ popd
 /usr/lib64/gconv/GBK.so
 
 %files dev
+%exclude /usr/lib64/gcc/x86_64-generic-linux/11/include-fixed/bits/statx.h
 /usr/include/*.h
 /usr/include/arpa/
 /usr/include/bits/
