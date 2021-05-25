@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 71f5d20324..0877a13dae 100644
+index 71f5d20324..a6202ad058 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,27 @@ See the end for copying conditions.
+@@ -5,6 +5,28 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -26,6 +26,7 @@ index 71f5d20324..0877a13dae 100644
 +  [27651] Performance regression after updating to 2.33
 +  [27706] select fails to update timeout on error
 +  [27744] Support different libpthread/ld.so load orders for gdb -p
++  [27892] powerpc: scv ABI error handling fails to check IS_ERR_VALUE
 +
  Version 2.33
  
@@ -3410,6 +3411,22 @@ index ecb729da6b..ca96397a4a 100644
  
  # define lll_futex_syscall(nargs, futexp, op, ...)                      \
    ({                                                                    \
+diff --git a/sysdeps/powerpc/powerpc64/sysdep.h b/sysdeps/powerpc/powerpc64/sysdep.h
+index c57bb1c05d..1ea4c3b917 100644
+--- a/sysdeps/powerpc/powerpc64/sysdep.h
++++ b/sysdeps/powerpc/powerpc64/sysdep.h
+@@ -398,8 +398,9 @@ LT_LABELSUFFIX(name,_name_end): ; \
+ #endif
+ 
+ #define RET_SCV \
+-    cmpdi r3,0; \
+-    bgelr+; \
++    li r9,-4095; \
++    cmpld r3,r9; \
++    bltlr+; \
+     neg r3,r3;
+ 
+ #define RET_SC \
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
 index eeb64f9fb0..53b65ef349 100644
 --- a/sysdeps/pthread/Makefile
