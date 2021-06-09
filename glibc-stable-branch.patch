@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 71f5d20324..a6202ad058 100644
+index 71f5d20324..0c33a80af9 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,28 @@ See the end for copying conditions.
+@@ -5,6 +5,29 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -16,6 +16,7 @@ index 71f5d20324..a6202ad058 100644
 +
 +The following bugs are resolved with this release:
 +
++  [15271] dlfcn function failure after dlmopen terminates process
 +  [18435] pthread_once hangs when init routine throws an exception
 +  [23462] Static binary with dynamic string tokens ($LIB, $PLATFORM, $ORIGIN)
 +    crashes
@@ -46,8 +47,32 @@ index 06ee8ae26a..f21bf04e47 100644
 +#undef HAVE_X86_MOVBE
 +
  #endif
+diff --git a/dlfcn/dlerror.c b/dlfcn/dlerror.c
+index 48b4c25bea..ff7c7b9228 100644
+--- a/dlfcn/dlerror.c
++++ b/dlfcn/dlerror.c
+@@ -167,8 +167,17 @@ _dlerror_run (void (*operate) (void *), void *args)
+       result->errstring = NULL;
+     }
+ 
+-  result->errcode = _dl_catch_error (&result->objname, &result->errstring,
+-				     &result->malloced, operate, args);
++#ifdef SHARED
++  result->errcode = _dl_catch_error_ptr (&result->objname,
++					 &result->errstring,
++					 &result->malloced,
++					 operate, args);
++#else
++  result->errcode = _dl_catch_error (&result->objname,
++				     &result->errstring,
++				     &result->malloced,
++				     operate, args);
++#endif
+ 
+   /* If no error we mark that no error string is available.  */
+   result->returned = result->errstring == NULL;
 diff --git a/elf/Makefile b/elf/Makefile
-index 5d666b1b0c..28e18aea5d 100644
+index 5d666b1b0c..509475dd99 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
 @@ -66,7 +66,7 @@ elide-routines.os = $(all-dl-routines) dl-support enbl-secure dl-origin \
@@ -69,7 +94,17 @@ index 5d666b1b0c..28e18aea5d 100644
  
  tests-static-internal := tst-tls1-static tst-tls2-static \
  	       tst-ptrguard1-static tst-stackguard1-static \
-@@ -244,7 +245,7 @@ tests += $(tests-execstack-$(have-z-execstack))
+@@ -225,7 +226,8 @@ tests += restest1 preloadtest loadfail multiload origtest resolvfail \
+ 	 tst-audit14 tst-audit15 tst-audit16 \
+ 	 tst-single_threaded tst-single_threaded-pthread \
+ 	 tst-tls-ie tst-tls-ie-dlmopen argv0test \
+-	 tst-glibc-hwcaps tst-glibc-hwcaps-prepend tst-glibc-hwcaps-mask
++	 tst-glibc-hwcaps tst-glibc-hwcaps-prepend tst-glibc-hwcaps-mask \
++	 tst-dlmopen-dlerror
+ #	 reldep9
+ tests-internal += loadtest unload unload2 circleload1 \
+ 	 neededtest neededtest2 neededtest3 neededtest4 \
+@@ -244,7 +246,7 @@ tests += $(tests-execstack-$(have-z-execstack))
  ifeq ($(run-built-tests),yes)
  tests-special += $(objpfx)tst-leaks1-mem.out \
  		 $(objpfx)tst-leaks1-static-mem.out $(objpfx)noload-mem.out \
@@ -78,7 +113,15 @@ index 5d666b1b0c..28e18aea5d 100644
  endif
  tlsmod17a-suffixes = 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
  tlsmod18a-suffixes = 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
-@@ -432,7 +433,8 @@ endif
+@@ -347,6 +349,7 @@ modules-names = testobj1 testobj2 testobj3 testobj4 testobj5 testobj6 \
+ 		libmarkermod2-1 libmarkermod2-2 \
+ 		libmarkermod3-1 libmarkermod3-2 libmarkermod3-3 \
+ 		libmarkermod4-1 libmarkermod4-2 libmarkermod4-3 libmarkermod4-4 \
++		tst-dlmopen-dlerror-mod \
+ 
+ # Most modules build with _ISOMAC defined, but those filtered out
+ # depend on internal headers.
+@@ -432,7 +435,8 @@ endif
  ifeq (yes,$(build-shared))
  ifeq ($(run-built-tests),yes)
  tests-special += $(objpfx)tst-pathopt.out $(objpfx)tst-rtld-load-self.out \
@@ -88,7 +131,7 @@ index 5d666b1b0c..28e18aea5d 100644
  endif
  tests-special += $(objpfx)check-textrel.out $(objpfx)check-execstack.out \
  		 $(objpfx)check-wx-segment.out \
-@@ -678,6 +680,9 @@ CFLAGS-cache.c += $(SYSCONF-FLAGS)
+@@ -678,6 +682,9 @@ CFLAGS-cache.c += $(SYSCONF-FLAGS)
  CFLAGS-rtld.c += $(SYSCONF-FLAGS)
  CFLAGS-dl-usage.c += $(SYSCONF-FLAGS) \
    -D'RTLD="$(rtlddir)/$(rtld-installed-name)"'
@@ -98,7 +141,18 @@ index 5d666b1b0c..28e18aea5d 100644
  
  cpp-srcs-left := $(all-rtld-routines:=.os)
  lib := rtld
-@@ -1653,8 +1658,6 @@ $(objpfx)tst-nodelete-dlclose.out: $(objpfx)tst-nodelete-dlclose-dso.so \
+@@ -1578,6 +1585,10 @@ $(objpfx)tst-sonamemove-dlopen.out: \
+   $(objpfx)tst-sonamemove-runmod1.so \
+   $(objpfx)tst-sonamemove-runmod2.so
+ 
++$(objpfx)tst-dlmopen-dlerror: $(libdl)
++$(objpfx)tst-dlmopen-dlerror-mod.so: $(libdl) $(libsupport)
++$(objpfx)tst-dlmopen-dlerror.out: $(objpfx)tst-dlmopen-dlerror-mod.so
++
+ # Override -z defs, so that we can reference an undefined symbol.
+ # Force lazy binding for the same reason.
+ LDFLAGS-tst-latepthreadmod.so = \
+@@ -1653,8 +1664,6 @@ $(objpfx)tst-nodelete-dlclose.out: $(objpfx)tst-nodelete-dlclose-dso.so \
  
  tst-env-setuid-ENV = MALLOC_CHECK_=2 MALLOC_MMAP_THRESHOLD_=4096 \
  		     LD_HWCAP_MASK=0x1
@@ -107,7 +161,7 @@ index 5d666b1b0c..28e18aea5d 100644
  
  $(objpfx)tst-debug1: $(libdl)
  $(objpfx)tst-debug1.out: $(objpfx)tst-debug1mod1.so
-@@ -1902,3 +1905,18 @@ $(objpfx)list-tunables.out: tst-rtld-list-tunables.sh $(objpfx)ld.so
+@@ -1902,3 +1911,18 @@ $(objpfx)list-tunables.out: tst-rtld-list-tunables.sh $(objpfx)ld.so
  	cmp tst-rtld-list-tunables.exp \
  	    $(objpfx)/tst-rtld-list-tunables.out > $@; \
  	$(evaluate-test)
@@ -126,6 +180,19 @@ index 5d666b1b0c..28e18aea5d 100644
 +	fi; \
 +	(exit $$status); \
 +	$(evaluate-test)
+diff --git a/elf/Versions b/elf/Versions
+index be88c48e6d..cdfd7b4d2f 100644
+--- a/elf/Versions
++++ b/elf/Versions
+@@ -72,7 +72,7 @@ ld {
+ 
+     # Internal error handling support.  Interposed by libc.so.
+     _dl_signal_exception; _dl_catch_exception;
+-    _dl_signal_error; _dl_catch_error;
++    _dl_signal_error; _dl_catch_error; _dl_catch_error_ptr;
+ 
+     # Set value of a tunable.
+     __tunable_get_val;
 diff --git a/elf/dl-diagnostics-cpu.c b/elf/dl-diagnostics-cpu.c
 new file mode 100644
 index 0000000000..f7d149764b
@@ -509,6 +576,30 @@ index 0000000000..27dcb12bca
 +void _dl_diagnostics_cpu (void) attribute_hidden;
 +
 +#endif /* _DL_DIAGNOSTICS_H */
+diff --git a/elf/dl-error-skeleton.c b/elf/dl-error-skeleton.c
+index 2fd62777cf..0de505f258 100644
+--- a/elf/dl-error-skeleton.c
++++ b/elf/dl-error-skeleton.c
+@@ -248,4 +248,19 @@ _dl_receive_error (receiver_fct fct, void (*operate) (void *), void *args)
+   catch_hook = old_catch;
+   receiver = old_receiver;
+ }
++
++/* Forwarder used for initializing _dl_catch_error_ptr.  */
++int
++_rtld_catch_error (const char **objname, const char **errstring,
++		   bool *mallocedp, void (*operate) (void *),
++		   void *args)
++{
++  /* The reference to _dl_catch_error will eventually be relocated to
++     point to the implementation in libc.so.  */
++  return _dl_catch_error (objname, errstring, mallocedp, operate, args);
++}
++
++__typeof (_dl_catch_error) *_dl_catch_error_ptr = _rtld_catch_error;
++rtld_hidden_data_def (_dl_catch_error_ptr);
++
+ #endif /* DL_ERROR_BOOTSTRAP */
 diff --git a/elf/dl-load.c b/elf/dl-load.c
 index 9e2089cfaa..2f760503c5 100644
 --- a/elf/dl-load.c
@@ -1066,7 +1157,7 @@ index 6e26818bd7..5ad3a72559 100644
    --version             output version information and exit\n\
  \n\
 diff --git a/elf/rtld.c b/elf/rtld.c
-index 596b6ac3d9..94a00e2049 100644
+index 596b6ac3d9..489e58c551 100644
 --- a/elf/rtld.c
 +++ b/elf/rtld.c
 @@ -141,6 +141,7 @@ static void dl_main_state_init (struct dl_main_state *state);
@@ -1077,7 +1168,15 @@ index 596b6ac3d9..94a00e2049 100644
  static void process_envvars (struct dl_main_state *state);
  
  #ifdef DL_ARGV_NOT_RELRO
-@@ -1287,6 +1288,14 @@ dl_main (const ElfW(Phdr) *phdr,
+@@ -379,7 +380,6 @@ struct rtld_global_ro _rtld_global_ro attribute_relro =
+ extern struct rtld_global_ro _rtld_local_ro
+     __attribute__ ((alias ("_rtld_global_ro"), visibility ("hidden")));
+ 
+-
+ static void dl_main (const ElfW(Phdr) *phdr, ElfW(Word) phnum,
+ 		     ElfW(Addr) *user_entry, ElfW(auxv_t) *auxv);
+ 
+@@ -1287,6 +1287,14 @@ dl_main (const ElfW(Phdr) *phdr,
  	    ++_dl_argv;
  	  }
  #endif
@@ -1092,7 +1191,7 @@ index 596b6ac3d9..94a00e2049 100644
  	else if (strcmp (_dl_argv[1], "--help") == 0)
  	  {
  	    state.mode = rtld_mode_help;
-@@ -1315,6 +1324,9 @@ dl_main (const ElfW(Phdr) *phdr,
+@@ -1315,6 +1323,9 @@ dl_main (const ElfW(Phdr) *phdr,
  	}
  #endif
  
@@ -1102,7 +1201,7 @@ index 596b6ac3d9..94a00e2049 100644
        /* If we have no further argument the program was called incorrectly.
  	 Grant the user some education.  */
        if (_dl_argc < 2)
-@@ -2649,12 +2661,6 @@ a filename can be specified using the LD_DEBUG_OUTPUT environment variable.\n");
+@@ -2649,12 +2660,6 @@ a filename can be specified using the LD_DEBUG_OUTPUT environment variable.\n");
      }
  }
  
@@ -1115,6 +1214,96 @@ index 596b6ac3d9..94a00e2049 100644
  static void
  process_envvars (struct dl_main_state *state)
  {
+diff --git a/elf/tst-dlmopen-dlerror-mod.c b/elf/tst-dlmopen-dlerror-mod.c
+new file mode 100644
+index 0000000000..7e95dcdeac
+--- /dev/null
++++ b/elf/tst-dlmopen-dlerror-mod.c
+@@ -0,0 +1,41 @@
++/* Check that dlfcn errors are reported properly after dlmopen.  Test module.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <dlfcn.h>
++#include <stddef.h>
++#include <support/check.h>
++
++/* Note: This object is not linked into the main program, so we cannot
++   use delayed test failure reporting via TEST_VERIFY etc., and have
++   to use FAIL_EXIT1 (or something else that calls exit).  */
++
++void
++call_dlsym (void)
++{
++  void *ptr = dlsym (NULL, "does not exist");
++  if (ptr != NULL)
++    FAIL_EXIT1 ("dlsym did not fail as expected");
++}
++
++void
++call_dlopen (void)
++{
++  void *handle = dlopen ("tst-dlmopen-dlerror does not exist", RTLD_NOW);
++  if (handle != NULL)
++    FAIL_EXIT1 ("dlopen did not fail as expected");
++}
+diff --git a/elf/tst-dlmopen-dlerror.c b/elf/tst-dlmopen-dlerror.c
+new file mode 100644
+index 0000000000..e864d2fe4c
+--- /dev/null
++++ b/elf/tst-dlmopen-dlerror.c
+@@ -0,0 +1,37 @@
++/* Check that dlfcn errors are reported properly after dlmopen.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#include <stddef.h>
++#include <support/check.h>
++#include <support/xdlfcn.h>
++
++static int
++do_test (void)
++{
++  void *handle = xdlmopen (LM_ID_NEWLM, "tst-dlmopen-dlerror-mod.so",
++                           RTLD_NOW);
++  void (*call_dlsym) (void) = xdlsym (handle, "call_dlsym");
++  void (*call_dlopen) (void) = xdlsym (handle, "call_dlopen");
++
++  call_dlsym ();
++  call_dlopen ();
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/elf/tst-dst-static.c b/elf/tst-dst-static.c
 new file mode 100644
 index 0000000000..56eb371c96
@@ -3332,6 +3521,28 @@ index 28cc44d9f1..94498d3901 100644
  
  	  if (WIFEXITED (status))
  	    exit (WEXITSTATUS (status));
+diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+index aab7245e93..d552a7886b 100644
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -893,6 +893,17 @@ extern int _dl_catch_error (const char **objname, const char **errstring,
+ 			    void *args);
+ libc_hidden_proto (_dl_catch_error)
+ 
++
++/* libdl in a secondary namespace (after dlopen) must use
++   _dl_catch_error from the main namespace, so it has to be exported
++   in some way.  Initialized to _rtld_catch_error in rtld.c.  Not in
++   _rtld_global_ro to preserve structure layout.  */
++extern __typeof (_dl_catch_error) *_dl_catch_error_ptr attribute_relro;
++rtld_hidden_proto (_dl_catch_error_ptr)
++
++/* Used for initializing _dl_catch_error_ptr.  */
++extern __typeof__ (_dl_catch_error) _rtld_catch_error attribute_hidden;
++
+ /* Call OPERATE (ARGS).  If no error occurs, set *EXCEPTION to zero.
+    Otherwise, store a copy of the raised exception in *EXCEPTION,
+    which has to be freed by _dl_exception_free.  As a special case, if
 diff --git a/sysdeps/nios2/libm-test-ulps b/sysdeps/nios2/libm-test-ulps
 index 8c3e9df547..9315ba82fa 100644
 --- a/sysdeps/nios2/libm-test-ulps
