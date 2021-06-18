@@ -1,8 +1,8 @@
 diff --git a/NEWS b/NEWS
-index 71f5d20324..b9e570b4a4 100644
+index 71f5d20324..979a012dba 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,35 @@ See the end for copying conditions.
+@@ -5,6 +5,36 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -29,6 +29,7 @@ index 71f5d20324..b9e570b4a4 100644
 +  [27304] pthread_cond_destroy does not pass private flag to futex system calls
 +  [27537] test-container: Always copy test-specific support files
 +  [27577] elf/ld.so --help doesn't work
++  [27646] gethostbyname and NSS crashes after dlmopen
 +  [27648] FAIL: misc/tst-select
 +  [27651] Performance regression after updating to 2.33
 +  [27706] select fails to update timeout on error
@@ -78,7 +79,7 @@ index 48b4c25bea..ff7c7b9228 100644
    /* If no error we mark that no error string is available.  */
    result->returned = result->errstring == NULL;
 diff --git a/elf/Makefile b/elf/Makefile
-index 5d666b1b0c..509475dd99 100644
+index 5d666b1b0c..4fc3bd8239 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
 @@ -66,7 +66,7 @@ elide-routines.os = $(all-dl-routines) dl-support enbl-secure dl-origin \
@@ -106,7 +107,7 @@ index 5d666b1b0c..509475dd99 100644
  	 tst-tls-ie tst-tls-ie-dlmopen argv0test \
 -	 tst-glibc-hwcaps tst-glibc-hwcaps-prepend tst-glibc-hwcaps-mask
 +	 tst-glibc-hwcaps tst-glibc-hwcaps-prepend tst-glibc-hwcaps-mask \
-+	 tst-dlmopen-dlerror
++	 tst-dlmopen-dlerror tst-dlmopen-gethostbyname
  #	 reldep9
  tests-internal += loadtest unload unload2 circleload1 \
  	 neededtest neededtest2 neededtest3 neededtest4 \
@@ -123,7 +124,7 @@ index 5d666b1b0c..509475dd99 100644
  		libmarkermod2-1 libmarkermod2-2 \
  		libmarkermod3-1 libmarkermod3-2 libmarkermod3-3 \
  		libmarkermod4-1 libmarkermod4-2 libmarkermod4-3 libmarkermod4-4 \
-+		tst-dlmopen-dlerror-mod \
++		tst-dlmopen-dlerror-mod tst-dlmopen-gethostbyname-mod \
  
  # Most modules build with _ISOMAC defined, but those filtered out
  # depend on internal headers.
@@ -167,7 +168,7 @@ index 5d666b1b0c..509475dd99 100644
  
  $(objpfx)tst-debug1: $(libdl)
  $(objpfx)tst-debug1.out: $(objpfx)tst-debug1mod1.so
-@@ -1902,3 +1911,18 @@ $(objpfx)list-tunables.out: tst-rtld-list-tunables.sh $(objpfx)ld.so
+@@ -1902,3 +1911,21 @@ $(objpfx)list-tunables.out: tst-rtld-list-tunables.sh $(objpfx)ld.so
  	cmp tst-rtld-list-tunables.exp \
  	    $(objpfx)/tst-rtld-list-tunables.out > $@; \
  	$(evaluate-test)
@@ -186,6 +187,9 @@ index 5d666b1b0c..509475dd99 100644
 +	fi; \
 +	(exit $$status); \
 +	$(evaluate-test)
++
++$(objpfx)tst-dlmopen-gethostbyname: $(libdl)
++$(objpfx)tst-dlmopen-gethostbyname.out: $(objpfx)tst-dlmopen-gethostbyname-mod.so
 diff --git a/elf/Versions b/elf/Versions
 index be88c48e6d..cdfd7b4d2f 100644
 --- a/elf/Versions
@@ -606,6 +610,27 @@ index 2fd62777cf..0de505f258 100644
 +rtld_hidden_data_def (_dl_catch_error_ptr);
 +
  #endif /* DL_ERROR_BOOTSTRAP */
+diff --git a/elf/dl-libc.c b/elf/dl-libc.c
+index ed551f6e56..e2236d87d1 100644
+--- a/elf/dl-libc.c
++++ b/elf/dl-libc.c
+@@ -43,9 +43,15 @@ dlerror_run (void (*operate) (void *), void *args)
+   const char *last_errstring = NULL;
+   bool malloced;
+ 
++#ifdef SHARED
++  int result = (_dl_catch_error_ptr (&objname, &last_errstring, &malloced,
++				     operate, args)
++		?: last_errstring != NULL);
++#else
+   int result = (_dl_catch_error (&objname, &last_errstring, &malloced,
+-				operate, args)
++				 operate, args)
+ 		?: last_errstring != NULL);
++#endif
+ 
+   if (result && malloced)
+     free ((char *) last_errstring);
 diff --git a/elf/dl-load.c b/elf/dl-load.c
 index 9e2089cfaa..2f760503c5 100644
 --- a/elf/dl-load.c
@@ -1306,6 +1331,78 @@ index 0000000000..e864d2fe4c
 +  call_dlsym ();
 +  call_dlopen ();
 +
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/elf/tst-dlmopen-gethostbyname-mod.c b/elf/tst-dlmopen-gethostbyname-mod.c
+new file mode 100644
+index 0000000000..9a68ea5050
+--- /dev/null
++++ b/elf/tst-dlmopen-gethostbyname-mod.c
+@@ -0,0 +1,29 @@
++/* Exercise dlerror_run in elf/dl-libc.c after dlmopen, via NSS.  Helper module.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <netdb.h>
++#include <nss.h>
++
++void
++call_gethostbyname (void)
++{
++  __nss_configure_lookup ("hosts", "files");
++  /* This should not terminate the process due to a missing
++     _nss_files_getcanonname_r symbol.  */
++  gethostbyname ("localhost");
++}
+diff --git a/elf/tst-dlmopen-gethostbyname.c b/elf/tst-dlmopen-gethostbyname.c
+new file mode 100644
+index 0000000000..12deb29900
+--- /dev/null
++++ b/elf/tst-dlmopen-gethostbyname.c
+@@ -0,0 +1,31 @@
++/* Exercise dlerror_run in elf/dl-libc.c after dlmopen, via NSS (bug 27646).
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/xdlfcn.h>
++
++static int
++do_test (void)
++{
++  void *handle = xdlmopen (LM_ID_NEWLM, "tst-dlmopen-gethostbyname-mod.so",
++                           RTLD_NOW);
++  void (*call_gethostbyname) (void) = xdlsym (handle, "call_gethostbyname");
++  call_gethostbyname ();
 +  return 0;
 +}
 +
