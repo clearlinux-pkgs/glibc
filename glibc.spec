@@ -241,6 +241,8 @@ GNU C library extra components.
 %build
 export SOURCE_DATE_EPOCH=1484361909
 export LANG=C
+export GCC_IGNORE_WERROR=1
+
 
 # Keep only the UTF-8 locales...
 supported=./localedata/SUPPORTED
@@ -451,6 +453,7 @@ popd
 
 %install
 export SOURCE_DATE_EPOCH=1484361909
+export GCC_IGNORE_WERROR=1
 
 unset LDFLAGS
 unset CFLAGS
@@ -464,22 +467,16 @@ popd
 
 pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm-2.34.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec-2.34.so
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt-2.34.so
-cp libc.so  %{buildroot}/usr/lib64/haswell/libc-2.34.so
-ln -s libm-2.34.so %{buildroot}/usr/lib64/haswell/libm.so.6
-ln -s libmvec-2.34.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-ln -s libcrypt-2.34.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
-ln -s libc-2.34.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+cp math/libm.so %{buildroot}/usr/lib64/haswell/libm.so.6
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
+cp libc.so  %{buildroot}/usr/lib64/haswell/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
 mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
-cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm-2.34.so
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec-2.34.so
-ln -s libm-2.34.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
-ln -s libmvec-2.34.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
+cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
 popd
 
 
@@ -610,6 +607,10 @@ popd
 /usr/lib64/gconv/EUC-TW.so
 /usr/lib64/gconv/gconv-modules
 /usr/lib64/gconv/gconv-modules.cache
+/usr/lib64/gconv/gconv-modules.d/gconv-modules-extra.conf
+/usr/lib64/libc_malloc_debug.so
+/usr/lib64/libc_malloc_debug.so.0
+/usr/lib64/libnss_hesiod.so
 /usr/lib64/gconv/GEORGIAN-ACADEMY.so
 /usr/lib64/gconv/GEORGIAN-PS.so
 /usr/lib64/gconv/GOST_19768-74.so
@@ -697,50 +698,31 @@ popd
 /usr/lib64/gconv/VISCII.so
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
-/usr/lib64/ld-2.34.so
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/libBrokenLocale-2.34.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
-/usr/lib64/libanl-2.34.so
 /usr/lib64/libanl.so.1
-/usr/lib64/libc-2.34.so
 /usr/lib64/libc.so.6
-/usr/lib64/libcrypt-2.34.so
 /usr/lib64/libcrypt.so.1
-/usr/lib64/libdl-2.34.so
 /usr/lib64/libdl.so.2
-/usr/lib64/libm-2.34.so
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
-/usr/lib64/libnsl-2.34.so
 /usr/lib64/libnsl.so.1
-/usr/lib64/libnss_dns-2.34.so
 /usr/lib64/libnss_dns.so.2
-/usr/lib64/libnss_files-2.34.so
 /usr/lib64/libnss_files.so.2
-/usr/lib64/libnss_hesiod-2.34.so
 /usr/lib64/libnss_hesiod.so.2
-/usr/lib64/libnss_compat-2.34.so
 /usr/lib64/libnss_compat.so
 /usr/lib64/libnss_compat.so.2
 /usr/lib64/libpcprofile.so
-/usr/lib64/libpthread-2.34.so
 /usr/lib64/libpthread.so.0
-/usr/lib64/libresolv-2.34.so
 /usr/lib64/libresolv.so.2
-/usr/lib64/librt-2.34.so
 /usr/lib64/librt.so.1
-/usr/lib64/libthread_db-1.0.so
 /usr/lib64/libthread_db.so.1
-/usr/lib64/libutil-2.34.so
 /usr/lib64/libutil.so.1
-/usr/lib64/libmvec-2.34.so
 /usr/lib64/libmvec.so
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm-2.34.so
 /usr/lib64/haswell/libm.so.6
 
 /usr/bin/ldconfig
@@ -899,7 +881,6 @@ popd
 /usr/lib64/gconv/GBK.so
 
 %files dev
-%exclude /usr/lib64/gcc/x86_64-generic-linux/11/include-fixed/bits/statx.h
 /usr/include/*.h
 /usr/include/arpa/
 /usr/include/bits/
@@ -934,17 +915,10 @@ popd
 /usr/lib64/libc.so
 /usr/lib64/libc_nonshared.a
 /usr/lib64/libcrypt.so
-/usr/lib64/libdl.so
 /usr/lib64/libm.so
 #/usr/lib64/libnsl.so
-/usr/lib64/libnss_dns.so
-/usr/lib64/libnss_files.so
-/usr/lib64/libnss_hesiod.so
-/usr/lib64/libpthread.so
 /usr/lib64/libresolv.so
-/usr/lib64/librt.so
 /usr/lib64/libthread_db.so
-/usr/lib64/libutil.so
 
 %files dev32
 /usr/lib32/*.a
@@ -976,6 +950,7 @@ popd
 /usr/lib32/libthread_db.so.1
 /usr/lib32/libutil.so.1
 /usr/lib32/libnss_compat.so.2
+/usr/lib32/libc_malloc_debug.so.0
 
 %files staticdev
 /usr/lib64/libBrokenLocale.a
@@ -1001,7 +976,6 @@ popd
 
 %files extras
 /usr/bin/makedb
-/usr/lib64/libnss_db-2.34.so
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
 #/usr/lib64/libnss_nis-2.34.so
