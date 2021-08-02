@@ -919,6 +919,11 @@ popd
 #/usr/lib64/libnsl.so
 /usr/lib64/libresolv.so
 /usr/lib64/libthread_db.so
+/usr/lib64/libdl.a
+/usr/lib64/libpthread.a
+/usr/lib64/libpthread_nonshared.a
+/usr/lib64/libmvec.a
+/usr/lib64/libutil.a
 
 %files dev32
 /usr/lib32/*.a
@@ -957,18 +962,13 @@ popd
 /usr/lib64/libanl.a
 /usr/lib64/libc.a
 /usr/lib64/libcrypt.a
-/usr/lib64/libdl.a
 /usr/lib64/libg.a
 #/usr/lib64/libieee.a
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
-/usr/lib64/libpthread.a
-/usr/lib64/libpthread_nonshared.a
 /usr/lib64/libresolv.a
 /usr/lib64/librt.a
-/usr/lib64/libutil.a
 /usr/lib64/libm-2.34.a
-/usr/lib64/libmvec.a
 
 
 %files doc
