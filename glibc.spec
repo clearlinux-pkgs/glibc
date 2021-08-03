@@ -535,7 +535,8 @@ mv %{buildroot}/usr/sbin/* %{buildroot}/usr/bin/
 # swup compatibility hack 
 cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.33.so
 cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.34.so
-
+cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.33.so
+cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.34.so
 
 %check
 pushd ../glibc-buildroot
