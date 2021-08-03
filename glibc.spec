@@ -924,6 +924,7 @@ popd
 /usr/lib64/libpthread_nonshared.a
 /usr/lib64/libmvec.a
 /usr/lib64/libutil.a
+/usr/lib64/librt.a
 
 %files dev32
 /usr/lib32/*.a
@@ -967,7 +968,6 @@ popd
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
 /usr/lib64/libresolv.a
-/usr/lib64/librt.a
 /usr/lib64/libm-2.34.a
 
 
