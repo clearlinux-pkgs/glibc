@@ -537,6 +537,10 @@ cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.33.so
 cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.34.so
 cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.33.so
 cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.34.so
+rm %{buildroot}/usr/lib64/libc.so.6
+rm %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
+ln -s libc-2.34.so %{buildroot}/usr/lib64/libc.so.6
+ln -s ld-2.34.so  %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
 
 %check
 pushd ../glibc-buildroot
