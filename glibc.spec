@@ -708,6 +708,8 @@ popd
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
 /usr/lib64/ld-linux-x86-64.so.2
+/usr/lib64/ld-2.33.so
+/usr/lib64/ld-2.34.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
 /usr/lib64/libanl.so.1
