@@ -532,6 +532,10 @@ mv %{buildroot}/usr/sbin/iconvconfig %{buildroot}/usr/bin/iconvconfig
 #mv %{buildroot}/usr/sbin/zdump %{buildroot}/usr/bin/zdump
 mv %{buildroot}/usr/sbin/* %{buildroot}/usr/bin/
 
+# swup compatibility hack 
+cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.33.so
+cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.34.so
+
 
 %check
 pushd ../glibc-buildroot
@@ -703,6 +707,8 @@ popd
 /usr/lib64/libSegFault.so
 /usr/lib64/libanl.so.1
 /usr/lib64/libc.so.6
+/usr/lib64/libc-2.33.so
+/usr/lib64/libc-2.34.so
 /usr/lib64/libcrypt.so.1
 /usr/lib64/libdl.so.2
 /usr/lib64/libm.so.6
