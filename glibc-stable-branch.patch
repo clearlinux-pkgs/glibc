@@ -1,0 +1,83 @@
+diff --git a/elf/ldconfig.c b/elf/ldconfig.c
+index 1037e8d0cf..b8893637f8 100644
+--- a/elf/ldconfig.c
++++ b/elf/ldconfig.c
+@@ -503,7 +503,11 @@ add_dir_1 (const char *line, const char *from_file, int from_line)
+     entry->path[--i] = '\0';
+ 
+   if (i == 0)
+-    return;
++    {
++      free (entry->path);
++      free (entry);
++      return;
++    }
+ 
+   char *path = entry->path;
+   if (opt_chroot != NULL)
+diff --git a/iconv/gconv_parseconfdir.h b/iconv/gconv_parseconfdir.h
+index a4153e54c6..2f062689ec 100644
+--- a/iconv/gconv_parseconfdir.h
++++ b/iconv/gconv_parseconfdir.h
+@@ -153,12 +153,11 @@ gconv_parseconfdir (const char *dir, size_t dir_len)
+ 	      struct stat64 st;
+ 	      if (asprintf (&conf, "%s/%s", buf, ent->d_name) < 0)
+ 		continue;
+-	      if (ent->d_type == DT_UNKNOWN
+-		  && (lstat64 (conf, &st) == -1
+-		      || !S_ISREG (st.st_mode)))
+-		continue;
+ 
+-	      found |= read_conf_file (conf, dir, dir_len);
++	      if (ent->d_type != DT_UNKNOWN
++		  || (lstat64 (conf, &st) != -1 && S_ISREG (st.st_mode)))
++		found |= read_conf_file (conf, dir, dir_len);
++
+ 	      free (conf);
+ 	    }
+ 	}
+diff --git a/iconv/iconv_charmap.c b/iconv/iconv_charmap.c
+index e2d53fee3c..a8b6b56124 100644
+--- a/iconv/iconv_charmap.c
++++ b/iconv/iconv_charmap.c
+@@ -234,6 +234,8 @@ charmap_conversion (const char *from_code, struct charmap_t *from_charmap,
+     while (++remaining < argc);
+ 
+   /* All done.  */
++  if (output != stdout)
++    fclose (output);
+   free_table (cvtbl);
+   return status;
+ }
+diff --git a/support/support_capture_subprocess.c b/support/support_capture_subprocess.c
+index 27bfd19c93..0bacf6dbc2 100644
+--- a/support/support_capture_subprocess.c
++++ b/support/support_capture_subprocess.c
+@@ -170,6 +170,7 @@ copy_and_spawn_sgid (char *child_id, gid_t gid)
+      support_subprogram because we only want the program exit status, not the
+      contents.  */
+   ret = 0;
++  infd = outfd = -1;
+ 
+   char * const args[] = {execname, child_id, NULL};
+ 
+diff --git a/sysdeps/posix/getaddrinfo.c b/sysdeps/posix/getaddrinfo.c
+index 838a68f022..43dfc6739e 100644
+--- a/sysdeps/posix/getaddrinfo.c
++++ b/sysdeps/posix/getaddrinfo.c
+@@ -2008,6 +2008,7 @@ gaiconf_init (void)
+ 	      l = l->next;
+ 	    }
+ 	  free_prefixlist (labellist);
++	  labellist = NULL;
+ 
+ 	  /* Sort the entries so that the most specific ones are at
+ 	     the beginning.  */
+@@ -2046,6 +2047,7 @@ gaiconf_init (void)
+ 	      l = l->next;
+ 	    }
+ 	  free_prefixlist (precedencelist);
++	  precedencelist = NULL;
+ 
+ 	  /* Sort the entries so that the most specific ones are at
+ 	     the beginning.  */
