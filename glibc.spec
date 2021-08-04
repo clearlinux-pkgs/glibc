@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.34
-Release:        378
+Release:        379
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -488,7 +488,15 @@ make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
 mkdir -p %{buildroot}/var/cache/locale
 
-iconvconfig --prefix=%{buildroot}
+# FIXME: As of glibc 2.34, the --prefix flag to iconvconfig appears to behave
+# differently, since it hardcodes the prefix path to the cache's module lookup
+# path, which in turn breaks iconv completely (unless GCONV_PATH is set in the
+# environment). Once that issue is resolved (or another BKM is found),
+# re-enable the cache by running the iconvconfig command below. The cache
+# improves performance of iconv, so we want it to be enabled...
+rm -fv %{buildroot}/usr/lib64/gconv/gconv-modules.cache
+#iconvconfig --prefix=%{buildroot}
+
 
 make -s -O localedata/install-locales  DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
@@ -615,7 +623,6 @@ popd
 /usr/lib64/gconv/EUC-KR.so
 /usr/lib64/gconv/EUC-TW.so
 /usr/lib64/gconv/gconv-modules
-/usr/lib64/gconv/gconv-modules.cache
 /usr/lib64/gconv/gconv-modules.d/gconv-modules-extra.conf
 /usr/lib64/libc_malloc_debug.so
 /usr/lib64/libc_malloc_debug.so.0
