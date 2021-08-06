@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.34
-Release:        380
+Release:        381
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -207,7 +207,7 @@ GNU C library extra components.
 %prep
 %setup -q
 
-#%patch1 -p1
+%patch1 -p1
 %patch4 -p1
 #%patch7 -p1
 %patch8 -p1
