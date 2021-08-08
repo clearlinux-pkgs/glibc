@@ -494,6 +494,8 @@ mkdir -p %{buildroot}/var/cache/locale
 # environment). Once that issue is resolved (or another BKM is found),
 # re-enable the cache by running the iconvconfig command below. The cache
 # improves performance of iconv, so we want it to be enabled...
+# Upstream report to track:
+# https://sourceware.org/bugzilla/show_bug.cgi?id=28199
 rm -fv %{buildroot}/usr/lib64/gconv/gconv-modules.cache
 #iconvconfig --prefix=%{buildroot}
 
