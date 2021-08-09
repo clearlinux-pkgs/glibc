@@ -1,0 +1,11 @@
+--- glibc-2.34/sysdeps/unix/sysv/linux/clone-internal.c~	2021-08-02 01:33:43.000000000 +0000
++++ glibc-2.34/sysdeps/unix/sysv/linux/clone-internal.c	2021-08-09 20:38:25.601906469 +0000
+@@ -48,7 +48,7 @@
+ 		  int (*func) (void *arg), void *arg)
+ {
+   int ret;
+-#ifdef HAVE_CLONE3_WRAPPER
++#if 0
+   /* Try clone3 first.  */
+   int saved_errno = errno;
+   ret = __clone3 (cl_args, sizeof (*cl_args), func, arg);

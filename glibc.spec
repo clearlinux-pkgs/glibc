@@ -50,6 +50,7 @@ Patch61: 	fix-ld-audit-performance.patch
 
 Patch62:	c-utf8-locale.patch
 Patch63:	utf8-locale-naming.patch
+Patch64:	noclone3yet.patch
 
 # cves: patches 101 through 200
 
@@ -234,6 +235,7 @@ GNU C library extra components.
 %patch61 -p1
 %patch62 -p1
 %patch63 -p1
+%patch64 -p1
 
 
 %patch9 -p1
