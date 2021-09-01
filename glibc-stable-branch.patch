@@ -291,3 +291,25 @@ index db88938b3a..f0e0d2f27f 100644
  # else
  extern int __prctl_time64 (int __option,d ...) __THROW;
  #  define ioctl __prctl_time64
+diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+index 9f02624375..abde8438d4 100644
+--- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+@@ -325,7 +325,7 @@ L(movsb):
+ 	/* Avoid slow backward REP MOVSB.  */
+ 	jb	L(more_8x_vec_backward)
+ # if AVOID_SHORT_DISTANCE_REP_MOVSB
+-	andl	$X86_STRING_CONTROL_AVOID_SHORT_DISTANCE_REP_MOVSB, __x86_string_control(%rip)
++	testl	$X86_STRING_CONTROL_AVOID_SHORT_DISTANCE_REP_MOVSB, __x86_string_control(%rip)
+ 	jz	3f
+ 	movq	%rdi, %rcx
+ 	subq	%rsi, %rcx
+@@ -333,7 +333,7 @@ L(movsb):
+ # endif
+ 1:
+ # if AVOID_SHORT_DISTANCE_REP_MOVSB
+-	andl	$X86_STRING_CONTROL_AVOID_SHORT_DISTANCE_REP_MOVSB, __x86_string_control(%rip)
++	testl	$X86_STRING_CONTROL_AVOID_SHORT_DISTANCE_REP_MOVSB, __x86_string_control(%rip)
+ 	jz	3f
+ 	movq	%rsi, %rcx
+ 	subq	%rdi, %rcx
