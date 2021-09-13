@@ -1,3 +1,30 @@
+Arjun Shankar (1):
+      elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
+
+Florian Weimer (4):
+      Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
+      support: Add support_wait_for_thread_exit
+      nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
+      nptl: Fix race between pthread_kill and thread exit (bug 12889)
+
+H.J. Lu (1):
+      x86-64: Use testl to check __x86_string_control
+
+Jiaxun Yang (1):
+      MIPS: Setup errno for {f,l,}xstat
+
+Nikita Popov (2):
+      librt: fix NULL pointer dereference (bug 28213)
+      librt: add test (bug 28213)
+
+Siddhesh Poyarekar (6):
+      ldconfig: avoid leak on empty paths in config file
+      gconv_parseconfdir: Fix memory leak
+      gaiconf_init: Avoid double-free in label and precedence lists
+      copy_and_spawn_sgid: Avoid double calls to close()
+      iconv_charmap: Close output file when done
+      iconvconfig: Fix behaviour with --prefix [BZ #28199]
+
 diff --git a/NEWS b/NEWS
 index 3c610744c9..00fae31e92 100644
 --- a/NEWS

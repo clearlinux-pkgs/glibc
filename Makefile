@@ -13,7 +13,8 @@ update:
 	git -C $(GLIBC_GIT) remote update -p
 	git -C $(GLIBC_GIT) rev-parse --verify --quiet refs/tags/$(GLIBC_TAG) > /dev/null
 	git -C $(GLIBC_GIT) rev-parse --verify --quiet $(GLIBC_BRANCH) > /dev/null
-	git -C $(GLIBC_GIT) diff $(GLIBC_TAG)..$(GLIBC_BRANCH) > glibc-stable-branch.patch
+	git -C $(GLIBC_GIT) shortlog $(GLIBC_TAG)..$(GLIBC_BRANCH) > glibc-stable-branch.patch
+	git -C $(GLIBC_GIT) diff $(GLIBC_TAG)..$(GLIBC_BRANCH) >> glibc-stable-branch.patch
 	! git diff --quiet glibc-stable-branch.patch
 	git -C $(GLIBC_GIT) describe --abbrev=10 --match 'glibc-*' $(GLIBC_BRANCH) > REVISION
 	$(MAKE) bumpnogit
