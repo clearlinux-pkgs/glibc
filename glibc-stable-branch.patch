@@ -1,6 +1,9 @@
 Arjun Shankar (1):
       elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
 
+Aurelien Jarno (1):
+      Fix failing nss/tst-nss-files-hosts-long with local resolver
+
 Florian Weimer (4):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
@@ -411,6 +414,13 @@ index f79a2b26fc..fb7862eff7 100644
  }
  
  int
+diff --git a/nss/tst-nss-files-hosts-long.root/etc/nsswitch.conf b/nss/tst-nss-files-hosts-long.root/etc/nsswitch.conf
+new file mode 100644
+index 0000000000..5b0c6a4199
+--- /dev/null
++++ b/nss/tst-nss-files-hosts-long.root/etc/nsswitch.conf
+@@ -0,0 +1 @@
++hosts: files
 diff --git a/rt/Makefile b/rt/Makefile
 index 113cea03a5..910e775995 100644
 --- a/rt/Makefile
