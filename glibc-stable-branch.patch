@@ -1,8 +1,9 @@
 Arjun Shankar (1):
       elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
 
-Aurelien Jarno (1):
+Aurelien Jarno (2):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
+      posix: Fix attribute access mode on getcwd [BZ #27476]
 
 Florian Weimer (4):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
@@ -427,6 +428,37 @@ index 0000000000..5b0c6a4199
 +++ b/nss/tst-nss-files-hosts-long.root/etc/nsswitch.conf
 @@ -0,0 +1 @@
 +hosts: files
+diff --git a/posix/bits/unistd.h b/posix/bits/unistd.h
+index f0831386c7..622adeb2b2 100644
+--- a/posix/bits/unistd.h
++++ b/posix/bits/unistd.h
+@@ -199,10 +199,9 @@ __NTH (readlinkat (int __fd, const char *__restrict __path,
+ #endif
+ 
+ extern char *__getcwd_chk (char *__buf, size_t __size, size_t __buflen)
+-     __THROW __wur __attr_access ((__write_only__, 1, 2));
++     __THROW __wur;
+ extern char *__REDIRECT_NTH (__getcwd_alias,
+-			     (char *__buf, size_t __size), getcwd)
+-  __wur __attr_access ((__write_only__, 1, 2));
++			     (char *__buf, size_t __size), getcwd) __wur;
+ extern char *__REDIRECT_NTH (__getcwd_chk_warn,
+ 			     (char *__buf, size_t __size, size_t __buflen),
+ 			     __getcwd_chk)
+diff --git a/posix/unistd.h b/posix/unistd.h
+index 3dca65732f..8224c5fbc9 100644
+--- a/posix/unistd.h
++++ b/posix/unistd.h
+@@ -528,8 +528,7 @@ extern int fchdir (int __fd) __THROW __wur;
+    an array is allocated with `malloc'; the array is SIZE
+    bytes long, unless SIZE == 0, in which case it is as
+    big as necessary.  */
+-extern char *getcwd (char *__buf, size_t __size) __THROW __wur
+-    __attr_access ((__write_only__, 1, 2));
++extern char *getcwd (char *__buf, size_t __size) __THROW __wur;
+ 
+ #ifdef	__USE_GNU
+ /* Return a malloc'd string containing the current directory name.
 diff --git a/rt/Makefile b/rt/Makefile
 index 113cea03a5..910e775995 100644
 --- a/rt/Makefile
