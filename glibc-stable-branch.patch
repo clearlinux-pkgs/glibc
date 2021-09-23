@@ -9,13 +9,14 @@ Aurelien Jarno (2):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
 
-Florian Weimer (6):
+Florian Weimer (7):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
       nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
       nptl: Fix race between pthread_kill and thread exit (bug 12889)
       nptl: pthread_kill needs to return ESRCH for old programs (bug 19193)
       nptl: Fix type of pthread_mutexattr_getrobust_np, pthread_mutexattr_setrobust_np (bug 28036)
+      nptl: Avoid setxid deadlock with blocked signals in thread exit [BZ #28361]
 
 H.J. Lu (1):
       x86-64: Use testl to check __x86_string_control
@@ -42,10 +43,10 @@ Siddhesh Poyarekar (6):
       iconvconfig: Fix behaviour with --prefix [BZ #28199]
 
 diff --git a/NEWS b/NEWS
-index 3c610744c9..a0c27ecf55 100644
+index 3c610744c9..cccbf11ad9 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,16 @@ See the end for copying conditions.
+@@ -4,6 +4,17 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -58,6 +59,7 @@ index 3c610744c9..a0c27ecf55 100644
 +  [19193] nptl: pthread_kill, pthread_cancel should not fail after exit
 +  [28036] Incorrect types for pthread_mutexattr_set/getrobust_np
 +  [28182] _TIME_BITS=64 in C++ has issues with fcntl, ioctl, prctl
++  [28361] nptl: Avoid setxid deadlock with blocked signals in thread exit
 +
  
  Version 2.34
@@ -371,7 +373,7 @@ index cc25ff21f3..9bac6e3b76 100644
    static int init_sigcancel = 0;
    if (atomic_load_relaxed (&init_sigcancel) == 0)
 diff --git a/nptl/pthread_create.c b/nptl/pthread_create.c
-index d8ec299cb1..33b426fc68 100644
+index d8ec299cb1..bc213f0bc4 100644
 --- a/nptl/pthread_create.c
 +++ b/nptl/pthread_create.c
 @@ -37,6 +37,7 @@
@@ -382,14 +384,22 @@ index d8ec299cb1..33b426fc68 100644
  
  #include <shlib-compat.h>
  
-@@ -485,6 +486,19 @@ start_thread (void *arg)
+@@ -485,6 +486,27 @@ start_thread (void *arg)
      /* This was the last thread.  */
      exit (0);
  
 +  /* This prevents sending a signal from this thread to itself during
 +     its final stages.  This must come after the exit call above
-+     because atexit handlers must not run with signals blocked.  */
-+  __libc_signal_block_all (NULL);
++     because atexit handlers must not run with signals blocked.
++
++     Do not block SIGSETXID.  The setxid handshake below expects the
++     signal to be delivered.  (SIGSETXID cannot run application code,
++     nor does it use pthread_kill.)  Reuse the pd->sigmask space for
++     computing the signal mask, to save stack space.  */
++  __sigfillset (&pd->sigmask);
++  __sigdelset (&pd->sigmask, SIGSETXID);
++  INTERNAL_SYSCALL_CALL (rt_sigprocmask, SIG_BLOCK, &pd->sigmask, NULL,
++			 __NSIG_BYTES);
 +
 +  /* Tell __pthread_kill_internal that this thread is about to exit.
 +     If there is a __pthread_kill_internal in progress, this delays
@@ -1221,7 +1231,7 @@ index 838a68f022..43dfc6739e 100644
  	  /* Sort the entries so that the most specific ones are at
  	     the beginning.  */
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
-index 42f9fc5072..48dba717a1 100644
+index 42f9fc5072..d4bd2d4e3e 100644
 --- a/sysdeps/pthread/Makefile
 +++ b/sysdeps/pthread/Makefile
 @@ -89,7 +89,7 @@ tests += tst-cnd-basic tst-mtx-trylock tst-cnd-broadcast \
@@ -1233,10 +1243,11 @@ index 42f9fc5072..48dba717a1 100644
  	 tst-locale1 tst-locale2 \
  	 tst-memstream \
  	 tst-mutex-errorcheck tst-mutex1 tst-mutex2 tst-mutex3 tst-mutex4 \
-@@ -118,6 +118,11 @@ tests += tst-cnd-basic tst-mtx-trylock tst-cnd-broadcast \
+@@ -118,6 +118,12 @@ tests += tst-cnd-basic tst-mtx-trylock tst-cnd-broadcast \
  	 tst-unload \
  	 tst-unwind-thread \
  	 tst-pt-vfork1 tst-pt-vfork2 tst-vfork1x tst-vfork2x \
++	 tst-pthread-setuid-loop \
 +	 tst-pthread_cancel-exited \
 +	 tst-pthread_cancel-select-loop \
 +	 tst-pthread_kill-exited \
@@ -1341,6 +1352,73 @@ index 9563939792..0000000000
 -
 -#define TEST_FUNCTION do_test ()
 -#include "../test-skeleton.c"
+diff --git a/sysdeps/pthread/tst-pthread-setuid-loop.c b/sysdeps/pthread/tst-pthread-setuid-loop.c
+new file mode 100644
+index 0000000000..fda2a49b7f
+--- /dev/null
++++ b/sysdeps/pthread/tst-pthread-setuid-loop.c
+@@ -0,0 +1,61 @@
++/* Test that setuid, pthread_create, thread exit do not deadlock (bug 28361).
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/check.h>
++#include <support/xthread.h>
++#include <unistd.h>
++
++/* How many threads to launch during each iteration.  */
++enum { threads = 4 };
++
++/* How many iterations to perform.  This value seems to reproduce
++   bug 28361 in a bout one in three runs.  */
++enum { iterations = 5000 };
++
++/* Cache of the real user ID used by setuid_thread.  */
++static uid_t uid;
++
++/* Start routine for the threads.  */
++static void *
++setuid_thread (void *closure)
++{
++  TEST_COMPARE (setuid (uid), 0);
++  return NULL;
++}
++
++static int
++do_test (void)
++{
++  /* The setxid machinery is still invoked even if the UID is
++     unchanged.  (The kernel might reset other credentials as part of
++     the system call.)  */
++  uid = getuid ();
++
++  for (int i = 0; i < iterations; ++i)
++    {
++      pthread_t thread_ids[threads];
++      for (int j = 0; j < threads; ++j)
++        thread_ids[j] = xpthread_create (NULL, setuid_thread, NULL);
++      for (int j = 0; j < threads; ++j)
++        xpthread_join (thread_ids[j]);
++    }
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/sysdeps/pthread/tst-pthread_cancel-exited.c b/sysdeps/pthread/tst-pthread_cancel-exited.c
 new file mode 100644
 index 0000000000..811c9bee07
