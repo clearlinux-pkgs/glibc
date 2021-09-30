@@ -84,7 +84,7 @@ Provides:       catchsegv
 Provides:       sln
 Provides:       ldd
 Provides:	libc-bin
-Obsoletes:	libc-bin
+Obsoletes:	libc-bin < 2.29
 
 %description bin
 GNU C library.
@@ -94,7 +94,7 @@ License:        GPL-2.0 and LGPL-2.1
 Summary:        GNU C library
 Group:          libs
 Provides:	libc6-locale
-Obsoletes:	libc6-locale
+Obsoletes:	libc6-locale < 2.29
 
 %description locale
 GNU C library.
