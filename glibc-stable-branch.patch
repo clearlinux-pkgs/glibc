@@ -43,13 +43,14 @@ Nikita Popov (2):
       librt: fix NULL pointer dereference (bug 28213)
       librt: add test (bug 28213)
 
-Siddhesh Poyarekar (6):
+Siddhesh Poyarekar (7):
       ldconfig: avoid leak on empty paths in config file
       gconv_parseconfdir: Fix memory leak
       gaiconf_init: Avoid double-free in label and precedence lists
       copy_and_spawn_sgid: Avoid double calls to close()
       iconv_charmap: Close output file when done
       iconvconfig: Fix behaviour with --prefix [BZ #28199]
+      support: Also return fd when it is 0
 
 diff --git a/NEWS b/NEWS
 index 3c610744c9..273a85da4d 100644
@@ -927,7 +928,7 @@ index a462781718..2a0731796f 100644
    tst-support_quote_string \
 diff --git a/support/support-open-dev-null-range.c b/support/support-open-dev-null-range.c
 new file mode 100644
-index 0000000000..80d9dba504
+index 0000000000..66a8504105
 --- /dev/null
 +++ b/support/support-open-dev-null-range.c
 @@ -0,0 +1,134 @@
@@ -973,16 +974,16 @@ index 0000000000..80d9dba504
 +static int
 +open_dev_null (int flags, mode_t mode)
 +{
-+ int fd = open64 ("/dev/null", flags, mode);
-+ if (fd > 0)
-+   return fd;
++  int fd = open64 ("/dev/null", flags, mode);
++  if (fd >= 0)
++    return fd;
 +
-+ if (fd < 0 && errno != EMFILE)
-+   FAIL_EXIT1 ("open64 (\"/dev/null\", 0x%x, 0%o): %m", flags, mode);
++  if (fd < 0 && errno != EMFILE)
++    FAIL_EXIT1 ("open64 (\"/dev/null\", 0x%x, 0%o): %m", flags, mode);
 +
-+ increase_nofile ();
++  increase_nofile ();
 +
-+ return xopen ("/dev/null", flags, mode);
++  return xopen ("/dev/null", flags, mode);
 +}
 +
 +struct range
