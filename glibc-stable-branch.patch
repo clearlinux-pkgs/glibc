@@ -52,6 +52,9 @@ Siddhesh Poyarekar (7):
       iconvconfig: Fix behaviour with --prefix [BZ #28199]
       support: Also return fd when it is 0
 
+Stefan Liebler (1):
+      S390: Add PCI_MIO and SIE HWCAPs
+
 diff --git a/NEWS b/NEWS
 index 3c610744c9..273a85da4d 100644
 --- a/NEWS
@@ -2039,6 +2042,48 @@ index 0000000000..f803e94f11
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/s390/dl-procinfo.c b/sysdeps/s390/dl-procinfo.c
+index c174e27b35..155f0bd99e 100644
+--- a/sysdeps/s390/dl-procinfo.c
++++ b/sysdeps/s390/dl-procinfo.c
+@@ -46,13 +46,13 @@
+ #if !defined PROCINFO_DECL && defined SHARED
+   ._dl_s390_cap_flags
+ #else
+-PROCINFO_CLASS const char _dl_s390_cap_flags[21][9]
++PROCINFO_CLASS const char _dl_s390_cap_flags[23][9]
+ #endif
+ #ifndef PROCINFO_DECL
+ = {
+      "esan3", "zarch", "stfle", "msa", "ldisp", "eimm", "dfp", "edat", "etf3eh",
+      "highgprs", "te", "vx", "vxd", "vxe", "gs", "vxe2", "vxp", "sort", "dflt",
+-     "vxp2", "nnpa"
++     "vxp2", "nnpa", "pcimio", "sie"
+   }
+ #endif
+ #if !defined SHARED || defined PROCINFO_DECL
+diff --git a/sysdeps/s390/dl-procinfo.h b/sysdeps/s390/dl-procinfo.h
+index 2d9c305808..e4e3e334a5 100644
+--- a/sysdeps/s390/dl-procinfo.h
++++ b/sysdeps/s390/dl-procinfo.h
+@@ -21,7 +21,7 @@
+ #define _DL_PROCINFO_H	1
+ #include <ldsodefs.h>
+ 
+-#define _DL_HWCAP_COUNT 21
++#define _DL_HWCAP_COUNT 23
+ 
+ #define _DL_PLATFORMS_COUNT	10
+ 
+@@ -63,6 +63,8 @@ enum
+   HWCAP_S390_DFLT = 1 << 18,
+   HWCAP_S390_VXRS_PDE2 = 1 << 19,
+   HWCAP_S390_NNPA = 1 << 20,
++  HWCAP_S390_PCI_MIO = 1 << 21,
++  HWCAP_S390_SIE = 1 << 22,
+ };
+ 
+ #define HWCAP_IMPORTANT (HWCAP_S390_ZARCH | HWCAP_S390_LDISP \
 diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
 index e9eb707d0a..bedab1abba 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
@@ -2566,6 +2611,28 @@ index 83b9f31aba..e526c89ae7 100644
  #define __NR_read 63
  #define __NR_readahead 213
  #define __NR_readlinkat 78
+diff --git a/sysdeps/unix/sysv/linux/s390/bits/hwcap.h b/sysdeps/unix/sysv/linux/s390/bits/hwcap.h
+index e9bd3684db..00e73a3e3b 100644
+--- a/sysdeps/unix/sysv/linux/s390/bits/hwcap.h
++++ b/sysdeps/unix/sysv/linux/s390/bits/hwcap.h
+@@ -22,6 +22,11 @@
+ 
+ /*
+  * The following must match the kernels asm/elf.h.
++ * Note: The kernel commit 511ad531afd4090625def4d9aba1f5227bd44b8e
++ * "s390/hwcaps: shorten HWCAP defines" has shortened the prefix of the macros
++ * from "HWCAP_S390_" to "HWCAP_".  For compatibility reasons, we do not
++ * change the prefix in public glibc header file.
++ *
+  * Note that these are *not* the same as the STORE FACILITY LIST bits.
+  */
+ #define HWCAP_S390_ESAN3        1
+@@ -48,3 +53,5 @@
+ #define HWCAP_S390_DFLT         262144
+ #define HWCAP_S390_VXRS_PDE2    524288
+ #define HWCAP_S390_NNPA         1048576
++#define HWCAP_S390_PCI_MIO      2097152
++#define HWCAP_S390_SIE          4194304
 diff --git a/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h b/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h
 index b224c4aad4..d4c7b101b6 100644
 --- a/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h
