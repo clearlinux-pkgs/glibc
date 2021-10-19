@@ -1,9 +1,10 @@
-Adhemerval Zanella (5):
+Adhemerval Zanella (6):
       support: Add support_open_dev_null_range
       Use support_open_dev_null_range io/tst-closefrom, misc/tst-close_range, and posix/tst-spawn5 (BZ #28260)
       misc: Add __get_nprocs_sched
       linux: Simplify get_nprocs
       linux: Revert the use of sched_getaffinity on get_nproc (BZ #28310)
+      y2038: Use a common definition for stat for sparc32
 
 Arjun Shankar (1):
       elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
@@ -53,14 +54,20 @@ Siddhesh Poyarekar (7):
       iconvconfig: Fix behaviour with --prefix [BZ #28199]
       support: Also return fd when it is 0
 
+Stafford Horne (1):
+      timex: Use 64-bit fields on 32-bit TIMESIZE=64 systems (BZ #28469)
+
 Stefan Liebler (1):
       S390: Add PCI_MIO and SIE HWCAPs
 
+Szabolcs Nagy (1):
+      elf: Avoid deadlock between pthread_create and ctors [BZ #28357]
+
 diff --git a/NEWS b/NEWS
-index 3c610744c9..273a85da4d 100644
+index 3c610744c9..c0952d7558 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,19 @@ See the end for copying conditions.
+@@ -4,6 +4,20 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -74,6 +81,7 @@ index 3c610744c9..273a85da4d 100644
 +  [28036] Incorrect types for pthread_mutexattr_set/getrobust_np
 +  [28182] _TIME_BITS=64 in C++ has issues with fcntl, ioctl, prctl
 +  [28310] Do not use affinity mask for sysconf (_SC_NPROCESSORS_CONF)
++  [28357] deadlock between pthread_create and ELF constructors
 +  [28361] nptl: Avoid setxid deadlock with blocked signals in thread exit
 +  [28407] pthread_kill assumes that kill and tgkill are equivalent
 +
@@ -110,11 +118,91 @@ index 4132dc6af0..e2fcea6e17 100644
      }
  
    return NULL;
+diff --git a/elf/dl-close.c b/elf/dl-close.c
+index f39001cab9..cd7b9c9fe8 100644
+--- a/elf/dl-close.c
++++ b/elf/dl-close.c
+@@ -549,6 +549,9 @@ _dl_close_worker (struct link_map *map, bool force)
+   size_t tls_free_end;
+   tls_free_start = tls_free_end = NO_TLS_OFFSET;
+ 
++  /* Protects global and module specitic TLS state.  */
++  __rtld_lock_lock_recursive (GL(dl_load_tls_lock));
++
+   /* We modify the list of loaded objects.  */
+   __rtld_lock_lock_recursive (GL(dl_load_write_lock));
+ 
+@@ -784,6 +787,9 @@ _dl_close_worker (struct link_map *map, bool force)
+ 	GL(dl_tls_static_used) = tls_free_start;
+     }
+ 
++  /* TLS is cleaned up for the unloaded modules.  */
++  __rtld_lock_unlock_recursive (GL(dl_load_tls_lock));
++
+ #ifdef SHARED
+   /* Auditing checkpoint: we have deleted all objects.  */
+   if (__glibc_unlikely (do_audit))
 diff --git a/elf/dl-open.c b/elf/dl-open.c
-index ec386626f9..41c7250bf6 100644
+index ec386626f9..bc68e2c376 100644
 --- a/elf/dl-open.c
 +++ b/elf/dl-open.c
-@@ -886,7 +886,7 @@ no more namespaces available for dlmopen()"));
+@@ -66,6 +66,9 @@ struct dl_open_args
+      libc_map value in the namespace in case of a dlopen failure.  */
+   bool libc_already_loaded;
+ 
++  /* Set to true if the end of dl_open_worker_begin was reached.  */
++  bool worker_continue;
++
+   /* Original parameters to the program and the current environment.  */
+   int argc;
+   char **argv;
+@@ -482,7 +485,7 @@ call_dl_init (void *closure)
+ }
+ 
+ static void
+-dl_open_worker (void *a)
++dl_open_worker_begin (void *a)
+ {
+   struct dl_open_args *args = a;
+   const char *file = args->file;
+@@ -774,6 +777,36 @@ dl_open_worker (void *a)
+       _dl_call_libc_early_init (libc_map, false);
+     }
+ 
++  args->worker_continue = true;
++}
++
++static void
++dl_open_worker (void *a)
++{
++  struct dl_open_args *args = a;
++
++  args->worker_continue = false;
++
++  {
++    /* Protects global and module specific TLS state.  */
++    __rtld_lock_lock_recursive (GL(dl_load_tls_lock));
++
++    struct dl_exception ex;
++    int err = _dl_catch_exception (&ex, dl_open_worker_begin, args);
++
++    __rtld_lock_unlock_recursive (GL(dl_load_tls_lock));
++
++    if (__glibc_unlikely (ex.errstring != NULL))
++      /* Reraise the error.  */
++      _dl_signal_exception (err, &ex, NULL);
++  }
++
++  if (!args->worker_continue)
++    return;
++
++  int mode = args->mode;
++  struct link_map *new = args->map;
++
+   /* Run the initializer functions of new objects.  Temporarily
+      disable the exception handler, so that lazy binding failures are
+      fatal.  */
+@@ -886,7 +919,7 @@ no more namespaces available for dlmopen()"));
        /* Avoid keeping around a dangling reference to the libc.so link
  	 map in case it has been cached in libc_map.  */
        if (!args.libc_already_loaded)
@@ -123,6 +211,24 @@ index ec386626f9..41c7250bf6 100644
  
        /* Remove the object from memory.  It may be in an inconsistent
  	 state if relocation failed, for example.  */
+diff --git a/elf/dl-support.c b/elf/dl-support.c
+index 0155718175..d8c06ba7eb 100644
+--- a/elf/dl-support.c
++++ b/elf/dl-support.c
+@@ -229,6 +229,13 @@ __rtld_lock_define_initialized_recursive (, _dl_load_lock)
+    list of loaded objects while an object is added to or removed from
+    that list.  */
+ __rtld_lock_define_initialized_recursive (, _dl_load_write_lock)
++  /* This lock protects global and module specific TLS related data.
++     E.g. it is held in dlopen and dlclose when GL(dl_tls_generation),
++     GL(dl_tls_max_dtv_idx) or GL(dl_tls_dtv_slotinfo_list) are
++     accessed and when TLS related relocations are processed for a
++     module.  It was introduced to keep pthread_create accessing TLS
++     state that is being set up.  */
++__rtld_lock_define_initialized_recursive (, _dl_load_tls_lock)
+ 
+ 
+ #ifdef HAVE_AUX_VECTOR
 diff --git a/elf/dl-sysdep.c b/elf/dl-sysdep.c
 index d47bef1340..2c684c2db2 100644
 --- a/elf/dl-sysdep.c
@@ -136,6 +242,78 @@ index d47bef1340..2c684c2db2 100644
  	  [AT_L1I_CACHESIZE - 2] =	{ "L1I_CACHESIZE:     ", dec },
  	  [AT_L1I_CACHEGEOMETRY - 2] =	{ "L1I_CACHEGEOMETRY: 0x", hex },
  	  [AT_L1D_CACHESIZE - 2] =	{ "L1D_CACHESIZE:     ", dec },
+diff --git a/elf/dl-tls.c b/elf/dl-tls.c
+index 423e380f7c..40263cf586 100644
+--- a/elf/dl-tls.c
++++ b/elf/dl-tls.c
+@@ -532,7 +532,7 @@ _dl_allocate_tls_init (void *result)
+   size_t maxgen = 0;
+ 
+   /* Protects global dynamic TLS related state.  */
+-  __rtld_lock_lock_recursive (GL(dl_load_lock));
++  __rtld_lock_lock_recursive (GL(dl_load_tls_lock));
+ 
+   /* Check if the current dtv is big enough.   */
+   if (dtv[-1].counter < GL(dl_tls_max_dtv_idx))
+@@ -606,7 +606,7 @@ _dl_allocate_tls_init (void *result)
+       listp = listp->next;
+       assert (listp != NULL);
+     }
+-  __rtld_lock_unlock_recursive (GL(dl_load_lock));
++  __rtld_lock_unlock_recursive (GL(dl_load_tls_lock));
+ 
+   /* The DTV version is up-to-date now.  */
+   dtv[0].counter = maxgen;
+@@ -745,7 +745,7 @@ _dl_update_slotinfo (unsigned long int req_modid)
+ 
+ 	 Here the dtv needs to be updated to new_gen generation count.
+ 
+-	 This code may be called during TLS access when GL(dl_load_lock)
++	 This code may be called during TLS access when GL(dl_load_tls_lock)
+ 	 is not held.  In that case the user code has to synchronize with
+ 	 dlopen and dlclose calls of relevant modules.  A module m is
+ 	 relevant if the generation of m <= new_gen and dlclose of m is
+@@ -867,11 +867,11 @@ tls_get_addr_tail (GET_ADDR_ARGS, dtv_t *dtv, struct link_map *the_map)
+   if (__glibc_unlikely (the_map->l_tls_offset
+ 			!= FORCED_DYNAMIC_TLS_OFFSET))
+     {
+-      __rtld_lock_lock_recursive (GL(dl_load_lock));
++      __rtld_lock_lock_recursive (GL(dl_load_tls_lock));
+       if (__glibc_likely (the_map->l_tls_offset == NO_TLS_OFFSET))
+ 	{
+ 	  the_map->l_tls_offset = FORCED_DYNAMIC_TLS_OFFSET;
+-	  __rtld_lock_unlock_recursive (GL(dl_load_lock));
++	  __rtld_lock_unlock_recursive (GL(dl_load_tls_lock));
+ 	}
+       else if (__glibc_likely (the_map->l_tls_offset
+ 			       != FORCED_DYNAMIC_TLS_OFFSET))
+@@ -883,7 +883,7 @@ tls_get_addr_tail (GET_ADDR_ARGS, dtv_t *dtv, struct link_map *the_map)
+ #else
+ # error "Either TLS_TCB_AT_TP or TLS_DTV_AT_TP must be defined"
+ #endif
+-	  __rtld_lock_unlock_recursive (GL(dl_load_lock));
++	  __rtld_lock_unlock_recursive (GL(dl_load_tls_lock));
+ 
+ 	  dtv[GET_ADDR_MODULE].pointer.to_free = NULL;
+ 	  dtv[GET_ADDR_MODULE].pointer.val = p;
+@@ -891,7 +891,7 @@ tls_get_addr_tail (GET_ADDR_ARGS, dtv_t *dtv, struct link_map *the_map)
+ 	  return (char *) p + GET_ADDR_OFFSET;
+ 	}
+       else
+-	__rtld_lock_unlock_recursive (GL(dl_load_lock));
++	__rtld_lock_unlock_recursive (GL(dl_load_tls_lock));
+     }
+   struct dtv_pointer result = allocate_and_init (the_map);
+   dtv[GET_ADDR_MODULE].pointer = result;
+@@ -962,7 +962,7 @@ _dl_tls_get_addr_soft (struct link_map *l)
+     return NULL;
+ 
+   dtv_t *dtv = THREAD_DTV ();
+-  /* This may be called without holding the GL(dl_load_lock).  Reading
++  /* This may be called without holding the GL(dl_load_tls_lock).  Reading
+      arbitrary gen value is fine since this is best effort code.  */
+   size_t gen = atomic_load_relaxed (&GL(dl_tls_generation));
+   if (__glibc_unlikely (dtv[0].counter != gen))
 diff --git a/elf/ldconfig.c b/elf/ldconfig.c
 index 1037e8d0cf..b8893637f8 100644
 --- a/elf/ldconfig.c
@@ -153,6 +331,18 @@ index 1037e8d0cf..b8893637f8 100644
  
    char *path = entry->path;
    if (opt_chroot != NULL)
+diff --git a/elf/rtld.c b/elf/rtld.c
+index d733359eaf..08cf50145a 100644
+--- a/elf/rtld.c
++++ b/elf/rtld.c
+@@ -322,6 +322,7 @@ struct rtld_global _rtld_global =
+ #ifdef _LIBC_REENTRANT
+     ._dl_load_lock = _RTLD_LOCK_RECURSIVE_INITIALIZER,
+     ._dl_load_write_lock = _RTLD_LOCK_RECURSIVE_INITIALIZER,
++    ._dl_load_tls_lock = _RTLD_LOCK_RECURSIVE_INITIALIZER,
+ #endif
+     ._dl_nns = 1,
+     ._dl_ns =
 diff --git a/iconv/gconv_conf.c b/iconv/gconv_conf.c
 index 62bee28769..cc391d8f93 100644
 --- a/iconv/gconv_conf.c
@@ -680,6 +870,20 @@ index f0831386c7..622adeb2b2 100644
  extern char *__REDIRECT_NTH (__getcwd_chk_warn,
  			     (char *__buf, size_t __size, size_t __buflen),
  			     __getcwd_chk)
+diff --git a/posix/fork.c b/posix/fork.c
+index c471f7b15f..021691b9b7 100644
+--- a/posix/fork.c
++++ b/posix/fork.c
+@@ -99,6 +99,9 @@ __libc_fork (void)
+       /* Reset the lock the dynamic loader uses to protect its data.  */
+       __rtld_lock_initialize (GL(dl_load_lock));
+ 
++      /* Reset the lock protecting dynamic TLS related data.  */
++      __rtld_lock_initialize (GL(dl_load_tls_lock));
++
+       reclaim_stacks ();
+ 
+       /* Run the handlers registered for the child.  */
 diff --git a/posix/tst-sched_getaffinity.c b/posix/tst-sched_getaffinity.c
 new file mode 100644
 index 0000000000..db9d517a96
@@ -1367,6 +1571,33 @@ index 0000000000..8e29def1ce
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+index 9c15259236..1ceb9c3212 100644
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -372,6 +372,13 @@ struct rtld_global
+      list of loaded objects while an object is added to or removed
+      from that list.  */
+   __rtld_lock_define_recursive (EXTERN, _dl_load_write_lock)
++  /* This lock protects global and module specific TLS related data.
++     E.g. it is held in dlopen and dlclose when GL(dl_tls_generation),
++     GL(dl_tls_max_dtv_idx) or GL(dl_tls_dtv_slotinfo_list) are
++     accessed and when TLS related relocations are processed for a
++     module.  It was introduced to keep pthread_create accessing TLS
++     state that is being set up.  */
++  __rtld_lock_define_recursive (EXTERN, _dl_load_tls_lock)
+ 
+   /* Incremented whenever something may have been added to dl_loaded.  */
+   EXTERN unsigned long long _dl_load_adds;
+@@ -1261,7 +1268,7 @@ extern int _dl_scope_free (void *) attribute_hidden;
+ 
+ /* Add module to slot information data.  If DO_ADD is false, only the
+    required memory is allocated.  Must be called with GL
+-   (dl_load_lock) acquired.  If the function has already been called
++   (dl_load_tls_lock) acquired.  If the function has already been called
+    for the link map L with !do_add, then this function will not raise
+    an exception, otherwise it is possible that it encounters a memory
+    allocation failure.  */
 diff --git a/sysdeps/mach/getsysstats.c b/sysdeps/mach/getsysstats.c
 index 1267f39da2..cc8023f979 100644
 --- a/sysdeps/mach/getsysstats.c
@@ -1427,7 +1658,7 @@ index 838a68f022..43dfc6739e 100644
  	  /* Sort the entries so that the most specific ones are at
  	     the beginning.  */
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
-index 42f9fc5072..0af9c59b42 100644
+index 42f9fc5072..df8943f486 100644
 --- a/sysdeps/pthread/Makefile
 +++ b/sysdeps/pthread/Makefile
 @@ -89,7 +89,7 @@ tests += tst-cnd-basic tst-mtx-trylock tst-cnd-broadcast \
@@ -1453,6 +1684,207 @@ index 42f9fc5072..0af9c59b42 100644
  
  tests-time64 := \
    tst-abstime-time64 \
+@@ -145,15 +152,17 @@ tests += tst-cancelx2 tst-cancelx3 tst-cancelx6 tst-cancelx8 tst-cancelx9 \
+ 	 tst-cleanupx0 tst-cleanupx1 tst-cleanupx2 tst-cleanupx3
+ 
+ ifeq ($(build-shared),yes)
+-tests += tst-atfork2 tst-pt-tls4 tst-_res1 tst-fini1
++tests += tst-atfork2 tst-pt-tls4 tst-_res1 tst-fini1 tst-create1
+ tests-nolibpthread += tst-fini1
+ endif
+ 
+ modules-names += tst-atfork2mod tst-tls4moda tst-tls4modb \
+-		 tst-_res1mod1 tst-_res1mod2 tst-fini1mod
++		 tst-_res1mod1 tst-_res1mod2 tst-fini1mod \
++		 tst-create1mod
+ test-modules = $(addprefix $(objpfx),$(addsuffix .so,$(modules-names)))
+ 
+ tst-atfork2mod.so-no-z-defs = yes
++tst-create1mod.so-no-z-defs = yes
+ 
+ ifeq ($(build-shared),yes)
+ # Build all the modules even when not actually running test programs.
+@@ -272,4 +281,8 @@ LDFLAGS-tst-join7mod.so = -Wl,-soname,tst-join7mod.so
+ 
+ CFLAGS-tst-unwind-thread.c += -funwind-tables
+ 
++LDFLAGS-tst-create1 = -Wl,-export-dynamic
++$(objpfx)tst-create1: $(shared-thread-library)
++$(objpfx)tst-create1.out: $(objpfx)tst-create1mod.so
++
+ endif
+diff --git a/sysdeps/pthread/tst-create1.c b/sysdeps/pthread/tst-create1.c
+new file mode 100644
+index 0000000000..932586c309
+--- /dev/null
++++ b/sysdeps/pthread/tst-create1.c
+@@ -0,0 +1,119 @@
++/* Verify that pthread_create does not deadlock when ctors take locks.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++#include <support/xdlfcn.h>
++#include <support/xthread.h>
++
++/*
++Check if ctor and pthread_create deadlocks in
++
++thread 1: dlopen -> ctor -> lock(user_lock)
++thread 2: lock(user_lock) -> pthread_create
++
++or in
++
++thread 1: dlclose -> dtor -> lock(user_lock)
++thread 2: lock(user_lock) -> pthread_create
++*/
++
++static pthread_barrier_t bar_ctor;
++static pthread_barrier_t bar_dtor;
++static pthread_mutex_t user_lock = PTHREAD_MUTEX_INITIALIZER;
++
++void
++ctor (void)
++{
++  xpthread_barrier_wait (&bar_ctor);
++  dprintf (1, "thread 1: in ctor: started.\n");
++  xpthread_mutex_lock (&user_lock);
++  dprintf (1, "thread 1: in ctor: locked user_lock.\n");
++  xpthread_mutex_unlock (&user_lock);
++  dprintf (1, "thread 1: in ctor: unlocked user_lock.\n");
++  dprintf (1, "thread 1: in ctor: done.\n");
++}
++
++void
++dtor (void)
++{
++  xpthread_barrier_wait (&bar_dtor);
++  dprintf (1, "thread 1: in dtor: started.\n");
++  xpthread_mutex_lock (&user_lock);
++  dprintf (1, "thread 1: in dtor: locked user_lock.\n");
++  xpthread_mutex_unlock (&user_lock);
++  dprintf (1, "thread 1: in dtor: unlocked user_lock.\n");
++  dprintf (1, "thread 1: in dtor: done.\n");
++}
++
++static void *
++thread3 (void *a)
++{
++  dprintf (1, "thread 3: started.\n");
++  dprintf (1, "thread 3: done.\n");
++  return 0;
++}
++
++static void *
++thread2 (void *a)
++{
++  pthread_t t3;
++  dprintf (1, "thread 2: started.\n");
++
++  xpthread_mutex_lock (&user_lock);
++  dprintf (1, "thread 2: locked user_lock.\n");
++  xpthread_barrier_wait (&bar_ctor);
++  t3 = xpthread_create (0, thread3, 0);
++  xpthread_mutex_unlock (&user_lock);
++  dprintf (1, "thread 2: unlocked user_lock.\n");
++  xpthread_join (t3);
++
++  xpthread_mutex_lock (&user_lock);
++  dprintf (1, "thread 2: locked user_lock.\n");
++  xpthread_barrier_wait (&bar_dtor);
++  t3 = xpthread_create (0, thread3, 0);
++  xpthread_mutex_unlock (&user_lock);
++  dprintf (1, "thread 2: unlocked user_lock.\n");
++  xpthread_join (t3);
++
++  dprintf (1, "thread 2: done.\n");
++  return 0;
++}
++
++static void
++thread1 (void)
++{
++  dprintf (1, "thread 1: started.\n");
++  xpthread_barrier_init (&bar_ctor, NULL, 2);
++  xpthread_barrier_init (&bar_dtor, NULL, 2);
++  pthread_t t2 = xpthread_create (0, thread2, 0);
++  void *p = xdlopen ("tst-create1mod.so", RTLD_NOW | RTLD_GLOBAL);
++  dprintf (1, "thread 1: dlopen done.\n");
++  xdlclose (p);
++  dprintf (1, "thread 1: dlclose done.\n");
++  xpthread_join (t2);
++  dprintf (1, "thread 1: done.\n");
++}
++
++static int
++do_test (void)
++{
++  thread1 ();
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/pthread/tst-create1mod.c b/sysdeps/pthread/tst-create1mod.c
+new file mode 100644
+index 0000000000..62c9006961
+--- /dev/null
++++ b/sysdeps/pthread/tst-create1mod.c
+@@ -0,0 +1,41 @@
++/* Verify that pthread_create does not deadlock when ctors take locks.
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++
++/* Require TLS setup for the module.  */
++__thread int tlsvar;
++
++void ctor (void);
++void dtor (void);
++
++static void __attribute__ ((constructor))
++do_init (void)
++{
++  dprintf (1, "constructor started: %d.\n", tlsvar++);
++  ctor ();
++  dprintf (1, "constructor done: %d.\n", tlsvar++);
++}
++
++static void __attribute__ ((destructor))
++do_end (void)
++{
++  dprintf (1, "destructor started: %d.\n", tlsvar++);
++  dtor ();
++  dprintf (1, "destructor done: %d.\n", tlsvar++);
++}
 diff --git a/sysdeps/pthread/tst-kill4.c b/sysdeps/pthread/tst-kill4.c
 deleted file mode 100644
 index 9563939792..0000000000
@@ -2169,6 +2601,19 @@ index 3b1ae418e0..31451c28d9 100644
  # define MADV_HWPOISON	  100	/* Poison a page for testing.  */
  #endif
  
+diff --git a/sysdeps/unix/sysv/linux/bits/timex.h b/sysdeps/unix/sysv/linux/bits/timex.h
+index ee37694e8f..4a5db6deca 100644
+--- a/sysdeps/unix/sysv/linux/bits/timex.h
++++ b/sysdeps/unix/sysv/linux/bits/timex.h
+@@ -25,7 +25,7 @@
+ 
+ struct timex
+ {
+-# ifdef __USE_TIME_BITS64
++# if defined __USE_TIME_BITS64 || (__TIMESIZE == 64 && __WORDSIZE == 32)
+   unsigned int modes;          /* mode selector */
+   int :32;                     /* pad */
+   long long offset;            /* time offset (usec) */
 diff --git a/sysdeps/unix/sysv/linux/csky/arch-syscall.h b/sysdeps/unix/sysv/linux/csky/arch-syscall.h
 index 24b0d1f94e..4af6d6202f 100644
 --- a/sysdeps/unix/sysv/linux/csky/arch-syscall.h
@@ -2683,6 +3128,131 @@ index 23612c9092..3b6ac3d084 100644
  #define __NR_read 3
  #define __NR_readahead 225
  #define __NR_readdir 89
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h b/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h
+index b481b4f9f8..45db6b6ffb 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h
+@@ -28,32 +28,35 @@
+ 
+ struct stat
+   {
++#ifdef __USE_TIME_BITS64
++# include <bits/struct_stat_time64_helper.h>
++#else
+     __dev_t st_dev;			/* Device.  */
+-#if __WORDSIZE == 64 || !defined __USE_FILE_OFFSET64
++# if __WORDSIZE == 64 || !defined __USE_FILE_OFFSET64
+     unsigned short int __pad1;
+     __ino_t st_ino;			/* File serial number.	*/
+-#else
++# else
+     __ino64_t st_ino;			/* File serial number.	*/
+-#endif
++# endif
+     __mode_t st_mode;			/* File mode.  */
+     __nlink_t st_nlink;			/* Link count.  */
+     __uid_t st_uid;			/* User ID of the file's owner.	*/
+     __gid_t st_gid;			/* Group ID of the file's group.*/
+     __dev_t st_rdev;			/* Device number, if device.  */
+     unsigned short int __pad2;
+-#ifndef __USE_FILE_OFFSET64
++# ifndef __USE_FILE_OFFSET64
+     __off_t st_size;			/* Size of file, in bytes.  */
+-#else
++# else
+     __off64_t st_size;			/* Size of file, in bytes.  */
+-#endif
++# endif
+     __blksize_t st_blksize;		/* Optimal block size for I/O.  */
+ 
+-#ifndef __USE_FILE_OFFSET64
++# ifndef __USE_FILE_OFFSET64
+     __blkcnt_t st_blocks;		/* Number 512-byte blocks allocated. */
+-#else
++# else
+     __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
+-#endif
+-#ifdef __USE_XOPEN2K8
++# endif
++# ifdef __USE_XOPEN2K8
+     /* Nanosecond resolution timestamps are stored in a format
+        equivalent to 'struct timespec'.  This is the type used
+        whenever possible but the Unix namespace rules do not allow the
+@@ -63,28 +66,32 @@ struct stat
+     struct timespec st_atim;		/* Time of last access.  */
+     struct timespec st_mtim;		/* Time of last modification.  */
+     struct timespec st_ctim;		/* Time of last status change.  */
+-# define st_atime st_atim.tv_sec	/* Backward compatibility.  */
+-# define st_mtime st_mtim.tv_sec
+-# define st_ctime st_ctim.tv_sec
+-#else
++#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++#  define st_mtime st_mtim.tv_sec
++#  define st_ctime st_ctim.tv_sec
++# else
+     __time_t st_atime;			/* Time of last access.  */
+     unsigned long int st_atimensec;	/* Nscecs of last access.  */
+     __time_t st_mtime;			/* Time of last modification.  */
+     unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
+     __time_t st_ctime;			/* Time of last status change.  */
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+-#endif
++# endif
+     unsigned long int __glibc_reserved4;
+     unsigned long int __glibc_reserved5;
++#endif /* __USE_TIME_BITS64  */
+   };
+ 
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
++# ifdef __USE_TIME_BITS64
++#  include <bits/struct_stat_time64_helper.h>
++# else
+     __dev_t st_dev;			/* Device.  */
+-# if __WORDSIZE == 64
++#  if __WORDSIZE == 64
+     unsigned short int __pad1;
+-# endif
++#  endif
+     __ino64_t st_ino;			/* File serial number.	*/
+     __mode_t st_mode;			/* File mode.  */
+     __nlink_t st_nlink;			/* Link count.  */
+@@ -96,7 +103,7 @@ struct stat64
+     __blksize_t st_blksize;		/* Optimal block size for I/O.  */
+ 
+     __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
+-# ifdef __USE_XOPEN2K8
++#  ifdef __USE_XOPEN2K8
+     /* Nanosecond resolution timestamps are stored in a format
+        equivalent to 'struct timespec'.  This is the type used
+        whenever possible but the Unix namespace rules do not allow the
+@@ -106,19 +113,20 @@ struct stat64
+     struct timespec st_atim;		/* Time of last access.  */
+     struct timespec st_mtim;		/* Time of last modification.  */
+     struct timespec st_ctim;		/* Time of last status change.  */
+-#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
+-#  define st_mtime st_mtim.tv_sec
+-#  define st_ctime st_ctim.tv_sec
+-# else
++#   define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++#   define st_mtime st_mtim.tv_sec
++#   define st_ctime st_ctim.tv_sec
++#  else
+     __time_t st_atime;			/* Time of last access.  */
+     unsigned long int st_atimensec;	/* Nscecs of last access.  */
+     __time_t st_mtime;			/* Time of last modification.  */
+     unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
+     __time_t st_ctime;			/* Time of last status change.  */
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+-# endif
++#  endif
+     unsigned long int __glibc_reserved4;
+     unsigned long int __glibc_reserved5;
++# endif /* __USE_TIME_BITS64  */
+   };
+ #endif
+ 
 diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h b/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h
 index 380cddb2d8..35221a707e 100644
 --- a/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h
