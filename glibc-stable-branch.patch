@@ -13,7 +13,7 @@ Aurelien Jarno (2):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
 
-Florian Weimer (10):
+Florian Weimer (11):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
       nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
@@ -24,6 +24,7 @@ Florian Weimer (10):
       support: Add check for TID zero in support_wait_for_thread_exit
       nptl: pthread_kill must send signals to a specific thread [BZ #28407]
       Add missing braces to bsearch inline implementation [BZ #28400]
+      elf: Earlier missing dynamic segment check in _dl_map_object_from_fd
 
 H.J. Lu (5):
       x86-64: Use testl to check __x86_string_control
@@ -195,10 +196,28 @@ index f39001cab9..cd7b9c9fe8 100644
    /* Auditing checkpoint: we have deleted all objects.  */
    if (__glibc_unlikely (do_audit))
 diff --git a/elf/dl-load.c b/elf/dl-load.c
-index 650e4edc35..4445c28ef3 100644
+index 650e4edc35..0976977fbd 100644
 --- a/elf/dl-load.c
 +++ b/elf/dl-load.c
-@@ -1149,6 +1149,7 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
+@@ -1130,6 +1130,7 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
+     struct loadcmd loadcmds[l->l_phnum];
+     size_t nloadcmds = 0;
+     bool has_holes = false;
++    bool empty_dynamic = false;
+ 
+     /* The struct is initialized to zero so this is not necessary:
+     l->l_ld = 0;
+@@ -1142,13 +1143,16 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
+ 	     segments are mapped in.  We record the addresses it says
+ 	     verbatim, and later correct for the run-time load address.  */
+ 	case PT_DYNAMIC:
+-	  if (ph->p_filesz)
++	  if (ph->p_filesz == 0)
++	    empty_dynamic = true; /* Usually separate debuginfo.  */
++	  else
+ 	    {
+ 	      /* Debuginfo only files from "objcopy --only-keep-debug"
+ 		 contain a PT_DYNAMIC segment with p_filesz == 0.  Skip
  		 such a segment to avoid a crash later.  */
  	      l->l_ld = (void *) ph->p_vaddr;
  	      l->l_ldnum = ph->p_memsz / sizeof (ElfW(Dyn));
@@ -206,8 +225,34 @@ index 650e4edc35..4445c28ef3 100644
  	    }
  	  break;
  
-@@ -1292,7 +1293,7 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
-   else
+@@ -1264,6 +1268,13 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
+ 	goto lose;
+       }
+ 
++    /* This check recognizes most separate debuginfo files.  */
++    if (__glibc_unlikely ((l->l_ld == 0 && type == ET_DYN) || empty_dynamic))
++      {
++	errstring = N_("object file has no dynamic section");
++	goto lose;
++      }
++
+     /* Length of the sections to be loaded.  */
+     maplength = loadcmds[nloadcmds - 1].allocend - loadcmds[0].mapstart;
+ 
+@@ -1281,18 +1292,10 @@ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
+       }
+   }
+ 
+-  if (l->l_ld == 0)
+-    {
+-      if (__glibc_unlikely (type == ET_DYN))
+-	{
+-	  errstring = N_("object file has no dynamic section");
+-	  goto lose;
+-	}
+-    }
+-  else
++  if (l->l_ld != 0)
      l->l_ld = (ElfW(Dyn) *) ((ElfW(Addr)) l->l_ld + l->l_addr);
  
 -  elf_get_dynamic_info (l, NULL);
