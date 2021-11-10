@@ -13,7 +13,7 @@ Aurelien Jarno (2):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
 
-Florian Weimer (11):
+Florian Weimer (12):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
       nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
@@ -25,6 +25,7 @@ Florian Weimer (11):
       nptl: pthread_kill must send signals to a specific thread [BZ #28407]
       Add missing braces to bsearch inline implementation [BZ #28400]
       elf: Earlier missing dynamic segment check in _dl_map_object_from_fd
+      s390: Use long branches across object boundaries (jgh instead of jh)
 
 H.J. Lu (5):
       x86-64: Use testl to check __x86_string_control
@@ -3330,6 +3331,32 @@ index 2d9c305808..e4e3e334a5 100644
  };
  
  #define HWCAP_IMPORTANT (HWCAP_S390_ZARCH | HWCAP_S390_LDISP \
+diff --git a/sysdeps/s390/memmem-arch13.S b/sysdeps/s390/memmem-arch13.S
+index c5c8d8c97e..58df8cdb14 100644
+--- a/sysdeps/s390/memmem-arch13.S
++++ b/sysdeps/s390/memmem-arch13.S
+@@ -41,7 +41,7 @@ ENTRY(MEMMEM_ARCH13)
+ #  error The arch13 variant of memmem needs the z13 variant of memmem!
+ # endif
+ 	clgfi	%r5,9
+-	jh	MEMMEM_Z13
++	jgh	MEMMEM_Z13
+ 
+ 	aghik	%r0,%r5,-1		/* vll needs highest index.  */
+ 	bc	4,0(%r14)		/* cc==1: return if needle-len == 0.  */
+diff --git a/sysdeps/s390/strstr-arch13.S b/sysdeps/s390/strstr-arch13.S
+index c7183e627c..222a6de91a 100644
+--- a/sysdeps/s390/strstr-arch13.S
++++ b/sysdeps/s390/strstr-arch13.S
+@@ -49,7 +49,7 @@ ENTRY(STRSTR_ARCH13)
+ #  error The arch13 variant of strstr needs the z13 variant of strstr!
+ # endif
+ 	clgfi	%r4,9
+-	jh	STRSTR_Z13
++	jgh	STRSTR_Z13
+ 
+ 	/* In case of a partial match, the vstrs instruction returns the index
+ 	   of the partial match in a vector-register.  Then we have to
 diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
 index e9eb707d0a..bedab1abba 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
