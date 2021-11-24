@@ -13,7 +13,7 @@ Aurelien Jarno (2):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
 
-Florian Weimer (12):
+Florian Weimer (13):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
       nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
@@ -26,6 +26,7 @@ Florian Weimer (12):
       Add missing braces to bsearch inline implementation [BZ #28400]
       elf: Earlier missing dynamic segment check in _dl_map_object_from_fd
       s390: Use long branches across object boundaries (jgh instead of jh)
+      nptl: Do not set signal mask on second setjmp return [BZ #28607]
 
 H.J. Lu (5):
       x86-64: Use testl to check __x86_string_control
@@ -71,10 +72,10 @@ Szabolcs Nagy (1):
       elf: Avoid deadlock between pthread_create and ctors [BZ #28357]
 
 diff --git a/NEWS b/NEWS
-index 3c610744c9..b7a75cc2d4 100644
+index 3c610744c9..b352a92704 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,22 @@ See the end for copying conditions.
+@@ -4,6 +4,23 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -93,6 +94,7 @@ index 3c610744c9..b7a75cc2d4 100644
 +  [28361] nptl: Avoid setxid deadlock with blocked signals in thread exit
 +  [28407] pthread_kill assumes that kill and tgkill are equivalent
 +  [28524] Conversion from ISO-2022-JP-3 with iconv may emit spurious NULs
++  [28607] Masked signals are delivered on thread exit
 +
  
  Version 2.34
@@ -1320,7 +1322,7 @@ index cc25ff21f3..9bac6e3b76 100644
    static int init_sigcancel = 0;
    if (atomic_load_relaxed (&init_sigcancel) == 0)
 diff --git a/nptl/pthread_create.c b/nptl/pthread_create.c
-index d8ec299cb1..bc213f0bc4 100644
+index d8ec299cb1..3db0c9fdf4 100644
 --- a/nptl/pthread_create.c
 +++ b/nptl/pthread_create.c
 @@ -37,6 +37,7 @@
@@ -1331,6 +1333,24 @@ index d8ec299cb1..bc213f0bc4 100644
  
  #include <shlib-compat.h>
  
+@@ -406,8 +407,6 @@ start_thread (void *arg)
+   unwind_buf.priv.data.prev = NULL;
+   unwind_buf.priv.data.cleanup = NULL;
+ 
+-  __libc_signal_restore_set (&pd->sigmask);
+-
+   /* Allow setxid from now onwards.  */
+   if (__glibc_unlikely (atomic_exchange_acq (&pd->setxid_futex, 0) == -2))
+     futex_wake (&pd->setxid_futex, 1, FUTEX_PRIVATE);
+@@ -417,6 +416,8 @@ start_thread (void *arg)
+       /* Store the new cleanup handler info.  */
+       THREAD_SETMEM (pd, cleanup_jmp_buf, &unwind_buf);
+ 
++      __libc_signal_restore_set (&pd->sigmask);
++
+       LIBC_PROBE (pthread_start, 3, (pthread_t) pd, pd->start_routine, pd->arg);
+ 
+       /* Run the code the user provided.  */
 @@ -485,6 +486,27 @@ start_thread (void *arg)
      /* This was the last thread.  */
      exit (0);
@@ -2412,7 +2432,7 @@ index 838a68f022..43dfc6739e 100644
  	  /* Sort the entries so that the most specific ones are at
  	     the beginning.  */
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
-index 42f9fc5072..df8943f486 100644
+index 42f9fc5072..c657101696 100644
 --- a/sysdeps/pthread/Makefile
 +++ b/sysdeps/pthread/Makefile
 @@ -89,7 +89,7 @@ tests += tst-cnd-basic tst-mtx-trylock tst-cnd-broadcast \
@@ -2424,10 +2444,11 @@ index 42f9fc5072..df8943f486 100644
  	 tst-locale1 tst-locale2 \
  	 tst-memstream \
  	 tst-mutex-errorcheck tst-mutex1 tst-mutex2 tst-mutex3 tst-mutex4 \
-@@ -118,6 +118,13 @@ tests += tst-cnd-basic tst-mtx-trylock tst-cnd-broadcast \
+@@ -118,6 +118,14 @@ tests += tst-cnd-basic tst-mtx-trylock tst-cnd-broadcast \
  	 tst-unload \
  	 tst-unwind-thread \
  	 tst-pt-vfork1 tst-pt-vfork2 tst-vfork1x tst-vfork2x \
++	 tst-pthread-exit-signal \
 +	 tst-pthread-setuid-loop \
 +	 tst-pthread_cancel-exited \
 +	 tst-pthread_cancel-select-loop \
@@ -2438,7 +2459,7 @@ index 42f9fc5072..df8943f486 100644
  
  tests-time64 := \
    tst-abstime-time64 \
-@@ -145,15 +152,17 @@ tests += tst-cancelx2 tst-cancelx3 tst-cancelx6 tst-cancelx8 tst-cancelx9 \
+@@ -145,15 +153,17 @@ tests += tst-cancelx2 tst-cancelx3 tst-cancelx6 tst-cancelx8 tst-cancelx9 \
  	 tst-cleanupx0 tst-cleanupx1 tst-cleanupx2 tst-cleanupx3
  
  ifeq ($(build-shared),yes)
@@ -2458,7 +2479,7 @@ index 42f9fc5072..df8943f486 100644
  
  ifeq ($(build-shared),yes)
  # Build all the modules even when not actually running test programs.
-@@ -272,4 +281,8 @@ LDFLAGS-tst-join7mod.so = -Wl,-soname,tst-join7mod.so
+@@ -272,4 +282,8 @@ LDFLAGS-tst-join7mod.so = -Wl,-soname,tst-join7mod.so
  
  CFLAGS-tst-unwind-thread.c += -funwind-tables
  
@@ -2735,6 +2756,57 @@ index 9563939792..0000000000
 -
 -#define TEST_FUNCTION do_test ()
 -#include "../test-skeleton.c"
+diff --git a/sysdeps/pthread/tst-pthread-exit-signal.c b/sysdeps/pthread/tst-pthread-exit-signal.c
+new file mode 100644
+index 0000000000..b4526fe663
+--- /dev/null
++++ b/sysdeps/pthread/tst-pthread-exit-signal.c
+@@ -0,0 +1,45 @@
++/* Test that pending signals are not delivered on thread exit (bug 28607).
++   Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* Due to bug 28607, pthread_kill (or pthread_cancel) restored the
++   signal mask during during thread exit, triggering the delivery of a
++   blocked pending signal (SIGUSR1 in this test).  */
++
++#include <support/xthread.h>
++#include <support/xsignal.h>
++
++static void *
++threadfunc (void *closure)
++{
++  sigset_t sigmask;
++  sigfillset (&sigmask);
++  xpthread_sigmask (SIG_SETMASK, &sigmask, NULL);
++  xpthread_kill (pthread_self (), SIGUSR1);
++  pthread_exit (NULL);
++  return NULL;
++}
++
++static int
++do_test (void)
++{
++  pthread_t thr = xpthread_create (NULL, threadfunc, NULL);
++  xpthread_join (thr);
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/sysdeps/pthread/tst-pthread-raise-blocked-self.c b/sysdeps/pthread/tst-pthread-raise-blocked-self.c
 new file mode 100644
 index 0000000000..128e1a6071
