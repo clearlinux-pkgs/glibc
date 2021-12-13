@@ -14,7 +14,7 @@ Aurelien Jarno (2):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
 
-Florian Weimer (13):
+Florian Weimer (14):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
       nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
@@ -28,6 +28,7 @@ Florian Weimer (13):
       elf: Earlier missing dynamic segment check in _dl_map_object_from_fd
       s390: Use long branches across object boundaries (jgh instead of jh)
       nptl: Do not set signal mask on second setjmp return [BZ #28607]
+      nptl: Add one more barrier to nptl/tst-create1
 
 H.J. Lu (5):
       x86-64: Use testl to check __x86_string_control
@@ -42,11 +43,13 @@ Jiaxun Yang (1):
 Jonathan Wakely (1):
       Suppress -Wcast-qual warnings in bsearch
 
-Joseph Myers (4):
+Joseph Myers (6):
       Use Linux 5.14 in build-many-glibcs.py
       Update syscall lists for Linux 5.14
       Update kernel version to 5.14 in tst-mman-consts.py
       Add MADV_POPULATE_READ and MADV_POPULATE_WRITE from Linux 5.14 to bits/mman-linux.h
+      Run conform/ tests using newly built libc
+      Use $(pie-default) with conformtest
 
 Matheus Castanho (1):
       powerpc64[le]: Fix CFI and LR save address for asm syscalls [BZ #28532]
@@ -75,11 +78,84 @@ Stefan Liebler (1):
 Szabolcs Nagy (1):
       elf: Avoid deadlock between pthread_create and ctors [BZ #28357]
 
+diff --git a/Makeconfig b/Makeconfig
+index 68663d984e..2fa0884b4e 100644
+--- a/Makeconfig
++++ b/Makeconfig
+@@ -412,12 +412,13 @@ link-extra-libs-tests = $(libsupport)
+ 
+ # Command for linking PIE programs with the C library.
+ ifndef +link-pie
+-+link-pie-before-libc = $(if $($(@F)-no-pie),$(no-pie-ldflag),-pie) \
+-	     -Wl,-O1 -nostdlib -nostartfiles -o $@ \
+++link-pie-before-inputs = $(if $($(@F)-no-pie),$(no-pie-ldflag),-pie) \
++	     -Wl,-O1 -nostdlib -nostartfiles \
+ 	     $(sysdep-LDFLAGS) $(LDFLAGS) $(LDFLAGS-$(@F)) \
+ 	     $(combreloc-LDFLAGS) $(relro-LDFLAGS) $(hashstyle-LDFLAGS) \
+ 	     $(firstword $(CRT-$(@F)) $(csu-objpfx)S$(start-installed-name)) \
+-	     $(+preinit) $(+prectorS) \
++	     $(+preinit) $(+prectorS)
+++link-pie-before-libc = -o $@ $(+link-pie-before-inputs) \
+ 	     $(filter-out $(addprefix $(csu-objpfx),start.o \
+ 						    S$(start-installed-name))\
+ 			  $(+preinit) $(link-extra-libs) \
+@@ -442,11 +443,12 @@ endef
+ endif
+ # Command for statically linking programs with the C library.
+ ifndef +link-static
+-+link-static-before-libc = -nostdlib -nostartfiles -static -o $@ \
+++link-static-before-inputs = -nostdlib -nostartfiles -static \
+ 	      $(if $($(@F)-no-pie),$(no-pie-ldflag),$(default-pie-ldflag)) \
+ 	      $(sysdep-LDFLAGS) $(LDFLAGS) $(LDFLAGS-$(@F))  \
+ 	      $(firstword $(CRT-$(@F)) $(csu-objpfx)$(real-static-start-installed-name)) \
+-	      $(+preinit) $(+prectorT) \
++	      $(+preinit) $(+prectorT)
+++link-static-before-libc = -o $@ $(+link-static-before-inputs) \
+ 	      $(filter-out $(addprefix $(csu-objpfx),start.o \
+ 						     $(start-installed-name))\
+ 			   $(+preinit) $(link-extra-libs-static) \
+@@ -473,13 +475,16 @@ endif
+ ifeq (yes,$(build-pie-default))
+ +link = $(+link-pie)
+ +link-tests = $(+link-pie-tests)
+++link-tests-before-inputs = $(+link-pie-before-inputs) $(rtld-tests-LDFLAGS)
+++link-tests-after-inputs = $(link-libc-tests) $(+link-pie-after-libc)
+ +link-printers-tests = $(+link-pie-printers-tests)
+ else  # not build-pie-default
+-+link-before-libc = -nostdlib -nostartfiles -o $@ \
+++link-before-inputs = -nostdlib -nostartfiles \
+ 	      $(sysdep-LDFLAGS) $(LDFLAGS) $(LDFLAGS-$(@F)) \
+ 	      $(combreloc-LDFLAGS) $(relro-LDFLAGS) $(hashstyle-LDFLAGS) \
+ 	      $(firstword $(CRT-$(@F)) $(csu-objpfx)$(start-installed-name)) \
+-	      $(+preinit) $(+prector) \
++	      $(+preinit) $(+prector)
+++link-before-libc = -o $@ $(+link-before-inputs) \
+ 	      $(filter-out $(addprefix $(csu-objpfx),start.o \
+ 						     $(start-installed-name))\
+ 			   $(+preinit) $(link-extra-libs) \
+@@ -491,6 +496,8 @@ $(CC) $(link-libc-rpath-link) $(+link-before-libc) $(rtld-LDFLAGS) \
+   $(link-extra-flags) $(link-libc) $(+link-after-libc)
+ $(call after-link,$@)
+ endef
+++link-tests-before-inputs = $(+link-before-inputs) $(rtld-tests-LDFLAGS)
+++link-tests-after-inputs = $(link-libc-tests) $(+link-after-libc)
+ define +link-tests
+ $(CC) $(+link-before-libc) $(rtld-tests-LDFLAGS) $(link-libc-tests) \
+ 		     $(+link-after-libc)
+@@ -505,6 +512,8 @@ endif  # build-pie-default
+ else  # build-static
+ +link = $(+link-static)
+ +link-tests = $(+link-static-tests)
+++link-tests-before-inputs = $(+link-static-before-inputs)
+++link-tests-after-inputs = $(link-libc-static-tests) $(+link-static-after-libc)
+ +link-printers-tests = $(+link-static-tests)
+ endif  # build-shared
+ endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..8c68273929 100644
+index 3c610744c9..698964bb9e 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,24 @@ See the end for copying conditions.
+@@ -4,6 +4,25 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -100,6 +176,7 @@ index 3c610744c9..8c68273929 100644
 +  [28524] Conversion from ISO-2022-JP-3 with iconv may emit spurious NULs
 +  [28607] Masked signals are delivered on thread exit
 +  [28532] powerpc64[le]: CFI for assembly templated syscalls is incorrect
++  [28678] nptl/tst-create1 hangs sporadically
 +
  
  Version 2.34
@@ -134,6 +211,86 @@ index 4132dc6af0..e2fcea6e17 100644
      }
  
    return NULL;
+diff --git a/conform/Makefile b/conform/Makefile
+index c64a83a905..27ad98caf8 100644
+--- a/conform/Makefile
++++ b/conform/Makefile
+@@ -175,7 +175,11 @@ $(conformtest-header-tests): $(objpfx)%/conform.out: \
+ 			     conformtest.py $(conformtest-headers-data)
+ 	(set -e; std_hdr=$*; std=$${std_hdr%%/*}; hdr=$${std_hdr#*/}; \
+ 	 mkdir -p $(@D); \
+-	 $(PYTHON) $< --cc='$(CC)' --flags='$(conformtest-cc-flags)' \
++	 $(PYTHON) $< --cc='$(CC) $(pie-default)' \
++		   --flags='$(conformtest-cc-flags)' \
++		   --ldflags='$(+link-tests-before-inputs)' \
++		   --libs='$(+link-tests-after-inputs)' \
++		   --run-program-prefix='$(run-program-prefix)' \
+ 		   --standard=$$std --header=$$hdr $(conformtest-xfail) \
+ 		   $(conformtest-cross) \
+ 		   > $@ 2>&1); \
+diff --git a/conform/conformtest.py b/conform/conformtest.py
+index f0405b7186..4898e16c9f 100644
+--- a/conform/conformtest.py
++++ b/conform/conformtest.py
+@@ -381,12 +381,16 @@ class MacroStrTest(object):
+ class HeaderTests(object):
+     """The set of tests run for a header."""
+ 
+-    def __init__(self, header, standard, cc, flags, cross, xfail):
++    def __init__(self, header, standard, cc, flags, ldflags, libs,
++                 run_program_prefix, cross, xfail):
+         """Initialize a HeaderTests object."""
+         self.header = header
+         self.standard = standard
+         self.cc = cc
+         self.flags = flags
++        self.ldflags = ldflags
++        self.libs = libs
++        self.run_program_prefix = run_program_prefix
+         self.cross = cross
+         self.xfail_str = xfail
+         self.cflags_namespace = ('%s -fno-builtin %s -D_ISOMAC'
+@@ -590,7 +594,8 @@ class HeaderTests(object):
+         exe_file = os.path.join(self.temp_dir, 'test')
+         with open(c_file, 'w') as c_file_out:
+             c_file_out.write('#include <%s>\n%s' % (self.header, text))
+-        cmd = ('%s %s %s -o %s' % (self.cc, self.cflags, c_file, exe_file))
++        cmd = ('%s %s %s %s %s -o %s' % (self.cc, self.cflags, self.ldflags,
++                                         c_file, self.libs, exe_file))
+         try:
+             subprocess.check_call(cmd, shell=True)
+         except subprocess.CalledProcessError:
+@@ -600,7 +605,9 @@ class HeaderTests(object):
+             self.note_skip(name)
+             return
+         try:
+-            subprocess.check_call(exe_file, shell=True)
++            subprocess.check_call('%s %s' % (self.run_program_prefix,
++                                             exe_file),
++                                  shell=True)
+         except subprocess.CalledProcessError:
+             self.note_error(name, self.group_xfail)
+             return
+@@ -719,12 +726,19 @@ def main():
+                         help='C compiler to use')
+     parser.add_argument('--flags', metavar='CFLAGS',
+                         help='Compiler flags to use with CC')
++    parser.add_argument('--ldflags', metavar='LDFLAGS',
++                        help='Compiler arguments for linking before inputs')
++    parser.add_argument('--libs', metavar='LIBS',
++                        help='Compiler arguments for linking after inputs')
++    parser.add_argument('--run-program-prefix', metavar='RUN-PROGRAM-PREFIX',
++                        help='Wrapper for running newly built program')
+     parser.add_argument('--cross', action='store_true',
+                         help='Do not run compiled test programs')
+     parser.add_argument('--xfail', metavar='COND',
+                         help='Name of condition for XFAILs')
+     args = parser.parse_args()
+     tests = HeaderTests(args.header, args.standard, args.cc, args.flags,
++                        args.ldflags, args.libs, args.run_program_prefix,
+                         args.cross, args.xfail)
+     tests.run()
+ 
 diff --git a/elf/Makefile b/elf/Makefile
 index d05f410592..118d579c42 100644
 --- a/elf/Makefile
@@ -2532,10 +2689,10 @@ index 42f9fc5072..c657101696 100644
  endif
 diff --git a/sysdeps/pthread/tst-create1.c b/sysdeps/pthread/tst-create1.c
 new file mode 100644
-index 0000000000..932586c309
+index 0000000000..763ded8d79
 --- /dev/null
 +++ b/sysdeps/pthread/tst-create1.c
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,123 @@
 +/* Verify that pthread_create does not deadlock when ctors take locks.
 +   Copyright (C) 2021 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -2571,6 +2728,7 @@ index 0000000000..932586c309
 +*/
 +
 +static pthread_barrier_t bar_ctor;
++static pthread_barrier_t bar_ctor_finish;
 +static pthread_barrier_t bar_dtor;
 +static pthread_mutex_t user_lock = PTHREAD_MUTEX_INITIALIZER;
 +
@@ -2584,6 +2742,7 @@ index 0000000000..932586c309
 +  xpthread_mutex_unlock (&user_lock);
 +  dprintf (1, "thread 1: in ctor: unlocked user_lock.\n");
 +  dprintf (1, "thread 1: in ctor: done.\n");
++  xpthread_barrier_wait (&bar_ctor_finish);
 +}
 +
 +void
@@ -2619,6 +2778,7 @@ index 0000000000..932586c309
 +  xpthread_mutex_unlock (&user_lock);
 +  dprintf (1, "thread 2: unlocked user_lock.\n");
 +  xpthread_join (t3);
++  xpthread_barrier_wait (&bar_ctor_finish);
 +
 +  xpthread_mutex_lock (&user_lock);
 +  dprintf (1, "thread 2: locked user_lock.\n");
@@ -2637,6 +2797,7 @@ index 0000000000..932586c309
 +{
 +  dprintf (1, "thread 1: started.\n");
 +  xpthread_barrier_init (&bar_ctor, NULL, 2);
++  xpthread_barrier_init (&bar_ctor_finish, NULL, 2);
 +  xpthread_barrier_init (&bar_dtor, NULL, 2);
 +  pthread_t t2 = xpthread_create (0, thread2, 0);
 +  void *p = xdlopen ("tst-create1mod.so", RTLD_NOW | RTLD_GLOBAL);
