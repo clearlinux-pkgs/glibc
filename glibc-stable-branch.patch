@@ -69,8 +69,9 @@ Siddhesh Poyarekar (8):
       support: Also return fd when it is 0
       Handle NULL input to malloc_usable_size [BZ #28506]
 
-Stafford Horne (1):
+Stafford Horne (2):
       timex: Use 64-bit fields on 32-bit TIMESIZE=64 systems (BZ #28469)
+      pthread/tst-cancel28: Fix barrier re-init race condition
 
 Stefan Liebler (1):
       S390: Add PCI_MIO and SIE HWCAPs
@@ -2687,6 +2688,18 @@ index 42f9fc5072..c657101696 100644
 +$(objpfx)tst-create1.out: $(objpfx)tst-create1mod.so
 +
  endif
+diff --git a/sysdeps/pthread/tst-cancel28.c b/sysdeps/pthread/tst-cancel28.c
+index 627cbc8160..9286c159b3 100644
+--- a/sysdeps/pthread/tst-cancel28.c
++++ b/sysdeps/pthread/tst-cancel28.c
+@@ -69,7 +69,6 @@ do_test (void)
+ 
+   xpthread_cancel (timer_thread);
+ 
+-  xpthread_barrier_init (&barrier, NULL, 2);
+   xpthread_barrier_wait (&barrier);
+ 
+   return 0;
 diff --git a/sysdeps/pthread/tst-create1.c b/sysdeps/pthread/tst-create1.c
 new file mode 100644
 index 0000000000..763ded8d79
