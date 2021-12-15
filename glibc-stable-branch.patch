@@ -79,6 +79,10 @@ Stefan Liebler (1):
 Szabolcs Nagy (1):
       elf: Avoid deadlock between pthread_create and ctors [BZ #28357]
 
+Xi Ruoyao (2):
+      mips: align stack in clone [BZ #28223]
+      mips: increase stack alignment in clone to match the ABI
+
 diff --git a/Makeconfig b/Makeconfig
 index 68663d984e..2fa0884b4e 100644
 --- a/Makeconfig
@@ -153,10 +157,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..698964bb9e 100644
+index 3c610744c9..693ac78229 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,25 @@ See the end for copying conditions.
+@@ -4,6 +4,26 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -169,6 +173,7 @@ index 3c610744c9..698964bb9e 100644
 +  [19193] nptl: pthread_kill, pthread_cancel should not fail after exit
 +  [28036] Incorrect types for pthread_mutexattr_set/getrobust_np
 +  [28182] _TIME_BITS=64 in C++ has issues with fcntl, ioctl, prctl
++  [28223] mips: clone does not align stack
 +  [28310] Do not use affinity mask for sysconf (_SC_NPROCESSORS_CONF)
 +  [28340] ld.so crashes while loading a DSO with a read-only dynamic section
 +  [28357] deadlock between pthread_create and ELF constructors
@@ -4049,6 +4054,24 @@ index cf560d3af4..0607a4dfa6 100644
  #define __NR_read 3
  #define __NR_readahead 225
  #define __NR_readdir 89
+diff --git a/sysdeps/unix/sysv/linux/mips/clone.S b/sysdeps/unix/sysv/linux/mips/clone.S
+index 71d9dba8bd..fd71b5ca2e 100644
+--- a/sysdeps/unix/sysv/linux/mips/clone.S
++++ b/sysdeps/unix/sysv/linux/mips/clone.S
+@@ -55,6 +55,13 @@ NESTED(__clone,4*SZREG,sp)
+ 	.set		at
+ #endif
+ 
++	/* Align stack to 8/16 bytes per the ABI.  */
++#if _MIPS_SIM == _ABIO32
++	li		t0,-8
++#else
++	li		t0,-16
++#endif
++	and		a1,a1,t0
+ 
+ 	/* Sanity check arguments.  */
+ 	li		v0,EINVAL
 diff --git a/sysdeps/unix/sysv/linux/mips/fxstat.c b/sysdeps/unix/sysv/linux/mips/fxstat.c
 index 11511d30b3..4a6016ff12 100644
 --- a/sysdeps/unix/sysv/linux/mips/fxstat.c

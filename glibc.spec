@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.34
-Release:        416
+Release:        417
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -51,6 +51,8 @@ Patch61: 	fix-ld-audit-performance.patch
 Patch62:	c-utf8-locale.patch
 Patch63:	utf8-locale-naming.patch
 Patch64:	noclone3yet.patch
+
+Patch65: 	new.patch
 
 # cves: patches 101 through 200
 
@@ -236,6 +238,8 @@ GNU C library extra components.
 %patch62 -p1
 %patch63 -p1
 %patch64 -p1
+
+%patch65 -p1
 
 
 %patch9 -p1
