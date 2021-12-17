@@ -14,7 +14,7 @@ Aurelien Jarno (2):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
 
-Florian Weimer (14):
+Florian Weimer (16):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
       nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
@@ -29,6 +29,8 @@ Florian Weimer (14):
       s390: Use long branches across object boundaries (jgh instead of jh)
       nptl: Do not set signal mask on second setjmp return [BZ #28607]
       nptl: Add one more barrier to nptl/tst-create1
+      arm: Guard ucontext _rtld_global_ro access by SHARED, not PIC macro
+      nss: Use "files dns" as the default for the hosts database (bug 28700)
 
 H.J. Lu (5):
       x86-64: Use testl to check __x86_string_control
@@ -157,10 +159,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..693ac78229 100644
+index 3c610744c9..6864af471c 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,26 @@ See the end for copying conditions.
+@@ -4,6 +4,27 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -183,6 +185,7 @@ index 3c610744c9..693ac78229 100644
 +  [28607] Masked signals are delivered on thread exit
 +  [28532] powerpc64[le]: CFI for assembly templated syscalls is incorrect
 +  [28678] nptl/tst-create1 hangs sporadically
++  [28700] "dns [!UNAVAIL=return] files" NSS default for hosts is not useful
 +
  
  Version 2.34
@@ -1399,6 +1402,22 @@ index a1074b782a..b0d702be10 100644
 -#define TEST_FUNCTION do_test ()
 -#include "../test-skeleton.c"
 +#include "support/test-driver.c"
+diff --git a/manual/nss.texi b/manual/nss.texi
+index 3aaa7786f8..524d22ad1e 100644
+--- a/manual/nss.texi
++++ b/manual/nss.texi
+@@ -324,9 +324,8 @@ missing.
+ 
+ @cindex default value, and NSS
+ For the @code{hosts} and @code{networks} databases the default value is
+-@code{dns [!UNAVAIL=return] files}.  I.e., the system is prepared for
+-the DNS service not to be available but if it is available the answer it
+-returns is definitive.
++@code{files dns}.  I.e., local configuration will override the contents
++of the domain name system (DNS).
+ 
+ The @code{passwd}, @code{group}, and @code{shadow} databases was
+ traditionally handled in a special way.  The appropriate files in the
 diff --git a/misc/getsysstats.c b/misc/getsysstats.c
 index 0eedface6d..57d93601e2 100644
 --- a/misc/getsysstats.c
@@ -1667,6 +1686,41 @@ index f79a2b26fc..35bf1f973e 100644
 +compat_symbol (libc, __pthread_kill_esrch, pthread_kill, GLIBC_2_0);
  # endif
  #endif
+diff --git a/nss/XXX-lookup.c b/nss/XXX-lookup.c
+index f1c97f7c8e..dbc87868dd 100644
+--- a/nss/XXX-lookup.c
++++ b/nss/XXX-lookup.c
+@@ -29,7 +29,7 @@
+ |* ALTERNATE_NAME - name of another service which is examined in   *|
+ |*                  case DATABASE_NAME is not found                *|
+ |* 								   *|
+-|* DEFAULT_CONFIG - string for default conf (e.g. "dns files")	   *|
++|* DEFAULT_CONFIG - string for default conf (e.g. "files dns")	   *|
+ |* 								   *|
+ \*******************************************************************/
+ 
+diff --git a/nss/nss_database.c b/nss/nss_database.c
+index ab121cb371..54561f0328 100644
+--- a/nss/nss_database.c
++++ b/nss/nss_database.c
+@@ -80,7 +80,7 @@ enum nss_database_default
+ {
+  nss_database_default_defconfig = 0, /* "nis [NOTFOUND=return] files".  */
+  nss_database_default_compat, /* "compat [NOTFOUND=return] files".  */
+- nss_database_default_dns,    /* "dns [!UNAVAIL=return] files".  */
++ nss_database_default_dns,    /* "files dns".  */
+  nss_database_default_files,    /* "files".  */
+  nss_database_default_nis,    /* "nis".  */
+  nss_database_default_nis_nisplus,    /* "nis nisplus".  */
+@@ -133,7 +133,7 @@ nss_database_select_default (struct nss_database_default_cache *cache,
+ #endif
+ 
+     case nss_database_default_dns:
+-      line = "dns [!UNAVAIL=return] files";
++      line = "files dns";
+       break;
+ 
+     case nss_database_default_files:
 diff --git a/nss/tst-nss-files-hosts-long.root/etc/nsswitch.conf b/nss/tst-nss-files-hosts-long.root/etc/nsswitch.conf
 new file mode 100644
 index 0000000000..5b0c6a4199
@@ -3706,6 +3760,50 @@ index 85c9b236ce..5772333cee 100644
  #define __NR_read 3
  #define __NR_readahead 225
  #define __NR_readlink 85
+diff --git a/sysdeps/unix/sysv/linux/arm/getcontext.S b/sysdeps/unix/sysv/linux/arm/getcontext.S
+index 3aa581c4da..11bfcbe5f5 100644
+--- a/sysdeps/unix/sysv/linux/arm/getcontext.S
++++ b/sysdeps/unix/sysv/linux/arm/getcontext.S
+@@ -50,7 +50,7 @@ ENTRY(__getcontext)
+ 
+ 	/* Store FP regs.  Much of the FP code is copied from arm/setjmp.S.  */
+ 
+-#ifdef PIC
++#ifdef SHARED
+ 	ldr     r2, 1f
+ 	ldr     r1, .Lrtld_global_ro
+ 0:      add     r2, pc, r2
+@@ -102,7 +102,7 @@ ENTRY(__getcontext)
+ 
+ END(__getcontext)
+ 
+-#ifdef PIC
++#ifdef SHARED
+ 1:      .long   _GLOBAL_OFFSET_TABLE_ - 0b - PC_OFS
+ .Lrtld_global_ro:
+ 	.long   C_SYMBOL_NAME(_rtld_global_ro)(GOT)
+diff --git a/sysdeps/unix/sysv/linux/arm/setcontext.S b/sysdeps/unix/sysv/linux/arm/setcontext.S
+index 8be8beefea..4c7c6e5509 100644
+--- a/sysdeps/unix/sysv/linux/arm/setcontext.S
++++ b/sysdeps/unix/sysv/linux/arm/setcontext.S
+@@ -32,7 +32,7 @@ ENTRY(__setcontext)
+ 	add	r0, r0, #UCONTEXT_REGSPACE
+ 
+ 	/* Restore the VFP registers.  Copied from arm/__longjmp.S.  */
+-#ifdef PIC
++#ifdef SHARED
+ 	ldr     r2, 1f
+ 	ldr     r1, .Lrtld_global_ro
+ 0:      add     r2, pc, r2
+@@ -101,7 +101,7 @@ ENTRY(__startcontext)
+ 	.fnend
+ END(__startcontext)
+ 
+-#ifdef PIC
++#ifdef SHARED
+ 1:      .long   _GLOBAL_OFFSET_TABLE_ - 0b - PC_OFS
+ .Lrtld_global_ro:
+ 	.long   C_SYMBOL_NAME(_rtld_global_ro)(GOT)
 diff --git a/sysdeps/unix/sysv/linux/bits/mman-linux.h b/sysdeps/unix/sysv/linux/bits/mman-linux.h
 index 3b1ae418e0..31451c28d9 100644
 --- a/sysdeps/unix/sysv/linux/bits/mman-linux.h
