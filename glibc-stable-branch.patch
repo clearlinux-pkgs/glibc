@@ -1,4 +1,4 @@
-Adhemerval Zanella (7):
+Adhemerval Zanella (8):
       support: Add support_open_dev_null_range
       Use support_open_dev_null_range io/tst-closefrom, misc/tst-close_range, and posix/tst-spawn5 (BZ #28260)
       misc: Add __get_nprocs_sched
@@ -6,13 +6,17 @@ Adhemerval Zanella (7):
       linux: Revert the use of sched_getaffinity on get_nproc (BZ #28310)
       y2038: Use a common definition for stat for sparc32
       linux: Use /proc/stat fallback for __get_nprocs_conf (BZ #28624)
+      Update sparc libm-test-ulps
 
 Arjun Shankar (1):
       elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
 
-Aurelien Jarno (2):
+Aurelien Jarno (5):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
+      elf: Fix tst-cpu-features-cpuinfo for KVM guests on some AMD systems [BZ #28704]
+      riscv: align stack in clone [BZ #28702]
+      riscv: align stack before calling _dl_init [BZ #28703]
 
 Florian Weimer (16):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
@@ -42,6 +46,9 @@ H.J. Lu (5):
 Jiaxun Yang (1):
       MIPS: Setup errno for {f,l,}xstat
 
+John David Anglin (1):
+      Update hppa libm-test-ulps
+
 Jonathan Wakely (1):
       Suppress -Wcast-qual warnings in bsearch
 
@@ -53,8 +60,9 @@ Joseph Myers (6):
       Run conform/ tests using newly built libc
       Use $(pie-default) with conformtest
 
-Matheus Castanho (1):
+Matheus Castanho (2):
       powerpc64[le]: Fix CFI and LR save address for asm syscalls [BZ #28532]
+      powerpc64[le]: Allocate extra stack frame on syscall.S
 
 Nikita Popov (3):
       librt: fix NULL pointer dereference (bug 28213)
@@ -159,10 +167,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..6864af471c 100644
+index 3c610744c9..d9b344027b 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,27 @@ See the end for copying conditions.
+@@ -4,6 +4,30 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -186,6 +194,9 @@ index 3c610744c9..6864af471c 100644
 +  [28532] powerpc64[le]: CFI for assembly templated syscalls is incorrect
 +  [28678] nptl/tst-create1 hangs sporadically
 +  [28700] "dns [!UNAVAIL=return] files" NSS default for hosts is not useful
++  [28702] RISC-V: clone does not align stack
++  [28703] RISC-V: _dl_init might be called with unaligned stack
++  [28704] elf/tst-cpu-features-cpuinfo fails for KVM guests on some AMD systems
 +
  
  Version 2.34
@@ -2548,6 +2559,19 @@ index 9c15259236..fcbbf69748 100644
     for the link map L with !do_add, then this function will not raise
     an exception, otherwise it is possible that it encounters a memory
     allocation failure.  */
+diff --git a/sysdeps/hppa/fpu/libm-test-ulps b/sysdeps/hppa/fpu/libm-test-ulps
+index 90e16a7269..3d60fc25a1 100644
+--- a/sysdeps/hppa/fpu/libm-test-ulps
++++ b/sysdeps/hppa/fpu/libm-test-ulps
+@@ -1104,7 +1104,7 @@ float: 8
+ ldouble: 1
+ 
+ Function: "tgamma_downward":
+-double: 8
++double: 9
+ float: 7
+ 
+ Function: "tgamma_towardzero":
 diff --git a/sysdeps/mach/getsysstats.c b/sysdeps/mach/getsysstats.c
 index 1267f39da2..cc8023f979 100644
 --- a/sysdeps/mach/getsysstats.c
@@ -3589,6 +3613,25 @@ index 0000000000..f803e94f11
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/riscv/dl-machine.h b/sysdeps/riscv/dl-machine.h
+index aedf69fcdd..951268923d 100644
+--- a/sysdeps/riscv/dl-machine.h
++++ b/sysdeps/riscv/dl-machine.h
+@@ -127,8 +127,14 @@ elf_machine_load_address (void)
+ 	sll a3, a1, " STRINGXP (PTRLOG) "\n\
+ 	add a3, a3, a2\n\
+ 	add a3, a3, " STRINGXP (SZREG) "\n\
++	# Stash the stack pointer in s1.\n\
++	mv s1, sp\n\
++	# Align stack to 128 bits for the _dl_init call.\n\
++	andi sp, sp,-16\n\
+ 	# Call the function to run the initializers.\n\
+ 	jal _dl_init\n\
++	# Restore the stack pointer for _start.\n\
++	mv sp, s1\n\
+ 	# Pass our finalizer function to _start.\n\
+ 	lla a0, _dl_fini\n\
+ 	# Jump to the user entry point.\n\
 diff --git a/sysdeps/riscv/dl-relocate-ld.h b/sysdeps/riscv/dl-relocate-ld.h
 new file mode 100644
 index 0000000000..2ab2b8ac6c
@@ -3704,6 +3747,19 @@ index c7183e627c..222a6de91a 100644
  
  	/* In case of a partial match, the vstrs instruction returns the index
  	   of the partial match in a vector-register.  Then we have to
+diff --git a/sysdeps/sparc/fpu/libm-test-ulps b/sysdeps/sparc/fpu/libm-test-ulps
+index c2e4649524..f34bbe6c59 100644
+--- a/sysdeps/sparc/fpu/libm-test-ulps
++++ b/sysdeps/sparc/fpu/libm-test-ulps
+@@ -1346,7 +1346,7 @@ float: 8
+ ldouble: 4
+ 
+ Function: "tgamma_downward":
+-double: 8
++double: 9
+ float: 7
+ ldouble: 5
+ 
 diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
 index e9eb707d0a..bedab1abba 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
@@ -4300,6 +4356,36 @@ index c77435ca61..b01e464fb9 100644
  #define __NR_read 3
  #define __NR_readahead 191
  #define __NR_readdir 89
+diff --git a/sysdeps/unix/sysv/linux/powerpc/syscall.S b/sysdeps/unix/sysv/linux/powerpc/syscall.S
+index a29652feaf..a5497c8370 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/syscall.S
++++ b/sysdeps/unix/sysv/linux/powerpc/syscall.S
+@@ -27,7 +27,11 @@ ENTRY (syscall)
+ 	mr   r8,r9
+ #if defined(USE_PPC_SCV) && !IS_IN(rtld) && (defined(__PPC64__) || defined(__powerpc64__))
+ 	CHECK_SCV_SUPPORT r9 0f
++	stdu r1,-SCV_FRAME_SIZE(r1)
++	cfi_adjust_cfa_offset(SCV_FRAME_SIZE)
+ 	DO_CALL_SCV
++	addi r1,r1,SCV_FRAME_SIZE
++	cfi_adjust_cfa_offset(-SCV_FRAME_SIZE)
+ 	RET_SCV
+ 	b 1f
+ #endif
+diff --git a/sysdeps/unix/sysv/linux/riscv/clone.S b/sysdeps/unix/sysv/linux/riscv/clone.S
+index 12f91a20d3..161e83c7e3 100644
+--- a/sysdeps/unix/sysv/linux/riscv/clone.S
++++ b/sysdeps/unix/sysv/linux/riscv/clone.S
+@@ -32,6 +32,9 @@
+ 	.text
+ LEAF (__clone)
+ 
++	/* Align stack to a 128-bit boundary as per RISC-V ABI.  */
++	andi		a1,a1,ALMASK
++
+ 	/* Sanity check arguments.  */
+ 	beqz		a0,L (invalid)	/* No NULL function pointers.  */
+ 	beqz		a1,L (invalid)	/* No NULL stack pointers.  */
 diff --git a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
 index 70854bb9e3..24d0a2c455 100644
 --- a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
@@ -4730,6 +4816,26 @@ index 004feb53f1..36847783f6 100644
  #define __NR_read 1073741824
  #define __NR_readahead 1073742011
  #define __NR_readlink 1073741913
+diff --git a/sysdeps/x86/tst-cpu-features-cpuinfo.c b/sysdeps/x86/tst-cpu-features-cpuinfo.c
+index 2d4927f5e5..830aaca2ec 100644
+--- a/sysdeps/x86/tst-cpu-features-cpuinfo.c
++++ b/sysdeps/x86/tst-cpu-features-cpuinfo.c
+@@ -169,7 +169,14 @@ do_test (int argc, char **argv)
+   else if (cpu_features->basic.kind == arch_kind_amd)
+     {
+       fails += CHECK_PROC (ibpb, AMD_IBPB);
+-      fails += CHECK_PROC (ibrs, AMD_IBRS);
++
++      /* The IBRS feature on AMD processors is reported using the Intel feature
++       * on KVM guests (synthetic bit).  In both cases the cpuinfo entry is the
++       * same.  */
++      if (HAS_CPU_FEATURE (IBRS_IBPB))
++        fails += CHECK_PROC (ibrs, IBRS_IBPB);
++      else
++        fails += CHECK_PROC (ibrs, AMD_IBRS);
+       fails += CHECK_PROC (stibp, AMD_STIBP);
+     }
+   fails += CHECK_PROC (ibt, IBT);
 diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
 index 9f02624375..abde8438d4 100644
 --- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
