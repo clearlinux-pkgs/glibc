@@ -52,7 +52,6 @@ Patch62:	c-utf8-locale.patch
 Patch63:	utf8-locale-naming.patch
 Patch64:	noclone3yet.patch
 
-Patch65: 	new.patch
 
 # cves: patches 101 through 200
 
@@ -239,7 +238,6 @@ GNU C library extra components.
 %patch63 -p1
 %patch64 -p1
 
-%patch65 -p1
 
 
 %patch9 -p1
