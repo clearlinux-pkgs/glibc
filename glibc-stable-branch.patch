@@ -94,6 +94,9 @@ Xi Ruoyao (2):
       mips: align stack in clone [BZ #28223]
       mips: increase stack alignment in clone to match the ABI
 
+maminjie (1):
+      Linux: Fix 32-bit vDSO for clock_gettime on powerpc32
+
 diff --git a/Makeconfig b/Makeconfig
 index 68663d984e..2fa0884b4e 100644
 --- a/Makeconfig
@@ -3889,6 +3892,19 @@ index ee37694e8f..4a5db6deca 100644
    unsigned int modes;          /* mode selector */
    int :32;                     /* pad */
    long long offset;            /* time offset (usec) */
+diff --git a/sysdeps/unix/sysv/linux/clock_gettime.c b/sysdeps/unix/sysv/linux/clock_gettime.c
+index 91df6b3d96..9c7d907325 100644
+--- a/sysdeps/unix/sysv/linux/clock_gettime.c
++++ b/sysdeps/unix/sysv/linux/clock_gettime.c
+@@ -53,7 +53,7 @@ __clock_gettime64 (clockid_t clock_id, struct __timespec64 *tp)
+     {
+       struct timespec tp32;
+       r = INTERNAL_VSYSCALL_CALL (vdso_time, 2, clock_id, &tp32);
+-      if (r == 0 && tp32.tv_sec > 0)
++      if (r == 0 && tp32.tv_sec >= 0)
+ 	{
+ 	  *tp = valid_timespec_to_timespec64 (tp32);
+ 	  return 0;
 diff --git a/sysdeps/unix/sysv/linux/csky/arch-syscall.h b/sysdeps/unix/sysv/linux/csky/arch-syscall.h
 index 24b0d1f94e..4af6d6202f 100644
 --- a/sysdeps/unix/sysv/linux/csky/arch-syscall.h
