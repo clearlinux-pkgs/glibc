@@ -9,6 +9,9 @@ Adhemerval Zanella (9):
       Update sparc libm-test-ulps
       linux: Add sparck brk implementation
 
+Andrea Monaco (1):
+      intl/plural.y: Avoid conflicting declarations of yyerror and yylex
+
 Arjun Shankar (1):
       elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
 
@@ -1191,6 +1194,22 @@ index 7388356a19..c490561581 100644
  /* Return number of physical pages of memory in the system.  */
  extern long int __get_phys_pages (void);
  libc_hidden_proto (__get_phys_pages)
+diff --git a/intl/plural.y b/intl/plural.y
+index e02e74541c..2ee128ba01 100644
+--- a/intl/plural.y
++++ b/intl/plural.y
+@@ -40,6 +40,11 @@
+ # define __gettextparse PLURAL_PARSE
+ #endif
+ 
++/* Later we provide those prototypes.  Without these macros, bison may
++   generate its own prototypes with possible conflicts.  */
++#define YYLEX_IS_DECLARED
++#define YYERROR_IS_DECLARED
++
+ %}
+ %parse-param {struct parse_args *arg}
+ %lex-param {struct parse_args *arg}
 diff --git a/io/fcntl.h b/io/fcntl.h
 index 8917a73b42..1c96f98f4d 100644
 --- a/io/fcntl.h
