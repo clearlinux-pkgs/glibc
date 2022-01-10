@@ -47,6 +47,10 @@ H.J. Lu (5):
       ld.so: Initialize bootstrap_map.l_ld_readonly [BZ #28340]
       Avoid warning: overriding recipe for .../tst-ro-dynamic-mod.so
 
+Hans-Peter Nilsson (2):
+      timezone: handle truncated timezones from tzcode-2021d and later (BZ #28707)
+      timezone: test-case for BZ #28707
+
 Jiaxun Yang (1):
       MIPS: Setup errno for {f,l,}xstat
 
@@ -73,6 +77,9 @@ Nikita Popov (3):
       librt: add test (bug 28213)
       gconv: Do not emit spurious NUL character in ISO-2022-JP-3 (bug 28524)
 
+Paul Eggert (1):
+      Fix subscript error with odd TZif file [BZ #28338]
+
 Siddhesh Poyarekar (8):
       ldconfig: avoid leak on empty paths in config file
       gconv_parseconfdir: Fix memory leak
@@ -92,6 +99,9 @@ Stefan Liebler (1):
 
 Szabolcs Nagy (1):
       elf: Avoid deadlock between pthread_create and ctors [BZ #28357]
+
+Wilco Dijkstra (1):
+      AArch64: Check for SVE in ifuncs [BZ #28744]
 
 Xi Ruoyao (2):
       mips: align stack in clone [BZ #28223]
@@ -174,10 +184,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..d9b344027b 100644
+index 3c610744c9..5c253a4392 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,30 @@ See the end for copying conditions.
+@@ -4,6 +4,33 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -192,18 +202,21 @@ index 3c610744c9..d9b344027b 100644
 +  [28182] _TIME_BITS=64 in C++ has issues with fcntl, ioctl, prctl
 +  [28223] mips: clone does not align stack
 +  [28310] Do not use affinity mask for sysconf (_SC_NPROCESSORS_CONF)
++  [28338] undefined behavior in __tzfile_compute with oddball TZif file
 +  [28340] ld.so crashes while loading a DSO with a read-only dynamic section
 +  [28357] deadlock between pthread_create and ELF constructors
 +  [28361] nptl: Avoid setxid deadlock with blocked signals in thread exit
 +  [28407] pthread_kill assumes that kill and tgkill are equivalent
 +  [28524] Conversion from ISO-2022-JP-3 with iconv may emit spurious NULs
-+  [28607] Masked signals are delivered on thread exit
 +  [28532] powerpc64[le]: CFI for assembly templated syscalls is incorrect
++  [28607] Masked signals are delivered on thread exit
 +  [28678] nptl/tst-create1 hangs sporadically
 +  [28700] "dns [!UNAVAIL=return] files" NSS default for hosts is not useful
 +  [28702] RISC-V: clone does not align stack
 +  [28703] RISC-V: _dl_init might be called with unaligned stack
 +  [28704] elf/tst-cpu-features-cpuinfo fails for KVM guests on some AMD systems
++  [28707] assert in tzfile.c __tzfile_read striking with truncated timezones
++  [28744] A64FX string functions are selected without SVE HWCAP
 +
  
  Version 2.34
@@ -2494,6 +2507,45 @@ index 0000000000..8e29def1ce
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/aarch64/multiarch/memcpy.c b/sysdeps/aarch64/multiarch/memcpy.c
+index 25e0081eeb..b6703af44b 100644
+--- a/sysdeps/aarch64/multiarch/memcpy.c
++++ b/sysdeps/aarch64/multiarch/memcpy.c
+@@ -48,7 +48,7 @@ libc_ifunc (__libc_memcpy,
+ 		      || IS_NEOVERSE_V1 (midr)
+ 		      ? __memcpy_simd
+ # if HAVE_AARCH64_SVE_ASM
+-		     : (IS_A64FX (midr)
++		     : (IS_A64FX (midr) && sve
+ 			? __memcpy_a64fx
+ 			: __memcpy_generic))))));
+ # else
+diff --git a/sysdeps/aarch64/multiarch/memmove.c b/sysdeps/aarch64/multiarch/memmove.c
+index d0adefc547..d2339ff34f 100644
+--- a/sysdeps/aarch64/multiarch/memmove.c
++++ b/sysdeps/aarch64/multiarch/memmove.c
+@@ -48,7 +48,7 @@ libc_ifunc (__libc_memmove,
+ 		      || IS_NEOVERSE_V1 (midr)
+ 		      ? __memmove_simd
+ # if HAVE_AARCH64_SVE_ASM
+-		     : (IS_A64FX (midr)
++		     : (IS_A64FX (midr) && sve
+ 			? __memmove_a64fx
+ 			: __memmove_generic))))));
+ # else
+diff --git a/sysdeps/aarch64/multiarch/memset.c b/sysdeps/aarch64/multiarch/memset.c
+index d7d9bbbda0..3d839bc02e 100644
+--- a/sysdeps/aarch64/multiarch/memset.c
++++ b/sysdeps/aarch64/multiarch/memset.c
+@@ -44,7 +44,7 @@ libc_ifunc (__libc_memset,
+ 	      : (IS_EMAG (midr) && zva_size == 64
+ 		? __memset_emag
+ # if HAVE_AARCH64_SVE_ASM
+-		: (IS_A64FX (midr)
++		: (IS_A64FX (midr) && sve
+ 		  ? __memset_a64fx
+ 		  : __memset_generic))));
+ # else
 diff --git a/sysdeps/generic/dl-relocate-ld.h b/sysdeps/generic/dl-relocate-ld.h
 new file mode 100644
 index 0000000000..cfb86c2d6a
@@ -4958,3 +5010,139 @@ index 9f02624375..abde8438d4 100644
  	jz	3f
  	movq	%rsi, %rcx
  	subq	%rdi, %rcx
+diff --git a/time/tzfile.c b/time/tzfile.c
+index 4377018a55..8668392ad3 100644
+--- a/time/tzfile.c
++++ b/time/tzfile.c
+@@ -431,8 +431,8 @@ __tzfile_read (const char *file, size_t extra, char **extrap)
+   if (__tzname[0] == NULL)
+     {
+       /* This should only happen if there are no transition rules.
+-	 In this case there should be only one single type.  */
+-      assert (num_types == 1);
++	 In this case there's usually only one single type, unless
++	 e.g. the data file has a truncated time-range.  */
+       __tzname[0] = __tzstring (zone_names);
+     }
+   if (__tzname[1] == NULL)
+@@ -765,8 +765,7 @@ __tzfile_compute (__time64_t timer, int use_localtime,
+   *leap_correct = leaps[i].change;
+ 
+   if (timer == leaps[i].transition /* Exactly at the transition time.  */
+-      && ((i == 0 && leaps[i].change > 0)
+-	  || leaps[i].change > leaps[i - 1].change))
++      && (leaps[i].change > (i == 0 ? 0 : leaps[i - 1].change)))
+     {
+       *leap_hit = 1;
+       while (i > 0
+diff --git a/timezone/Makefile b/timezone/Makefile
+index c624a189b3..f091663b8b 100644
+--- a/timezone/Makefile
++++ b/timezone/Makefile
+@@ -23,7 +23,7 @@ subdir	:= timezone
+ include ../Makeconfig
+ 
+ others	:= zdump zic
+-tests	:= test-tz tst-timezone tst-tzset
++tests	:= test-tz tst-timezone tst-tzset tst-bz28707
+ 
+ generated-dirs += testdata
+ 
+@@ -85,10 +85,12 @@ $(objpfx)tst-timezone.out: $(addprefix $(testdata)/, \
+ 				       America/Sao_Paulo Asia/Tokyo \
+ 				       Europe/London)
+ $(objpfx)tst-tzset.out: $(addprefix $(testdata)/XT, 1 2 3 4)
++$(objpfx)tst-bz28707.out: $(testdata)/XT5
+ 
+ test-tz-ENV = TZDIR=$(testdata)
+ tst-timezone-ENV = TZDIR=$(testdata)
+ tst-tzset-ENV = TZDIR=$(testdata)
++tst-bz28707-ENV = TZDIR=$(testdata)
+ 
+ # Note this must come second in the deps list for $(built-program-cmd) to work.
+ zic-deps = $(objpfx)zic $(leapseconds) yearistype
+@@ -122,6 +124,10 @@ $(testdata)/XT%: testdata/XT%
+ 	$(make-target-directory)
+ 	cp $< $@
+ 
++$(testdata)/XT%: testdata/gen-XT%.sh
++	$(SHELL) $< > $@.tmp
++	mv $@.tmp $@
++
+ $(objpfx)tzselect: tzselect.ksh $(common-objpfx)config.make
+ 	sed -e 's|TZDIR=[^}]*|TZDIR=$(zonedir)|' \
+ 	    -e '/TZVERSION=/s|see_Makefile|"$(version)"|' \
+diff --git a/timezone/testdata/gen-XT5.sh b/timezone/testdata/gen-XT5.sh
+new file mode 100755
+index 0000000000..3cea0569eb
+--- /dev/null
++++ b/timezone/testdata/gen-XT5.sh
+@@ -0,0 +1,16 @@
++#! /bin/sh
++
++# This test-case is the tzfile for America/Asuncion
++# generated by tzlib-2021e as follows, using the tzlib-2021e
++# zic: "zic -d DEST -r @1546300800 -L /dev/null -b slim
++# SOURCE/southamerica".  Note that in its type 2 header, it
++# has two entries in its "time-types" array (types), but
++# only one entry in its "transition types" array
++# (type_idxs).
++
++printf \
++'TZif2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0'\
++'\0\0\0\0\0\0\0\1\0\0\0\1\0\0\0\0\0\0\0TZif2\0\0\0\0\0\0\0\0'\
++'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\1\0\0\0\2\0\0\0\b\0'\
++'\0\0\0\*\255\200\1\0\0\0\0\0\0\377\377\325\320\1\4-00\0-03\0\n'\
++'<-04>4<-03>,M10.1.0/0,M3.4.0/0\n'
+diff --git a/timezone/tst-bz28707.c b/timezone/tst-bz28707.c
+new file mode 100644
+index 0000000000..0a9df1e9a0
+--- /dev/null
++++ b/timezone/tst-bz28707.c
+@@ -0,0 +1,46 @@
++/* Copyright (C) 2021 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <time.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++/* Test that we can use a truncated timezone-file, where the time-type
++   at index 0 is not indexed by the transition-types array (and the
++   transition-types array does not contain at least both one DST and one
++   normal time members).  */
++
++static int
++do_test (void)
++{
++  if (setenv ("TZ", "XT5", 1))
++    {
++      puts ("setenv failed.");
++      return 1;
++    }
++
++  tzset ();
++
++  return
++    /* Sanity-check that we got the right timezone-name for DST.  For
++       normal time, we're likely to get "-00" (the "unspecified" marker),
++       even though the POSIX timezone string says "-04".  Let's not test
++       that.  */
++    !(strcmp (tzname[1], "-03") == 0);
++}
++#include <support/test-driver.c>
