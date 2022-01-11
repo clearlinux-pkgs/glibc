@@ -77,6 +77,9 @@ Nikita Popov (3):
       librt: add test (bug 28213)
       gconv: Do not emit spurious NUL character in ISO-2022-JP-3 (bug 28524)
 
+Paul A. Clarke (1):
+      powerpc: Fix unrecognized instruction errors with recent GCC
+
 Paul Eggert (1):
       Fix subscript error with odd TZif file [BZ #28338]
 
@@ -2789,6 +2792,18 @@ index 589f7c8d18..cfcfa69f91 100644
      mtlr r9; \
      cfi_restore(lr);
  
+diff --git a/sysdeps/powerpc/powerpc64/tst-ucontext-ppc64-vscr.c b/sysdeps/powerpc/powerpc64/tst-ucontext-ppc64-vscr.c
+index 28c87fcef7..d3fc4ab589 100644
+--- a/sysdeps/powerpc/powerpc64/tst-ucontext-ppc64-vscr.c
++++ b/sysdeps/powerpc/powerpc64/tst-ucontext-ppc64-vscr.c
+@@ -50,6 +50,7 @@ do_test (void)
+   /* Set SAT bit in VSCR register.  */
+   asm volatile (".machine push;\n"
+ 		".machine \"power5\";\n"
++		".machine altivec;\n"
+ 		"vspltisb %0,0;\n"
+ 		"vspltisb %1,-1;\n"
+ 		"vpkuwus %0,%0,%1;\n"
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
 index 42f9fc5072..c657101696 100644
 --- a/sysdeps/pthread/Makefile
