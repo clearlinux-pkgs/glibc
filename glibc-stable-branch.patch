@@ -41,12 +41,13 @@ Florian Weimer (17):
       nss: Use "files dns" as the default for the hosts database (bug 28700)
       i386: Remove broken CAN_USE_REGISTER_ASM_EBP (bug 28771)
 
-H.J. Lu (5):
+H.J. Lu (6):
       x86-64: Use testl to check __x86_string_control
       elf: Replace nsid with args.nsid [BZ #27609]
       ld.so: Replace DL_RO_DYN_SECTION with dl_relocate_ld [BZ #28340]
       ld.so: Initialize bootstrap_map.l_ld_readonly [BZ #28340]
       Avoid warning: overriding recipe for .../tst-ro-dynamic-mod.so
+      Disable debuginfod in printer tests [BZ #28757]
 
 Hans-Peter Nilsson (2):
       timezone: handle truncated timezones from tzcode-2021d and later (BZ #28707)
@@ -61,7 +62,7 @@ John David Anglin (1):
 Jonathan Wakely (1):
       Suppress -Wcast-qual warnings in bsearch
 
-Joseph Myers (7):
+Joseph Myers (8):
       Use Linux 5.14 in build-many-glibcs.py
       Update syscall lists for Linux 5.14
       Update kernel version to 5.14 in tst-mman-consts.py
@@ -69,6 +70,7 @@ Joseph Myers (7):
       Run conform/ tests using newly built libc
       Use $(pie-default) with conformtest
       Update syscall lists for Linux 5.15
+      Update syscall lists for Linux 5.16
 
 Matheus Castanho (2):
       powerpc64[le]: Fix CFI and LR save address for asm syscalls [BZ #28532]
@@ -2072,6 +2074,28 @@ index 5a77af90a6..86537fa800 100755
                              'mpc': '1.2.1',
                              'mpfr': '4.1.0',
                              'mig': 'vcs-mainline',
+diff --git a/scripts/test_printers_common.py b/scripts/test_printers_common.py
+index 34a3df6e6b..53b6d30d40 100644
+--- a/scripts/test_printers_common.py
++++ b/scripts/test_printers_common.py
+@@ -161,6 +161,17 @@ def init_test(test_bin, printer_files, printer_names):
+             printer files.
+     """
+ 
++    # Disable debuginfod to avoid GDB messages like:
++    #
++    # This GDB supports auto-downloading debuginfo from the following URLs:
++    # https://debuginfod.fedoraproject.org/
++    # Enable debuginfod for this session? (y or [n])
++    #
++    try:
++        test('set debuginfod enabled off')
++    except Exception:
++        pass
++
+     # Load all the pretty printer files.  We're assuming these are safe.
+     for printer_file in printer_files:
+         test('source {0}'.format(printer_file))
 diff --git a/support/Makefile b/support/Makefile
 index a462781718..2a0731796f 100644
 --- a/support/Makefile
@@ -3869,10 +3893,18 @@ index c2e4649524..f34bbe6c59 100644
  ldouble: 5
  
 diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
-index e9eb707d0a..74a809561a 100644
+index e9eb707d0a..9905ebedf2 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
-@@ -126,6 +126,7 @@
+@@ -62,6 +62,7 @@
+ #define __NR_fsync 82
+ #define __NR_ftruncate 46
+ #define __NR_futex 98
++#define __NR_futex_waitv 449
+ #define __NR_get_mempolicy 236
+ #define __NR_get_robust_list 100
+ #define __NR_getcpu 168
+@@ -126,6 +127,7 @@
  #define __NR_mbind 235
  #define __NR_membarrier 283
  #define __NR_memfd_create 279
@@ -3880,7 +3912,7 @@ index e9eb707d0a..74a809561a 100644
  #define __NR_migrate_pages 238
  #define __NR_mincore 232
  #define __NR_mkdirat 34
-@@ -179,6 +180,7 @@
+@@ -179,6 +181,7 @@
  #define __NR_preadv2 286
  #define __NR_prlimit64 261
  #define __NR_process_madvise 440
@@ -3888,7 +3920,7 @@ index e9eb707d0a..74a809561a 100644
  #define __NR_process_vm_readv 270
  #define __NR_process_vm_writev 271
  #define __NR_pselect6 72
-@@ -187,6 +189,7 @@
+@@ -187,6 +190,7 @@
  #define __NR_pwritev 70
  #define __NR_pwritev2 287
  #define __NR_quotactl 60
@@ -3897,10 +3929,18 @@ index e9eb707d0a..74a809561a 100644
  #define __NR_readahead 213
  #define __NR_readlinkat 78
 diff --git a/sysdeps/unix/sysv/linux/alpha/arch-syscall.h b/sysdeps/unix/sysv/linux/alpha/arch-syscall.h
-index bd6b7d4003..6fc0a23504 100644
+index bd6b7d4003..ee8085be69 100644
 --- a/sysdeps/unix/sysv/linux/alpha/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/alpha/arch-syscall.h
-@@ -328,6 +328,7 @@
+@@ -78,6 +78,7 @@
+ #define __NR_fsync 95
+ #define __NR_ftruncate 130
+ #define __NR_futex 394
++#define __NR_futex_waitv 559
+ #define __NR_futimesat 454
+ #define __NR_get_kernel_syms 309
+ #define __NR_get_mempolicy 430
+@@ -328,6 +329,7 @@
  #define __NR_preadv2 520
  #define __NR_prlimit64 496
  #define __NR_process_madvise 550
@@ -3908,7 +3948,7 @@ index bd6b7d4003..6fc0a23504 100644
  #define __NR_process_vm_readv 504
  #define __NR_process_vm_writev 505
  #define __NR_pselect6 463
-@@ -337,6 +338,7 @@
+@@ -337,6 +339,7 @@
  #define __NR_pwritev2 521
  #define __NR_query_module 347
  #define __NR_quotactl 148
@@ -3917,10 +3957,18 @@ index bd6b7d4003..6fc0a23504 100644
  #define __NR_readahead 379
  #define __NR_readlink 58
 diff --git a/sysdeps/unix/sysv/linux/arc/arch-syscall.h b/sysdeps/unix/sysv/linux/arc/arch-syscall.h
-index 10650549c1..0c66762bf8 100644
+index 10650549c1..1b626d9770 100644
 --- a/sysdeps/unix/sysv/linux/arc/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/arc/arch-syscall.h
-@@ -182,6 +182,7 @@
+@@ -65,6 +65,7 @@
+ #define __NR_fsync 82
+ #define __NR_ftruncate64 46
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_get_mempolicy 236
+ #define __NR_get_robust_list 100
+ #define __NR_getcpu 168
+@@ -182,6 +183,7 @@
  #define __NR_preadv2 286
  #define __NR_prlimit64 261
  #define __NR_process_madvise 440
@@ -3928,7 +3976,7 @@ index 10650549c1..0c66762bf8 100644
  #define __NR_process_vm_readv 270
  #define __NR_process_vm_writev 271
  #define __NR_pselect6_time64 413
-@@ -190,6 +191,7 @@
+@@ -190,6 +192,7 @@
  #define __NR_pwritev 70
  #define __NR_pwritev2 287
  #define __NR_quotactl 60
@@ -3937,10 +3985,18 @@ index 10650549c1..0c66762bf8 100644
  #define __NR_readahead 213
  #define __NR_readlinkat 78
 diff --git a/sysdeps/unix/sysv/linux/arm/arch-syscall.h b/sysdeps/unix/sysv/linux/arm/arch-syscall.h
-index 85c9b236ce..c41a864c6d 100644
+index 85c9b236ce..96ef8db936 100644
 --- a/sysdeps/unix/sysv/linux/arm/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/arm/arch-syscall.h
-@@ -235,6 +235,7 @@
+@@ -90,6 +90,7 @@
+ #define __NR_ftruncate64 194
+ #define __NR_futex 240
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 326
+ #define __NR_get_mempolicy 320
+ #define __NR_get_robust_list 339
+@@ -235,6 +236,7 @@
  #define __NR_preadv2 392
  #define __NR_prlimit64 369
  #define __NR_process_madvise 440
@@ -3948,7 +4004,7 @@ index 85c9b236ce..c41a864c6d 100644
  #define __NR_process_vm_readv 376
  #define __NR_process_vm_writev 377
  #define __NR_pselect6 335
-@@ -244,6 +245,7 @@
+@@ -244,6 +246,7 @@
  #define __NR_pwritev 362
  #define __NR_pwritev2 393
  #define __NR_quotactl 131
@@ -4042,10 +4098,18 @@ index 91df6b3d96..9c7d907325 100644
  	  *tp = valid_timespec_to_timespec64 (tp32);
  	  return 0;
 diff --git a/sysdeps/unix/sysv/linux/csky/arch-syscall.h b/sysdeps/unix/sysv/linux/csky/arch-syscall.h
-index 24b0d1f94e..863ffa3e0c 100644
+index 24b0d1f94e..96910154ed 100644
 --- a/sysdeps/unix/sysv/linux/csky/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/csky/arch-syscall.h
-@@ -190,6 +190,7 @@
+@@ -70,6 +70,7 @@
+ #define __NR_ftruncate64 46
+ #define __NR_futex 98
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_get_mempolicy 236
+ #define __NR_get_robust_list 100
+ #define __NR_getcpu 168
+@@ -190,6 +191,7 @@
  #define __NR_preadv2 286
  #define __NR_prlimit64 261
  #define __NR_process_madvise 440
@@ -4053,7 +4117,7 @@ index 24b0d1f94e..863ffa3e0c 100644
  #define __NR_process_vm_readv 270
  #define __NR_process_vm_writev 271
  #define __NR_pselect6 72
-@@ -199,6 +200,7 @@
+@@ -199,6 +201,7 @@
  #define __NR_pwritev 70
  #define __NR_pwritev2 287
  #define __NR_quotactl 60
@@ -4328,10 +4392,18 @@ index 621a202ed7..fe7896eebe 100644
     )""", re.X)
  
 diff --git a/sysdeps/unix/sysv/linux/hppa/arch-syscall.h b/sysdeps/unix/sysv/linux/hppa/arch-syscall.h
-index feb70abc3e..6cf27cd17c 100644
+index feb70abc3e..36675fd48e 100644
 --- a/sysdeps/unix/sysv/linux/hppa/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/hppa/arch-syscall.h
-@@ -222,6 +222,7 @@
+@@ -87,6 +87,7 @@
+ #define __NR_ftruncate64 200
+ #define __NR_futex 210
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 279
+ #define __NR_get_mempolicy 261
+ #define __NR_get_robust_list 290
+@@ -222,6 +223,7 @@
  #define __NR_preadv2 347
  #define __NR_prlimit64 321
  #define __NR_process_madvise 440
@@ -4339,7 +4411,7 @@ index feb70abc3e..6cf27cd17c 100644
  #define __NR_process_vm_readv 330
  #define __NR_process_vm_writev 331
  #define __NR_pselect6 273
-@@ -231,6 +232,7 @@
+@@ -231,6 +233,7 @@
  #define __NR_pwritev 316
  #define __NR_pwritev2 348
  #define __NR_quotactl 131
@@ -4348,10 +4420,18 @@ index feb70abc3e..6cf27cd17c 100644
  #define __NR_readahead 207
  #define __NR_readlink 85
 diff --git a/sysdeps/unix/sysv/linux/i386/arch-syscall.h b/sysdeps/unix/sysv/linux/i386/arch-syscall.h
-index 3b1894a79b..2512508b7d 100644
+index 3b1894a79b..c86ccbda46 100644
 --- a/sysdeps/unix/sysv/linux/i386/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/i386/arch-syscall.h
-@@ -183,6 +183,7 @@
+@@ -94,6 +94,7 @@
+ #define __NR_ftruncate64 194
+ #define __NR_futex 240
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 299
+ #define __NR_get_kernel_syms 130
+ #define __NR_get_mempolicy 275
+@@ -183,6 +184,7 @@
  #define __NR_mbind 274
  #define __NR_membarrier 375
  #define __NR_memfd_create 356
@@ -4359,7 +4439,7 @@ index 3b1894a79b..2512508b7d 100644
  #define __NR_migrate_pages 294
  #define __NR_mincore 218
  #define __NR_mkdir 39
-@@ -253,6 +254,7 @@
+@@ -253,6 +255,7 @@
  #define __NR_preadv2 378
  #define __NR_prlimit64 340
  #define __NR_process_madvise 440
@@ -4367,7 +4447,7 @@ index 3b1894a79b..2512508b7d 100644
  #define __NR_process_vm_readv 347
  #define __NR_process_vm_writev 348
  #define __NR_prof 44
-@@ -266,6 +268,7 @@
+@@ -266,6 +269,7 @@
  #define __NR_pwritev2 379
  #define __NR_query_module 167
  #define __NR_quotactl 131
@@ -4770,10 +4850,18 @@ index 8a9911b7ac..39d6a3c134 100644
  #define ASMFMT_0()
  #ifdef __PIC__
 diff --git a/sysdeps/unix/sysv/linux/ia64/arch-syscall.h b/sysdeps/unix/sysv/linux/ia64/arch-syscall.h
-index fb388a5fa4..4a0c737369 100644
+index fb388a5fa4..d898bce404 100644
 --- a/sysdeps/unix/sysv/linux/ia64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/ia64/arch-syscall.h
-@@ -209,6 +209,7 @@
+@@ -74,6 +74,7 @@
+ #define __NR_fsync 1051
+ #define __NR_ftruncate 1098
+ #define __NR_futex 1230
++#define __NR_futex_waitv 1473
+ #define __NR_futimesat 1285
+ #define __NR_get_mempolicy 1260
+ #define __NR_get_robust_list 1299
+@@ -209,6 +210,7 @@
  #define __NR_preadv2 1348
  #define __NR_prlimit64 1325
  #define __NR_process_madvise 1464
@@ -4781,7 +4869,7 @@ index fb388a5fa4..4a0c737369 100644
  #define __NR_process_vm_readv 1332
  #define __NR_process_vm_writev 1333
  #define __NR_pselect6 1294
-@@ -218,6 +219,7 @@
+@@ -218,6 +220,7 @@
  #define __NR_pwritev 1320
  #define __NR_pwritev2 1349
  #define __NR_quotactl 1137
@@ -4790,10 +4878,18 @@ index fb388a5fa4..4a0c737369 100644
  #define __NR_readahead 1216
  #define __NR_readlink 1092
 diff --git a/sysdeps/unix/sysv/linux/m68k/arch-syscall.h b/sysdeps/unix/sysv/linux/m68k/arch-syscall.h
-index 7bc8c4af92..e310eb5075 100644
+index 7bc8c4af92..fe721b8090 100644
 --- a/sysdeps/unix/sysv/linux/m68k/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/m68k/arch-syscall.h
-@@ -243,6 +243,7 @@
+@@ -93,6 +93,7 @@
+ #define __NR_ftruncate64 194
+ #define __NR_futex 235
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 292
+ #define __NR_get_kernel_syms 130
+ #define __NR_get_mempolicy 269
+@@ -243,6 +244,7 @@
  #define __NR_preadv2 377
  #define __NR_prlimit64 339
  #define __NR_process_madvise 440
@@ -4801,7 +4897,7 @@ index 7bc8c4af92..e310eb5075 100644
  #define __NR_process_vm_readv 345
  #define __NR_process_vm_writev 346
  #define __NR_pselect6 301
-@@ -254,6 +255,7 @@
+@@ -254,6 +256,7 @@
  #define __NR_pwritev2 378
  #define __NR_query_module 167
  #define __NR_quotactl 131
@@ -4810,10 +4906,18 @@ index 7bc8c4af92..e310eb5075 100644
  #define __NR_readahead 240
  #define __NR_readdir 89
 diff --git a/sysdeps/unix/sysv/linux/microblaze/arch-syscall.h b/sysdeps/unix/sysv/linux/microblaze/arch-syscall.h
-index cf560d3af4..b4ecad010c 100644
+index cf560d3af4..6e10c3661d 100644
 --- a/sysdeps/unix/sysv/linux/microblaze/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/microblaze/arch-syscall.h
-@@ -253,6 +253,7 @@
+@@ -94,6 +94,7 @@
+ #define __NR_ftruncate64 194
+ #define __NR_futex 240
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 299
+ #define __NR_get_kernel_syms 130
+ #define __NR_get_mempolicy 275
+@@ -253,6 +254,7 @@
  #define __NR_preadv2 393
  #define __NR_prlimit64 370
  #define __NR_process_madvise 440
@@ -4821,7 +4925,7 @@ index cf560d3af4..b4ecad010c 100644
  #define __NR_process_vm_readv 377
  #define __NR_process_vm_writev 378
  #define __NR_prof 44
-@@ -266,6 +267,7 @@
+@@ -266,6 +268,7 @@
  #define __NR_pwritev2 394
  #define __NR_query_module 167
  #define __NR_quotactl 131
@@ -4878,10 +4982,18 @@ index 871fb6c6c5..54f990a250 100644
      }
  }
 diff --git a/sysdeps/unix/sysv/linux/mips/mips32/arch-syscall.h b/sysdeps/unix/sysv/linux/mips/mips32/arch-syscall.h
-index f346460f48..7e3d138ba9 100644
+index f346460f48..26a6d594a2 100644
 --- a/sysdeps/unix/sysv/linux/mips/mips32/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/mips/mips32/arch-syscall.h
-@@ -238,6 +238,7 @@
+@@ -93,6 +93,7 @@
+ #define __NR_ftruncate64 4212
+ #define __NR_futex 4238
+ #define __NR_futex_time64 4422
++#define __NR_futex_waitv 4449
+ #define __NR_futimesat 4292
+ #define __NR_get_kernel_syms 4130
+ #define __NR_get_mempolicy 4269
+@@ -238,6 +239,7 @@
  #define __NR_preadv2 4361
  #define __NR_prlimit64 4338
  #define __NR_process_madvise 4440
@@ -4889,7 +5001,7 @@ index f346460f48..7e3d138ba9 100644
  #define __NR_process_vm_readv 4345
  #define __NR_process_vm_writev 4346
  #define __NR_prof 4044
-@@ -251,6 +252,7 @@
+@@ -251,6 +253,7 @@
  #define __NR_pwritev2 4362
  #define __NR_query_module 4187
  #define __NR_quotactl 4131
@@ -4898,10 +5010,18 @@ index f346460f48..7e3d138ba9 100644
  #define __NR_readahead 4223
  #define __NR_readdir 4089
 diff --git a/sysdeps/unix/sysv/linux/mips/mips64/n32/arch-syscall.h b/sysdeps/unix/sysv/linux/mips/mips64/n32/arch-syscall.h
-index 38ed84997a..7e9e232e52 100644
+index 38ed84997a..83e0d49c5e 100644
 --- a/sysdeps/unix/sysv/linux/mips/mips64/n32/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/mips/mips64/n32/arch-syscall.h
-@@ -221,6 +221,7 @@
+@@ -86,6 +86,7 @@
+ #define __NR_ftruncate 6075
+ #define __NR_futex 6194
+ #define __NR_futex_time64 6422
++#define __NR_futex_waitv 6449
+ #define __NR_futimesat 6255
+ #define __NR_get_kernel_syms 6170
+ #define __NR_get_mempolicy 6232
+@@ -221,6 +222,7 @@
  #define __NR_preadv2 6325
  #define __NR_prlimit64 6302
  #define __NR_process_madvise 6440
@@ -4909,7 +5029,7 @@ index 38ed84997a..7e9e232e52 100644
  #define __NR_process_vm_readv 6309
  #define __NR_process_vm_writev 6310
  #define __NR_pselect6 6264
-@@ -232,6 +233,7 @@
+@@ -232,6 +234,7 @@
  #define __NR_pwritev2 6326
  #define __NR_query_module 6171
  #define __NR_quotactl 6172
@@ -4918,10 +5038,18 @@ index 38ed84997a..7e9e232e52 100644
  #define __NR_readahead 6179
  #define __NR_readlink 6087
 diff --git a/sysdeps/unix/sysv/linux/mips/mips64/n64/arch-syscall.h b/sysdeps/unix/sysv/linux/mips/mips64/n64/arch-syscall.h
-index e6a10c8421..f9e7ef72b0 100644
+index e6a10c8421..d6747c542f 100644
 --- a/sysdeps/unix/sysv/linux/mips/mips64/n64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/mips/mips64/n64/arch-syscall.h
-@@ -209,6 +209,7 @@
+@@ -78,6 +78,7 @@
+ #define __NR_fsync 5072
+ #define __NR_ftruncate 5075
+ #define __NR_futex 5194
++#define __NR_futex_waitv 5449
+ #define __NR_futimesat 5251
+ #define __NR_get_kernel_syms 5170
+ #define __NR_get_mempolicy 5228
+@@ -209,6 +210,7 @@
  #define __NR_preadv2 5321
  #define __NR_prlimit64 5297
  #define __NR_process_madvise 5440
@@ -4929,7 +5057,7 @@ index e6a10c8421..f9e7ef72b0 100644
  #define __NR_process_vm_readv 5304
  #define __NR_process_vm_writev 5305
  #define __NR_pselect6 5260
-@@ -219,6 +220,7 @@
+@@ -219,6 +221,7 @@
  #define __NR_pwritev2 5322
  #define __NR_query_module 5171
  #define __NR_quotactl 5172
@@ -4966,10 +5094,18 @@ index 9799dcdaa4..eccae2e4c6 100644
  	  /* The only state we keep is the copy of the thread attributes.  */
  	  __pthread_attr_destroy (data.attr);
 diff --git a/sysdeps/unix/sysv/linux/nios2/arch-syscall.h b/sysdeps/unix/sysv/linux/nios2/arch-syscall.h
-index 5314890289..afd73fc1da 100644
+index 5314890289..4ee209bc44 100644
 --- a/sysdeps/unix/sysv/linux/nios2/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/nios2/arch-syscall.h
-@@ -189,6 +189,7 @@
+@@ -69,6 +69,7 @@
+ #define __NR_ftruncate64 46
+ #define __NR_futex 98
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_get_mempolicy 236
+ #define __NR_get_robust_list 100
+ #define __NR_getcpu 168
+@@ -189,6 +190,7 @@
  #define __NR_preadv2 286
  #define __NR_prlimit64 261
  #define __NR_process_madvise 440
@@ -4977,7 +5113,7 @@ index 5314890289..afd73fc1da 100644
  #define __NR_process_vm_readv 270
  #define __NR_process_vm_writev 271
  #define __NR_pselect6 72
-@@ -198,6 +199,7 @@
+@@ -198,6 +200,7 @@
  #define __NR_pwritev 70
  #define __NR_pwritev2 287
  #define __NR_quotactl 60
@@ -4986,10 +5122,18 @@ index 5314890289..afd73fc1da 100644
  #define __NR_readahead 213
  #define __NR_readlinkat 78
 diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc32/arch-syscall.h b/sysdeps/unix/sysv/linux/powerpc/powerpc32/arch-syscall.h
-index b5b0758532..0ac2992028 100644
+index b5b0758532..497299fbc4 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/powerpc32/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/powerpc/powerpc32/arch-syscall.h
-@@ -247,6 +247,7 @@
+@@ -92,6 +92,7 @@
+ #define __NR_ftruncate64 194
+ #define __NR_futex 221
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 290
+ #define __NR_get_kernel_syms 130
+ #define __NR_get_mempolicy 260
+@@ -247,6 +248,7 @@
  #define __NR_preadv2 380
  #define __NR_prlimit64 325
  #define __NR_process_madvise 440
@@ -4997,7 +5141,7 @@ index b5b0758532..0ac2992028 100644
  #define __NR_process_vm_readv 351
  #define __NR_process_vm_writev 352
  #define __NR_prof 44
-@@ -260,6 +261,7 @@
+@@ -260,6 +262,7 @@
  #define __NR_pwritev2 381
  #define __NR_query_module 166
  #define __NR_quotactl 131
@@ -5006,10 +5150,18 @@ index b5b0758532..0ac2992028 100644
  #define __NR_readahead 191
  #define __NR_readdir 89
 diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc64/arch-syscall.h b/sysdeps/unix/sysv/linux/powerpc/powerpc64/arch-syscall.h
-index c77435ca61..c890bc644e 100644
+index c77435ca61..e840279f17 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/powerpc64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/powerpc/powerpc64/arch-syscall.h
-@@ -231,6 +231,7 @@
+@@ -81,6 +81,7 @@
+ #define __NR_ftime 35
+ #define __NR_ftruncate 93
+ #define __NR_futex 221
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 290
+ #define __NR_get_kernel_syms 130
+ #define __NR_get_mempolicy 260
+@@ -231,6 +232,7 @@
  #define __NR_preadv2 380
  #define __NR_prlimit64 325
  #define __NR_process_madvise 440
@@ -5017,7 +5169,7 @@ index c77435ca61..c890bc644e 100644
  #define __NR_process_vm_readv 351
  #define __NR_process_vm_writev 352
  #define __NR_prof 44
-@@ -243,6 +244,7 @@
+@@ -243,6 +245,7 @@
  #define __NR_pwritev2 381
  #define __NR_query_module 166
  #define __NR_quotactl 131
@@ -5056,7 +5208,7 @@ index 12f91a20d3..161e83c7e3 100644
  	beqz		a0,L (invalid)	/* No NULL function pointers.  */
  	beqz		a1,L (invalid)	/* No NULL stack pointers.  */
 diff --git a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
-index 70854bb9e3..cd336d755a 100644
+index 70854bb9e3..73ef74c005 100644
 --- a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
 @@ -16,6 +16,7 @@
@@ -5067,7 +5219,15 @@ index 70854bb9e3..cd336d755a 100644
  #define __NR_close 57
  #define __NR_close_range 436
  #define __NR_connect 203
-@@ -171,6 +172,7 @@
+@@ -59,6 +60,7 @@
+ #define __NR_fsync 82
+ #define __NR_ftruncate64 46
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_get_mempolicy 236
+ #define __NR_get_robust_list 100
+ #define __NR_getcpu 168
+@@ -171,6 +173,7 @@
  #define __NR_preadv2 286
  #define __NR_prlimit64 261
  #define __NR_process_madvise 440
@@ -5075,7 +5235,7 @@ index 70854bb9e3..cd336d755a 100644
  #define __NR_process_vm_readv 270
  #define __NR_process_vm_writev 271
  #define __NR_pselect6_time64 413
-@@ -179,6 +181,7 @@
+@@ -179,6 +182,7 @@
  #define __NR_pwritev 70
  #define __NR_pwritev2 287
  #define __NR_quotactl 60
@@ -5084,10 +5244,18 @@ index 70854bb9e3..cd336d755a 100644
  #define __NR_readahead 213
  #define __NR_readlinkat 78
 diff --git a/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h
-index 83b9f31aba..8edd21620b 100644
+index 83b9f31aba..919a79ee91 100644
 --- a/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h
-@@ -179,6 +179,7 @@
+@@ -62,6 +62,7 @@
+ #define __NR_fsync 82
+ #define __NR_ftruncate 46
+ #define __NR_futex 98
++#define __NR_futex_waitv 449
+ #define __NR_get_mempolicy 236
+ #define __NR_get_robust_list 100
+ #define __NR_getcpu 168
+@@ -179,6 +180,7 @@
  #define __NR_preadv2 286
  #define __NR_prlimit64 261
  #define __NR_process_madvise 440
@@ -5095,7 +5263,7 @@ index 83b9f31aba..8edd21620b 100644
  #define __NR_process_vm_readv 270
  #define __NR_process_vm_writev 271
  #define __NR_pselect6 72
-@@ -187,6 +188,7 @@
+@@ -187,6 +189,7 @@
  #define __NR_pwritev 70
  #define __NR_pwritev2 287
  #define __NR_quotactl 60
@@ -5126,10 +5294,18 @@ index e9bd3684db..00e73a3e3b 100644
 +#define HWCAP_S390_PCI_MIO      2097152
 +#define HWCAP_S390_SIE          4194304
 diff --git a/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h b/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h
-index b224c4aad4..1a4873f505 100644
+index b224c4aad4..005c0ada7a 100644
 --- a/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h
-@@ -240,6 +240,7 @@
+@@ -91,6 +91,7 @@
+ #define __NR_ftruncate64 194
+ #define __NR_futex 238
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 292
+ #define __NR_get_kernel_syms 130
+ #define __NR_get_mempolicy 269
+@@ -240,6 +241,7 @@
  #define __NR_preadv2 376
  #define __NR_prlimit64 334
  #define __NR_process_madvise 440
@@ -5137,7 +5313,7 @@ index b224c4aad4..1a4873f505 100644
  #define __NR_process_vm_readv 340
  #define __NR_process_vm_writev 341
  #define __NR_pselect6 301
-@@ -251,6 +252,7 @@
+@@ -251,6 +253,7 @@
  #define __NR_pwritev2 377
  #define __NR_query_module 167
  #define __NR_quotactl 131
@@ -5146,10 +5322,18 @@ index b224c4aad4..1a4873f505 100644
  #define __NR_readahead 222
  #define __NR_readdir 89
 diff --git a/sysdeps/unix/sysv/linux/s390/s390-64/arch-syscall.h b/sysdeps/unix/sysv/linux/s390/s390-64/arch-syscall.h
-index 59864af125..2af4607c1d 100644
+index 59864af125..9131fddcc1 100644
 --- a/sysdeps/unix/sysv/linux/s390/s390-64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/s390/s390-64/arch-syscall.h
-@@ -211,6 +211,7 @@
+@@ -76,6 +76,7 @@
+ #define __NR_fsync 118
+ #define __NR_ftruncate 93
+ #define __NR_futex 238
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 292
+ #define __NR_get_kernel_syms 130
+ #define __NR_get_mempolicy 269
+@@ -211,6 +212,7 @@
  #define __NR_preadv2 376
  #define __NR_prlimit64 334
  #define __NR_process_madvise 440
@@ -5157,7 +5341,7 @@ index 59864af125..2af4607c1d 100644
  #define __NR_process_vm_readv 340
  #define __NR_process_vm_writev 341
  #define __NR_pselect6 301
-@@ -221,6 +222,7 @@
+@@ -221,6 +223,7 @@
  #define __NR_pwritev2 377
  #define __NR_query_module 167
  #define __NR_quotactl 131
@@ -5166,10 +5350,18 @@ index 59864af125..2af4607c1d 100644
  #define __NR_readahead 222
  #define __NR_readdir 89
 diff --git a/sysdeps/unix/sysv/linux/sh/arch-syscall.h b/sysdeps/unix/sysv/linux/sh/arch-syscall.h
-index 23612c9092..7b422ce268 100644
+index 23612c9092..d8fb041568 100644
 --- a/sysdeps/unix/sysv/linux/sh/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/sh/arch-syscall.h
-@@ -237,6 +237,7 @@
+@@ -90,6 +90,7 @@
+ #define __NR_ftruncate64 194
+ #define __NR_futex 240
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 299
+ #define __NR_get_mempolicy 275
+ #define __NR_get_robust_list 312
+@@ -237,6 +238,7 @@
  #define __NR_preadv2 381
  #define __NR_prlimit64 339
  #define __NR_process_madvise 440
@@ -5177,7 +5369,7 @@ index 23612c9092..7b422ce268 100644
  #define __NR_process_vm_readv 365
  #define __NR_process_vm_writev 366
  #define __NR_pselect6 308
-@@ -246,6 +247,7 @@
+@@ -246,6 +248,7 @@
  #define __NR_pwritev 334
  #define __NR_pwritev2 382
  #define __NR_quotactl 131
@@ -5375,10 +5567,18 @@ index 0000000000..aafe9673e3
 +}
 +weak_alias (__brk, brk)
 diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h b/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h
-index 380cddb2d8..77c3cc64f9 100644
+index 380cddb2d8..2bc014fe6a 100644
 --- a/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h
-@@ -242,6 +242,7 @@
+@@ -92,6 +92,7 @@
+ #define __NR_ftruncate64 84
+ #define __NR_futex 142
+ #define __NR_futex_time64 422
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 288
+ #define __NR_get_kernel_syms 223
+ #define __NR_get_mempolicy 304
+@@ -242,6 +243,7 @@
  #define __NR_preadv2 358
  #define __NR_prlimit64 331
  #define __NR_process_madvise 440
@@ -5386,7 +5586,7 @@ index 380cddb2d8..77c3cc64f9 100644
  #define __NR_process_vm_readv 338
  #define __NR_process_vm_writev 339
  #define __NR_pselect6 297
-@@ -252,6 +253,7 @@
+@@ -252,6 +254,7 @@
  #define __NR_pwritev2 359
  #define __NR_query_module 184
  #define __NR_quotactl 165
@@ -5395,10 +5595,18 @@ index 380cddb2d8..77c3cc64f9 100644
  #define __NR_readahead 205
  #define __NR_readdir 204
 diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/arch-syscall.h b/sysdeps/unix/sysv/linux/sparc/sparc64/arch-syscall.h
-index 2175eeb6ed..7ad50bc4ad 100644
+index 2175eeb6ed..76dbbe595f 100644
 --- a/sysdeps/unix/sysv/linux/sparc/sparc64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/sparc/sparc64/arch-syscall.h
-@@ -222,6 +222,7 @@
+@@ -82,6 +82,7 @@
+ #define __NR_fsync 95
+ #define __NR_ftruncate 130
+ #define __NR_futex 142
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 288
+ #define __NR_get_kernel_syms 223
+ #define __NR_get_mempolicy 304
+@@ -222,6 +223,7 @@
  #define __NR_preadv2 358
  #define __NR_prlimit64 331
  #define __NR_process_madvise 440
@@ -5406,7 +5614,7 @@ index 2175eeb6ed..7ad50bc4ad 100644
  #define __NR_process_vm_readv 338
  #define __NR_process_vm_writev 339
  #define __NR_pselect6 297
-@@ -231,6 +232,7 @@
+@@ -231,6 +233,7 @@
  #define __NR_pwritev2 359
  #define __NR_query_module 184
  #define __NR_quotactl 165
@@ -5428,7 +5636,7 @@ index db88938b3a..f0e0d2f27f 100644
  extern int __prctl_time64 (int __option,d ...) __THROW;
  #  define ioctl __prctl_time64
 diff --git a/sysdeps/unix/sysv/linux/syscall-names.list b/sysdeps/unix/sysv/linux/syscall-names.list
-index 89c5895b9b..1a74d090b7 100644
+index 89c5895b9b..0bc2af37df 100644
 --- a/sysdeps/unix/sysv/linux/syscall-names.list
 +++ b/sysdeps/unix/sysv/linux/syscall-names.list
 @@ -21,8 +21,8 @@
@@ -5437,12 +5645,20 @@ index 89c5895b9b..1a74d090b7 100644
  
 -# The list of system calls is current as of Linux 5.13.
 -kernel 5.13
-+# The list of system calls is current as of Linux 5.15.
-+kernel 5.15
++# The list of system calls is current as of Linux 5.16.
++kernel 5.16
  
  FAST_atomic_update
  FAST_cmpxchg
-@@ -247,6 +247,7 @@ madvise
+@@ -146,6 +146,7 @@ ftruncate
+ ftruncate64
+ futex
+ futex_time64
++futex_waitv
+ futimesat
+ get_kernel_syms
+ get_mempolicy
+@@ -247,6 +248,7 @@ madvise
  mbind
  membarrier
  memfd_create
@@ -5450,7 +5666,7 @@ index 89c5895b9b..1a74d090b7 100644
  memory_ordering
  migrate_pages
  mincore
-@@ -439,6 +440,7 @@ preadv
+@@ -439,6 +441,7 @@ preadv
  preadv2
  prlimit64
  process_madvise
@@ -5458,7 +5674,7 @@ index 89c5895b9b..1a74d090b7 100644
  process_vm_readv
  process_vm_writev
  prof
-@@ -452,6 +454,7 @@ pwritev
+@@ -452,6 +455,7 @@ pwritev
  pwritev2
  query_module
  quotactl
@@ -5582,10 +5798,18 @@ index ee5b13ee12..810433c238 100644
          '#define _GNU_SOURCE 1\n'
          '#include <sys/mman.h>\n',
 diff --git a/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h b/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
-index 8e028eb62b..3ce2a1fcfc 100644
+index 8e028eb62b..28558279b4 100644
 --- a/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
-@@ -154,6 +154,7 @@
+@@ -78,6 +78,7 @@
+ #define __NR_fsync 74
+ #define __NR_ftruncate 77
+ #define __NR_futex 202
++#define __NR_futex_waitv 449
+ #define __NR_futimesat 261
+ #define __NR_get_kernel_syms 177
+ #define __NR_get_mempolicy 239
+@@ -154,6 +155,7 @@
  #define __NR_mbind 237
  #define __NR_membarrier 324
  #define __NR_memfd_create 319
@@ -5593,7 +5817,7 @@ index 8e028eb62b..3ce2a1fcfc 100644
  #define __NR_migrate_pages 256
  #define __NR_mincore 27
  #define __NR_mkdir 83
-@@ -214,6 +215,7 @@
+@@ -214,6 +216,7 @@
  #define __NR_preadv2 327
  #define __NR_prlimit64 302
  #define __NR_process_madvise 440
@@ -5601,7 +5825,7 @@ index 8e028eb62b..3ce2a1fcfc 100644
  #define __NR_process_vm_readv 310
  #define __NR_process_vm_writev 311
  #define __NR_pselect6 270
-@@ -224,6 +226,7 @@
+@@ -224,6 +227,7 @@
  #define __NR_pwritev2 328
  #define __NR_query_module 178
  #define __NR_quotactl 179
@@ -5610,10 +5834,18 @@ index 8e028eb62b..3ce2a1fcfc 100644
  #define __NR_readahead 187
  #define __NR_readlink 89
 diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h b/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
-index 004feb53f1..9e87e89bac 100644
+index 004feb53f1..c1ab8ec45e 100644
 --- a/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
 +++ b/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
-@@ -148,6 +148,7 @@
+@@ -74,6 +74,7 @@
+ #define __NR_fsync 1073741898
+ #define __NR_ftruncate 1073741901
+ #define __NR_futex 1073742026
++#define __NR_futex_waitv 1073742273
+ #define __NR_futimesat 1073742085
+ #define __NR_get_mempolicy 1073742063
+ #define __NR_get_robust_list 1073742355
+@@ -148,6 +149,7 @@
  #define __NR_mbind 1073742061
  #define __NR_membarrier 1073742148
  #define __NR_memfd_create 1073742143
@@ -5621,7 +5853,7 @@ index 004feb53f1..9e87e89bac 100644
  #define __NR_migrate_pages 1073742080
  #define __NR_mincore 1073741851
  #define __NR_mkdir 1073741907
-@@ -207,6 +208,7 @@
+@@ -207,6 +209,7 @@
  #define __NR_preadv2 1073742370
  #define __NR_prlimit64 1073742126
  #define __NR_process_madvise 1073742264
@@ -5629,7 +5861,7 @@ index 004feb53f1..9e87e89bac 100644
  #define __NR_process_vm_readv 1073742363
  #define __NR_process_vm_writev 1073742364
  #define __NR_pselect6 1073742094
-@@ -216,6 +218,7 @@
+@@ -216,6 +219,7 @@
  #define __NR_pwritev 1073742359
  #define __NR_pwritev2 1073742371
  #define __NR_quotactl 1073742003
