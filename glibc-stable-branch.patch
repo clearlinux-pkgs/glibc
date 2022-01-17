@@ -15,12 +15,13 @@ Andrea Monaco (1):
 Arjun Shankar (1):
       elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
 
-Aurelien Jarno (5):
+Aurelien Jarno (6):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
       elf: Fix tst-cpu-features-cpuinfo for KVM guests on some AMD systems [BZ #28704]
       riscv: align stack in clone [BZ #28702]
       riscv: align stack before calling _dl_init [BZ #28703]
+      x86: use default cache size if it cannot be determined [BZ #28784]
 
 Florian Weimer (20):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
@@ -197,10 +198,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..58c6ae84fb 100644
+index 3c610744c9..7e773bd005 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,45 @@ See the end for copying conditions.
+@@ -4,6 +4,46 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -242,6 +243,7 @@ index 3c610744c9..58c6ae84fb 100644
 +  [28744] A64FX string functions are selected without SVE HWCAP
 +  [28771] %ebx optimization macros are incompatible with .altmacro
 +  [28768] CVE-2022-23218: Buffer overflow in sunrpc svcunix_create
++  [28784] x86: crash in 32bit memset-sse2.s when the cache size can not be determined
 +
  
  Version 2.34
@@ -6213,6 +6215,35 @@ index 004feb53f1..c1ab8ec45e 100644
  #define __NR_read 1073741824
  #define __NR_readahead 1073742011
  #define __NR_readlink 1073741913
+diff --git a/sysdeps/x86/cacheinfo.h b/sysdeps/x86/cacheinfo.h
+index 41d2c81369..63f36877e3 100644
+--- a/sysdeps/x86/cacheinfo.h
++++ b/sysdeps/x86/cacheinfo.h
+@@ -61,14 +61,20 @@ init_cacheinfo (void)
+   long int data = cpu_features->data_cache_size;
+   /* Round data cache size to multiple of 256 bytes.  */
+   data = data & ~255L;
+-  __x86_data_cache_size_half = data / 2;
+-  __x86_data_cache_size = data;
++  if (data > 0)
++    {
++      __x86_data_cache_size_half = data / 2;
++      __x86_data_cache_size = data;
++    }
+ 
+   long int shared = cpu_features->shared_cache_size;
+   /* Round shared cache size to multiple of 256 bytes.  */
+   shared = shared & ~255L;
+-  __x86_shared_cache_size_half = shared / 2;
+-  __x86_shared_cache_size = shared;
++  if (shared > 0)
++    {
++      __x86_shared_cache_size_half = shared / 2;
++      __x86_shared_cache_size = shared;
++    }
+ 
+   __x86_shared_non_temporal_threshold
+     = cpu_features->non_temporal_threshold;
 diff --git a/sysdeps/x86/tst-cpu-features-cpuinfo.c b/sysdeps/x86/tst-cpu-features-cpuinfo.c
 index 2d4927f5e5..830aaca2ec 100644
 --- a/sysdeps/x86/tst-cpu-features-cpuinfo.c
