@@ -88,8 +88,9 @@ Nikita Popov (3):
       librt: add test (bug 28213)
       gconv: Do not emit spurious NUL character in ISO-2022-JP-3 (bug 28524)
 
-Paul A. Clarke (1):
+Paul A. Clarke (2):
       powerpc: Fix unrecognized instruction errors with recent GCC
+      powerpc: Fix unrecognized instruction errors with recent binutils
 
 Paul Eggert (1):
       Fix subscript error with odd TZif file [BZ #28338]
@@ -3143,6 +3144,22 @@ index 838a68f022..43dfc6739e 100644
  
  	  /* Sort the entries so that the most specific ones are at
  	     the beginning.  */
+diff --git a/sysdeps/powerpc/Makefile b/sysdeps/powerpc/Makefile
+index 09860ffc01..5e6cb07ce6 100644
+--- a/sysdeps/powerpc/Makefile
++++ b/sysdeps/powerpc/Makefile
+@@ -61,11 +61,6 @@ ifeq ($(subdir),misc)
+ sysdep_headers += sys/platform/ppc.h
+ tests += test-gettimebase
+ tests += tst-set_ppr
+-
+-# This test is expected to run and exit with EXIT_UNSUPPORTED on
+-# processors that do not implement the Power ISA 2.06 or greater.
+-# But the test makes use of instructions from Power ISA 2.06 and 2.07.
+-CFLAGS-tst-set_ppr.c += -Wa,-many
+ endif
+ 
+ ifeq ($(subdir),wcsmbs)
 diff --git a/sysdeps/powerpc/powerpc64/sysdep.h b/sysdeps/powerpc/powerpc64/sysdep.h
 index 589f7c8d18..cfcfa69f91 100644
 --- a/sysdeps/powerpc/powerpc64/sysdep.h
@@ -3192,6 +3209,20 @@ index 28c87fcef7..d3fc4ab589 100644
  		"vspltisb %0,0;\n"
  		"vspltisb %1,-1;\n"
  		"vpkuwus %0,%0,%1;\n"
+diff --git a/sysdeps/powerpc/tst-set_ppr.c b/sysdeps/powerpc/tst-set_ppr.c
+index 7684f5d6ea..e80da15320 100644
+--- a/sysdeps/powerpc/tst-set_ppr.c
++++ b/sysdeps/powerpc/tst-set_ppr.c
+@@ -44,7 +44,8 @@ get_thread_priority (void)
+ {
+   /* Read the PPR.  */
+   ppr_t ppr;
+-  asm volatile (MFPPR" %0" : "=r"(ppr));
++  asm volatile (".machine push; .machine power7; "MFPPR" %0; .machine pop"
++		: "=r"(ppr));
+   /* Return the thread priority value.  */
+   return EXTRACT_THREAD_PRIORITY (ppr);
+ }
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
 index 42f9fc5072..c657101696 100644
 --- a/sysdeps/pthread/Makefile
