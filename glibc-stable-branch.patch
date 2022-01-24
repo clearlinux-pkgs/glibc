@@ -15,15 +15,16 @@ Andrea Monaco (1):
 Arjun Shankar (1):
       elf: Fix missing colon in LD_SHOW_AUXV output [BZ #28253]
 
-Aurelien Jarno (6):
+Aurelien Jarno (7):
       Fix failing nss/tst-nss-files-hosts-long with local resolver
       posix: Fix attribute access mode on getcwd [BZ #27476]
       elf: Fix tst-cpu-features-cpuinfo for KVM guests on some AMD systems [BZ #28704]
       riscv: align stack in clone [BZ #28702]
       riscv: align stack before calling _dl_init [BZ #28703]
       x86: use default cache size if it cannot be determined [BZ #28784]
+      NEWS: add bug entry for BZ #28769 and BZ #28770
 
-Florian Weimer (20):
+Florian Weimer (21):
       Linux: Fix fcntl, ioctl, prctl redirects for _TIME_BITS=64 (bug 28182)
       support: Add support_wait_for_thread_exit
       nptl: pthread_kill, pthread_cancel should not fail after exit (bug 19193)
@@ -44,6 +45,7 @@ Florian Weimer (20):
       socket: Add the __sockaddr_un_set function
       CVE-2022-23219: Buffer overflow in sunrpc clnt_create for "unix" (bug 22542)
       CVE-2022-23218: Buffer overflow in sunrpc svcunix_create (bug 28768)
+      Linux: Detect user namespace support in io/tst-getcwd-smallbuff
 
 H.J. Lu (6):
       x86-64: Use testl to check __x86_string_control
@@ -95,7 +97,7 @@ Paul A. Clarke (2):
 Paul Eggert (1):
       Fix subscript error with odd TZif file [BZ #28338]
 
-Siddhesh Poyarekar (14):
+Siddhesh Poyarekar (15):
       ldconfig: avoid leak on empty paths in config file
       gconv_parseconfdir: Fix memory leak
       gaiconf_init: Avoid double-free in label and precedence lists
@@ -110,6 +112,7 @@ Siddhesh Poyarekar (14):
       realpath: Set errno to ENAMETOOLONG for result larger than PATH_MAX [BZ #28770]
       tst-realpath-toolong: Fix hurd build
       getcwd: Set errno to ERANGE for size == 1 (CVE-2021-3999)
+      realpath: Avoid overwriting preexisting error (CVE-2021-3998)
 
 Stafford Horne (2):
       timex: Use 64-bit fields on 32-bit TIMESIZE=64 systems (BZ #28469)
@@ -205,10 +208,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..8d7467d2c1 100644
+index 3c610744c9..c063c78b15 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,56 @@ See the end for copying conditions.
+@@ -4,6 +4,58 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -260,6 +263,8 @@ index 3c610744c9..8d7467d2c1 100644
 +  [28744] A64FX string functions are selected without SVE HWCAP
 +  [28771] %ebx optimization macros are incompatible with .altmacro
 +  [28768] CVE-2022-23218: Buffer overflow in sunrpc svcunix_create
++  [28769] CVE-2021-3999: Off-by-one buffer overflow/underflow in getcwd()
++  [28770] CVE-2021-3998: Unexpected return value from realpath() for too long results
 +  [28784] x86: crash in 32bit memset-sse2.s when the cache size can not be determined
 +
  
@@ -2402,7 +2407,7 @@ index 7c15549caf..a4ac30d1f6 100644
  tests-internal	:= tst-strtod1i tst-strtod3 tst-strtod4 tst-strtod5i \
  		   tst-tls-atexit tst-tls-atexit-nodelete
 diff --git a/stdlib/canonicalize.c b/stdlib/canonicalize.c
-index 698f9ede25..7a23a51b3a 100644
+index 698f9ede25..e2d4244fc7 100644
 --- a/stdlib/canonicalize.c
 +++ b/stdlib/canonicalize.c
 @@ -400,8 +400,16 @@ realpath_stk (const char *name, char *resolved,
@@ -2415,7 +2420,7 @@ index 698f9ede25..7a23a51b3a 100644
 +    {
 +      if (dest - rname <= get_path_max ())
 +	rname = strcpy (resolved, rname);
-+      else
++      else if (!failed)
 +	{
 +	  failed = true;
 +	  __set_errno (ENAMETOOLONG);
@@ -6672,10 +6677,10 @@ index dccb6189c5..f5069d1b8a 100644
          {
 diff --git a/sysdeps/unix/sysv/linux/tst-getcwd-smallbuff.c b/sysdeps/unix/sysv/linux/tst-getcwd-smallbuff.c
 new file mode 100644
-index 0000000000..d460d6e766
+index 0000000000..55362f6060
 --- /dev/null
 +++ b/sysdeps/unix/sysv/linux/tst-getcwd-smallbuff.c
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,259 @@
 +/* Verify that getcwd returns ERANGE for size 1 byte and does not underflow
 +   buffer when the CWD is too long and is also a mount target of /.  See bug
 +   #28769 or CVE-2021-3999 for more context.
@@ -6712,6 +6717,7 @@ index 0000000000..d460d6e766
 +#include <sys/un.h>
 +#include <support/check.h>
 +#include <support/temp_file.h>
++#include <support/test-driver.h>
 +#include <support/xsched.h>
 +#include <support/xunistd.h>
 +
@@ -6865,6 +6871,23 @@ index 0000000000..d460d6e766
 +
 +  xmkdir (MOUNT_NAME, S_IRWXU);
 +  atexit (do_cleanup);
++
++  /* Check whether user namespaces are supported.  */
++  {
++    pid_t pid = xfork ();
++    if (pid == 0)
++      {
++	if (unshare (CLONE_NEWUSER | CLONE_NEWNS) != 0)
++	  _exit (EXIT_UNSUPPORTED);
++	else
++	  _exit (0);
++      }
++    int status;
++    xwaitpid (pid, &status, 0);
++    TEST_VERIFY_EXIT (WIFEXITED (status));
++    if (WEXITSTATUS (status) != 0)
++      return WEXITSTATUS (status);
++  }
 +
 +  TEST_VERIFY_EXIT (socketpair (AF_UNIX, SOCK_STREAM, 0, sockfd) == 0);
 +  pid_t child_pid = xclone (child_func, NULL, child_stack,
