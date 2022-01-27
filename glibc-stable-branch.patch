@@ -47,13 +47,14 @@ Florian Weimer (21):
       CVE-2022-23218: Buffer overflow in sunrpc svcunix_create (bug 28768)
       Linux: Detect user namespace support in io/tst-getcwd-smallbuff
 
-H.J. Lu (6):
+H.J. Lu (7):
       x86-64: Use testl to check __x86_string_control
       elf: Replace nsid with args.nsid [BZ #27609]
       ld.so: Replace DL_RO_DYN_SECTION with dl_relocate_ld [BZ #28340]
       ld.so: Initialize bootstrap_map.l_ld_readonly [BZ #28340]
       Avoid warning: overriding recipe for .../tst-ro-dynamic-mod.so
       Disable debuginfod in printer tests [BZ #28757]
+      NEWS: Add a bug entry for BZ #28755
 
 Hans-Peter Nilsson (2):
       timezone: handle truncated timezones from tzcode-2021d and later (BZ #28707)
@@ -212,10 +213,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..c063c78b15 100644
+index 3c610744c9..daeb066419 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,58 @@ See the end for copying conditions.
+@@ -4,6 +4,59 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -265,6 +266,7 @@ index 3c610744c9..c063c78b15 100644
 +  [28704] elf/tst-cpu-features-cpuinfo fails for KVM guests on some AMD systems
 +  [28707] assert in tzfile.c __tzfile_read striking with truncated timezones
 +  [28744] A64FX string functions are selected without SVE HWCAP
++  [28755] overflow bug in wcsncmp_avx2 and wcsncmp_evex
 +  [28771] %ebx optimization macros are incompatible with .altmacro
 +  [28768] CVE-2022-23218: Buffer overflow in sunrpc svcunix_create
 +  [28769] CVE-2021-3999: Off-by-one buffer overflow/underflow in getcwd()
