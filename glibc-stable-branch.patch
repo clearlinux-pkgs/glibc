@@ -49,7 +49,7 @@ Florian Weimer (23):
       elf/Makefile: Reflow and sort most variable assignments
       Fix glibc 2.34 ABI omission (missing GLIBC_2.34 in dynamic loader)
 
-H.J. Lu (9):
+H.J. Lu (11):
       x86-64: Use testl to check __x86_string_control
       elf: Replace nsid with args.nsid [BZ #27609]
       ld.so: Replace DL_RO_DYN_SECTION with dl_relocate_ld [BZ #28340]
@@ -59,6 +59,8 @@ H.J. Lu (9):
       NEWS: Add a bug entry for BZ #28755
       elf: Sort tests and modules-names
       elf: Add a comment after trailing backslashes
+      x86: Black list more Intel CPUs for TSX [BZ #27398]
+      x86: Use CHECK_FEATURE_PRESENT to check HLE [BZ #27398]
 
 Hans-Peter Nilsson (2):
       timezone: handle truncated timezones from tzcode-2021d and later (BZ #28707)
@@ -8385,6 +8387,53 @@ index 41d2c81369..63f36877e3 100644
  
    __x86_shared_non_temporal_threshold
      = cpu_features->non_temporal_threshold;
+diff --git a/sysdeps/x86/cpu-features.c b/sysdeps/x86/cpu-features.c
+index 645bba6314..de4e3c3b72 100644
+--- a/sysdeps/x86/cpu-features.c
++++ b/sysdeps/x86/cpu-features.c
+@@ -507,11 +507,39 @@ init_cpu_features (struct cpu_features *cpu_features)
+ 	      break;
+ 	    }
+ 
+-	 /* Disable TSX on some Haswell processors to avoid TSX on kernels that
+-	    weren't updated with the latest microcode package (which disables
+-	    broken feature by default).  */
++	 /* Disable TSX on some processors to avoid TSX on kernels that
++	    weren't updated with the latest microcode package (which
++	    disables broken feature by default).  */
+ 	 switch (model)
+ 	    {
++	    case 0x55:
++	      if (stepping <= 5)
++		goto disable_tsx;
++	      break;
++	    case 0x8e:
++	      /* NB: Although the errata documents that for model == 0x8e,
++		 only 0xb stepping or lower are impacted, the intention of
++		 the errata was to disable TSX on all client processors on
++		 all steppings.  Include 0xc stepping which is an Intel
++		 Core i7-8665U, a client mobile processor.  */
++	    case 0x9e:
++	      if (stepping > 0xc)
++		break;
++	      /* Fall through.  */
++	    case 0x4e:
++	    case 0x5e:
++	      {
++		/* Disable Intel TSX and enable RTM_ALWAYS_ABORT for
++		   processors listed in:
++
++https://www.intel.com/content/www/us/en/support/articles/000059422/processors.html
++		 */
++disable_tsx:
++		CPU_FEATURE_UNSET (cpu_features, HLE);
++		CPU_FEATURE_UNSET (cpu_features, RTM);
++		CPU_FEATURE_SET (cpu_features, RTM_ALWAYS_ABORT);
++	      }
++	      break;
+ 	    case 0x3f:
+ 	      /* Xeon E7 v3 with stepping >= 4 has working TSX.  */
+ 	      if (stepping >= 4)
 diff --git a/sysdeps/x86/tst-cpu-features-cpuinfo.c b/sysdeps/x86/tst-cpu-features-cpuinfo.c
 index 2d4927f5e5..830aaca2ec 100644
 --- a/sysdeps/x86/tst-cpu-features-cpuinfo.c
@@ -8405,6 +8454,19 @@ index 2d4927f5e5..830aaca2ec 100644
        fails += CHECK_PROC (stibp, AMD_STIBP);
      }
    fails += CHECK_PROC (ibt, IBT);
+diff --git a/sysdeps/x86/tst-cpu-features-supports.c b/sysdeps/x86/tst-cpu-features-supports.c
+index 9d76e6bd3f..faa5091b78 100644
+--- a/sysdeps/x86/tst-cpu-features-supports.c
++++ b/sysdeps/x86/tst-cpu-features-supports.c
+@@ -130,7 +130,7 @@ do_test (int argc, char **argv)
+   fails += CHECK_FEATURE_ACTIVE (gfni, GFNI);
+ #endif
+ #if __GNUC_PREREQ (11, 0)
+-  fails += CHECK_FEATURE_ACTIVE (hle, HLE);
++  fails += CHECK_FEATURE_PRESENT (hle, HLE);
+   fails += CHECK_FEATURE_PRESENT (ibt, IBT);
+   fails += CHECK_FEATURE_ACTIVE (lahf_lm, LAHF64_SAHF64);
+   fails += CHECK_FEATURE_PRESENT (lm, LM);
 diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
 index 9f02624375..abde8438d4 100644
 --- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
