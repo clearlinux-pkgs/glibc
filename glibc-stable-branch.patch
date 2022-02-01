@@ -1,4 +1,4 @@
-Adhemerval Zanella (9):
+Adhemerval Zanella (12):
       support: Add support_open_dev_null_range
       Use support_open_dev_null_range io/tst-closefrom, misc/tst-close_range, and posix/tst-spawn5 (BZ #28260)
       misc: Add __get_nprocs_sched
@@ -8,6 +8,9 @@ Adhemerval Zanella (9):
       linux: Use /proc/stat fallback for __get_nprocs_conf (BZ #28624)
       Update sparc libm-test-ulps
       linux: Add sparck brk implementation
+      support: Add support_socket_so_timestamp_time64
+      linux: Fix ancillary 64-bit time timestamp conversion (BZ #28349, BZ#28350)
+      Linux: Only generate 64 bit timestamps for 64 bit time_t recvmsg/recvmmsg
 
 Andrea Monaco (1):
       intl/plural.y: Avoid conflicting declarations of yyerror and yylex
@@ -49,7 +52,7 @@ Florian Weimer (23):
       elf/Makefile: Reflow and sort most variable assignments
       Fix glibc 2.34 ABI omission (missing GLIBC_2.34 in dynamic loader)
 
-H.J. Lu (11):
+H.J. Lu (12):
       x86-64: Use testl to check __x86_string_control
       elf: Replace nsid with args.nsid [BZ #27609]
       ld.so: Replace DL_RO_DYN_SECTION with dl_relocate_ld [BZ #28340]
@@ -61,6 +64,7 @@ H.J. Lu (11):
       elf: Add a comment after trailing backslashes
       x86: Black list more Intel CPUs for TSX [BZ #27398]
       x86: Use CHECK_FEATURE_PRESENT to check HLE [BZ #27398]
+      tst-socket-timestamp-compat.c: Check __TIMESIZE [BZ #28837]
 
 Hans-Peter Nilsson (2):
       timezone: handle truncated timezones from tzcode-2021d and later (BZ #28707)
@@ -219,10 +223,10 @@ index 68663d984e..2fa0884b4e 100644
  endif  # build-shared
  endif  # +link
 diff --git a/NEWS b/NEWS
-index 3c610744c9..daeb066419 100644
+index 3c610744c9..5b2e757e35 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,59 @@ See the end for copying conditions.
+@@ -4,6 +4,62 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -259,6 +263,9 @@ index 3c610744c9..daeb066419 100644
 +  [28310] Do not use affinity mask for sysconf (_SC_NPROCESSORS_CONF)
 +  [28338] undefined behavior in __tzfile_compute with oddball TZif file
 +  [28340] ld.so crashes while loading a DSO with a read-only dynamic section
++  [28349] libc: Segfault for ping -R on qemux86 caused by recvmsg()
++  [28350] libc: ping receives SIGABRT on lib32-qemux86-64 caused by
++    recvmsg()
 +  [28357] deadlock between pthread_create and ELF constructors
 +  [28361] nptl: Avoid setxid deadlock with blocked signals in thread exit
 +  [28407] pthread_kill assumes that kill and tgkill are equivalent
@@ -2305,6 +2312,34 @@ index 4af16cb596..c46aced9f7 100644
  /* Information used by audit modules.  For most link maps, this data
     immediate follows the link map in memory.  For the dynamic linker,
     it is allocated separately.  See link_map_audit_state in
+diff --git a/include/sys/socket.h b/include/sys/socket.h
+index a1d749f9fa..6e4cf5077f 100644
+--- a/include/sys/socket.h
++++ b/include/sys/socket.h
+@@ -98,15 +98,21 @@ extern int __sendmmsg (int __fd, struct mmsghdr *__vmessages,
+ libc_hidden_proto (__sendmmsg)
+ #endif
+ 
+-/* Receive a message as described by MESSAGE from socket FD.
+-   Returns the number of bytes read or -1 for errors.  */
+ extern ssize_t __libc_recvmsg (int __fd, struct msghdr *__message,
+ 			       int __flags);
+ extern ssize_t __recvmsg (int __fd, struct msghdr *__message,
+ 			  int __flags) attribute_hidden;
+ #if __TIMESIZE == 64
++# define __libc_recvmsg64 __libc_recvmsg
++# define __recvmsg64  __recvmsg
+ # define __recvmmsg64 __recvmmsg
+ #else
++extern ssize_t __libc_recvmsg64 (int __fd, struct msghdr *__message,
++				 int __flags);
++extern ssize_t __recvmsg64 (int __fd, struct msghdr *__message,
++			    int __flags);
++/* Receive a message as described by MESSAGE from socket FD.
++   Returns the number of bytes read or -1 for errors.  */
+ extern int __recvmmsg64 (int __fd, struct mmsghdr *vmessages,
+ 			 unsigned int vlen, int flags,
+ 			 struct __timespec64 *timeout);
 diff --git a/include/sys/sysinfo.h b/include/sys/sysinfo.h
 index 7388356a19..c490561581 100644
 --- a/include/sys/sysinfo.h
@@ -3715,7 +3750,7 @@ index 0000000000..35a4b7b0b3
 +
 +#include <support/test-driver.c>
 diff --git a/support/Makefile b/support/Makefile
-index a462781718..2a0731796f 100644
+index a462781718..724ae6d712 100644
 --- a/support/Makefile
 +++ b/support/Makefile
 @@ -66,6 +66,7 @@ libsupport-routines = \
@@ -3726,7 +3761,13 @@ index a462781718..2a0731796f 100644
    support_openpty \
    support_paths \
    support_quote_blob \
-@@ -82,9 +83,10 @@ libsupport-routines = \
+@@ -77,14 +78,16 @@ libsupport-routines = \
+   support_set_small_thread_stack_size \
+   support_shared_allocate \
+   support_small_stack_thread_attribute \
++  support_socket_so_timestamp_time64 \
+   support_stat_nanoseconds \
+   support_subprocess \
    support_test_compare_blob \
    support_test_compare_failure \
    support_test_compare_string \
@@ -3738,7 +3779,7 @@ index a462781718..2a0731796f 100644
    temp_file \
    timespec \
    timespec-time64 \
-@@ -264,6 +266,7 @@ tests = \
+@@ -264,6 +267,7 @@ tests = \
    tst-support_capture_subprocess \
    tst-support_descriptors \
    tst-support_format_dns_packet \
@@ -3887,10 +3928,21 @@ index 0000000000..66a8504105
 +  return lowfd;
 +}
 diff --git a/support/support.h b/support/support.h
-index 834dba9097..c219e0d9d1 100644
+index 834dba9097..309be85b09 100644
 --- a/support/support.h
 +++ b/support/support.h
-@@ -174,6 +174,10 @@ timer_t support_create_timer (uint64_t sec, long int nsec, bool repeat,
+@@ -164,6 +164,10 @@ extern bool support_select_modifies_timeout (void);
+    tv_usec larger than 1000000.  */
+ extern bool support_select_normalizes_timeout (void);
+ 
++/* Return true if socket FD supports 64-bit timestamps with the SOL_SOCKET
++   and SO_TIMESTAMP/SO_TIMESTAMPNS.  */
++extern bool support_socket_so_timestamp_time64 (int fd);
++
+ /* Create a timer that trigger after SEC seconds and NSEC nanoseconds.  If
+    REPEAT is true the timer will repeat indefinitely.  If CALLBACK is not
+    NULL, the function will be called when the timer expires; otherwise a
+@@ -174,6 +178,10 @@ timer_t support_create_timer (uint64_t sec, long int nsec, bool repeat,
  /* Disable the timer TIMER.  */
  void support_delete_timer (timer_t timer);
  
@@ -3901,7 +3953,7 @@ index 834dba9097..c219e0d9d1 100644
  struct support_stack
  {
    void *stack;
-@@ -193,6 +197,14 @@ struct support_stack support_stack_alloc (size_t size);
+@@ -193,6 +201,14 @@ struct support_stack support_stack_alloc (size_t size);
  /* Deallocate the STACK.  */
  void support_stack_free (struct support_stack *stack);
  
@@ -3928,6 +3980,60 @@ index 27bfd19c93..0bacf6dbc2 100644
  
    char * const args[] = {execname, child_id, NULL};
  
+diff --git a/support/support_socket_so_timestamp_time64.c b/support/support_socket_so_timestamp_time64.c
+new file mode 100644
+index 0000000000..54bf3f4272
+--- /dev/null
++++ b/support/support_socket_so_timestamp_time64.c
+@@ -0,0 +1,48 @@
++/* Return whether socket supports 64-bit timestamps.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <unistd.h>
++#include <sys/syscall.h>
++#include <sys/socket.h>
++#include <support/support.h>
++#ifdef __linux__
++# include <socket-constants-time64.h>
++#endif
++
++bool
++support_socket_so_timestamp_time64 (int fd)
++{
++#ifdef __linux__
++# if __LINUX_KERNEL_VERSION >= 0x050100                          \
++   || __WORDSIZE == 64                                           \
++   || (defined __SYSCALL_WORDSIZE && __SYSCALL_WORDSIZE == 64)
++  return true;
++# else
++  int level = SOL_SOCKET;
++  int optname = COMPAT_SO_TIMESTAMP_NEW;
++  int optval;
++  socklen_t len = sizeof (optval);
++
++  int r = syscall (__NR_getsockopt, fd, level, optname, &optval, &len);
++  return r != -1;
++# endif
++#else
++  return false;
++#endif
++}
 diff --git a/support/support_wait_for_thread_exit.c b/support/support_wait_for_thread_exit.c
 new file mode 100644
 index 0000000000..5e3be421a7
@@ -5830,10 +5936,26 @@ index c2e4649524..f34bbe6c59 100644
  ldouble: 5
  
 diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
-index 76ad06361c..9380d3848d 100644
+index 76ad06361c..c34774806f 100644
 --- a/sysdeps/unix/sysv/linux/Makefile
 +++ b/sysdeps/unix/sysv/linux/Makefile
-@@ -331,7 +331,12 @@ sysdep_routines += xstatconv internal_statvfs \
+@@ -262,6 +262,15 @@ sysdep_routines += cmsg_nxthdr
+ CFLAGS-recvmmsg.c = -fexceptions -fasynchronous-unwind-tables
+ CFLAGS-sendmmsg.c = -fexceptions -fasynchronous-unwind-tables
+ 
++tests += \
++  tst-socket-timestamp \
++  tst-socket-timestamp-compat \
++  # tests
++tests-time64 += \
++  tst-socket-timestamp-time64 \
++  tst-socket-timestamp-compat-time64
++  # tests-time64
++
+ tests-special += $(objpfx)tst-socket-consts.out
+ $(objpfx)tst-socket-consts.out: ../sysdeps/unix/sysv/linux/tst-socket-consts.py
+ 	PYTHONPATH=../scripts \
+@@ -331,7 +340,12 @@ sysdep_routines += xstatconv internal_statvfs \
  
  sysdep_headers += bits/fcntl-linux.h
  
@@ -6098,6 +6220,48 @@ index 91df6b3d96..9c7d907325 100644
  	{
  	  *tp = valid_timespec_to_timespec64 (tp32);
  	  return 0;
+diff --git a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c b/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
+index 00c934c413..5d3c4199e0 100644
+--- a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
++++ b/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
+@@ -54,6 +54,8 @@ __convert_scm_timestamps (struct msghdr *msg, socklen_t msgsize)
+        cmsg != NULL;
+        cmsg = CMSG_NXTHDR (msg, cmsg))
+     {
++      last = cmsg;
++
+       if (cmsg->cmsg_level != SOL_SOCKET)
+ 	continue;
+ 
+@@ -75,11 +77,9 @@ __convert_scm_timestamps (struct msghdr *msg, socklen_t msgsize)
+ 	  tvts[1] = tmp[1];
+ 	  break;
+ 	}
+-
+-      last = cmsg;
+     }
+ 
+-  if (last == NULL || type == 0)
++  if (type == 0)
+     return;
+ 
+   if (CMSG_SPACE (sizeof tvts) > msgsize - msg->msg_controllen)
+@@ -88,10 +88,12 @@ __convert_scm_timestamps (struct msghdr *msg, socklen_t msgsize)
+       return;
+     }
+ 
++  /* Zero memory for the new cmsghdr, so reading cmsg_len field
++     by CMSG_NXTHDR does not trigger UB.  */
++  memset (msg->msg_control + msg->msg_controllen, 0,
++	  CMSG_SPACE (sizeof tvts));
+   msg->msg_controllen += CMSG_SPACE (sizeof tvts);
+-  cmsg = CMSG_NXTHDR(msg, last);
+-  if (cmsg == NULL)
+-    return;
++  cmsg = CMSG_NXTHDR (msg, last);
+   cmsg->cmsg_level = SOL_SOCKET;
+   cmsg->cmsg_type = type;
+   cmsg->cmsg_len = CMSG_LEN (sizeof tvts);
 diff --git a/sysdeps/unix/sysv/linux/csky/arch-syscall.h b/sysdeps/unix/sysv/linux/csky/arch-syscall.h
 index 24b0d1f94e..96910154ed 100644
 --- a/sysdeps/unix/sysv/linux/csky/arch-syscall.h
@@ -7325,6 +7489,135 @@ index a29652feaf..a5497c8370 100644
  	RET_SCV
  	b 1f
  #endif
+diff --git a/sysdeps/unix/sysv/linux/recvmmsg.c b/sysdeps/unix/sysv/linux/recvmmsg.c
+index 5cd107ffa9..fca9f6582d 100644
+--- a/sysdeps/unix/sysv/linux/recvmmsg.c
++++ b/sysdeps/unix/sysv/linux/recvmmsg.c
+@@ -20,9 +20,9 @@
+ #include <sysdep.h>
+ #include <socketcall.h>
+ 
+-int
+-__recvmmsg64 (int fd, struct mmsghdr *vmessages, unsigned int vlen, int flags,
+-	      struct __timespec64 *timeout)
++static int
++recvmmsg_syscall (int fd, struct mmsghdr *vmessages, unsigned int vlen,
++		  int flags, struct __timespec64 *timeout)
+ {
+ #ifndef __NR_recvmmsg_time64
+ # define __NR_recvmmsg_time64 __NR_recvmmsg
+@@ -45,12 +45,6 @@ __recvmmsg64 (int fd, struct mmsghdr *vmessages, unsigned int vlen, int flags,
+       pts32 = &ts32;
+     }
+ 
+-  socklen_t csize[IOV_MAX];
+-  if (vlen > IOV_MAX)
+-    vlen = IOV_MAX;
+-  for (int i = 0; i < vlen; i++)
+-    csize[i] = vmessages[i].msg_hdr.msg_controllen;
+-
+ # ifdef __ASSUME_RECVMMSG_SYSCALL
+   r = SYSCALL_CANCEL (recvmmsg, fd, vmessages, vlen, flags, pts32);
+ # else
+@@ -60,11 +54,31 @@ __recvmmsg64 (int fd, struct mmsghdr *vmessages, unsigned int vlen, int flags,
+     {
+       if (timeout != NULL)
+         *timeout = valid_timespec_to_timespec64 (ts32);
++    }
++#endif
++  return r;
++}
++
++int
++__recvmmsg64 (int fd, struct mmsghdr *vmessages, unsigned int vlen, int flags,
++	      struct __timespec64 *timeout)
++{
++#if __TIMESIZE != 64
++  socklen_t csize[IOV_MAX];
++  if (vlen > IOV_MAX)
++    vlen = IOV_MAX;
++  for (int i = 0; i < vlen; i++)
++    csize[i] = vmessages[i].msg_hdr.msg_controllen;
++#endif
+ 
++  int r = recvmmsg_syscall (fd, vmessages, vlen, flags, timeout);
++#if __TIMESIZE != 64
++  if (r > 0)
++    {
+       for (int i=0; i < r; i++)
+         __convert_scm_timestamps (&vmessages[i].msg_hdr, csize[i]);
+     }
+-#endif /* __ASSUME_TIME64_SYSCALLS  */
++#endif
+   return r;
+ }
+ #if __TIMESIZE != 64
+@@ -80,7 +94,7 @@ __recvmmsg (int fd, struct mmsghdr *vmessages, unsigned int vlen, int flags,
+       ts64 = valid_timespec_to_timespec64 (*timeout);
+       pts64 = &ts64;
+     }
+-  int r = __recvmmsg64 (fd, vmessages, vlen, flags, pts64);
++  int r = recvmmsg_syscall (fd, vmessages, vlen, flags, pts64);
+   if (r >= 0 && timeout != NULL)
+     /* The remanining timeout will be always less the input TIMEOUT.  */
+     *timeout = valid_timespec64_to_timespec (ts64);
+diff --git a/sysdeps/unix/sysv/linux/recvmsg.c b/sysdeps/unix/sysv/linux/recvmsg.c
+index 07212f7c86..c4b4704fd6 100644
+--- a/sysdeps/unix/sysv/linux/recvmsg.c
++++ b/sysdeps/unix/sysv/linux/recvmsg.c
+@@ -20,29 +20,41 @@
+ #include <sysdep-cancel.h>
+ #include <socketcall.h>
+ 
++static int
++__recvmsg_syscall (int fd, struct msghdr *msg, int flags)
++{
++#ifdef __ASSUME_RECVMSG_SYSCALL
++  return SYSCALL_CANCEL (recvmsg, fd, msg, flags);
++#else
++  return SOCKETCALL_CANCEL (recvmsg, fd, msg, flags);
++#endif
++}
++
+ ssize_t
+-__libc_recvmsg (int fd, struct msghdr *msg, int flags)
++__libc_recvmsg64 (int fd, struct msghdr *msg, int flags)
+ {
+   ssize_t r;
+-#ifndef __ASSUME_TIME64_SYSCALLS
++#if __TIMESIZE != 64
+   socklen_t orig_controllen = msg != NULL ? msg->msg_controllen : 0;
+ #endif
+ 
+-#ifdef __ASSUME_RECVMSG_SYSCALL
+-  r = SYSCALL_CANCEL (recvmsg, fd, msg, flags);
+-#else
+-  r = SOCKETCALL_CANCEL (recvmsg, fd, msg, flags);
+-#endif
++  r = __recvmsg_syscall (fd, msg, flags);
+ 
+-#ifndef __ASSUME_TIME64_SYSCALLS
++#if __TIMESIZE != 64
+   if (r >= 0 && orig_controllen != 0)
+     __convert_scm_timestamps (msg, orig_controllen);
+ #endif
+ 
+   return r;
+ }
+-weak_alias (__libc_recvmsg, recvmsg)
+-weak_alias (__libc_recvmsg, __recvmsg)
+ #if __TIMESIZE != 64
+-weak_alias (__recvmsg, __recvmsg64)
++weak_alias (__libc_recvmsg64, __recvmsg64)
++
++ssize_t
++__libc_recvmsg (int fd, struct msghdr *msg, int flags)
++{
++  return __recvmsg_syscall (fd, msg, flags);
++}
+ #endif
++weak_alias (__libc_recvmsg, recvmsg)
++weak_alias (__libc_recvmsg, __recvmsg)
 diff --git a/sysdeps/unix/sysv/linux/riscv/clone.S b/sysdeps/unix/sysv/linux/riscv/clone.S
 index 12f91a20d3..161e83c7e3 100644
 --- a/sysdeps/unix/sysv/linux/riscv/clone.S
@@ -8268,6 +8561,633 @@ index ee5b13ee12..810433c238 100644
      sys.exit(glibcextract.compare_macro_consts(
          '#define _GNU_SOURCE 1\n'
          '#include <sys/mman.h>\n',
+diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat-time64.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat-time64.c
+new file mode 100644
+index 0000000000..96a0bef0bf
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat-time64.c
+@@ -0,0 +1 @@
++#include "tst-socket-timestamp-compat.c"
+diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
+new file mode 100644
+index 0000000000..0ff1a214e6
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
+@@ -0,0 +1,265 @@
++/* Check recvmsg/recvmmsg 64-bit timestamp support.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/inet.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/xsocket.h>
++#include <support/xunistd.h>
++#include <stdbool.h>
++
++/* AF_INET socket and address used to receive data.  */
++static int srv;
++static struct sockaddr_in srv_addr;
++
++static int
++do_sendto (const struct sockaddr_in *addr, int payload)
++{
++  int s = xsocket (AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
++  xconnect (s, (const struct sockaddr *) addr, sizeof (*addr));
++
++  xsendto (s, &payload, sizeof (payload), 0, (const struct sockaddr *) addr,
++	   sizeof (*addr));
++
++  xclose (s);
++
++  return 0;
++}
++
++static void
++do_recvmsg_ancillary (bool use_multi_call, struct mmsghdr *mmhdr,
++		      void *msgbuf, size_t msgbuflen, int exp_payload)
++{
++  int payload;
++  struct iovec iov =
++    {
++      .iov_base = &payload,
++      .iov_len = sizeof (payload)
++    };
++  mmhdr->msg_hdr.msg_name = NULL;
++  mmhdr->msg_hdr.msg_iov = &iov;
++  mmhdr->msg_hdr.msg_iovlen = 1;
++  mmhdr->msg_hdr.msg_control = msgbuf;
++  mmhdr->msg_hdr.msg_controllen = msgbuflen;
++
++  int r;
++  if (use_multi_call)
++    {
++      r = recvmmsg (srv, mmhdr, 1, 0, NULL);
++      if (r >= 0)
++	r = mmhdr->msg_len;
++    }
++  else
++    r = recvmsg (srv, &mmhdr->msg_hdr, 0);
++  TEST_COMPARE (r, sizeof (int));
++  TEST_COMPARE (payload, exp_payload);
++}
++
++/* Check if recvmsg create the additional 64 bit timestamp if only 32 bit
++   is enabled for 64 bit recvmsg symbol.  */
++static void
++do_test_large_buffer (bool mc)
++{
++  struct mmsghdr mmhdr = { 0 };
++  /* It should be large enought for either timeval/timespec and the
++     64 time type as well.  */
++
++  union
++  {
++    struct cmsghdr cmsghdr;
++    char msgbuf[512];
++  } control;
++
++  /* Enable 32 bit timeval precision and check if no 64 bit timeval stamp
++     is created.  */
++  {
++    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMP_OLD, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++
++    do_sendto (&srv_addr, 42);
++    do_recvmsg_ancillary (mc, &mmhdr, &control, sizeof control, 42);
++
++    bool found_timestamp = false;
++    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR (&mmhdr.msg_hdr);
++	 cmsg != NULL;
++	 cmsg = CMSG_NXTHDR (&mmhdr.msg_hdr, cmsg))
++    {
++      if (cmsg->cmsg_level != SOL_SOCKET)
++	continue;
++
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMP_NEW)
++	found_timestamp = true;
++      else
++	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMP_NEW);
++    }
++
++    TEST_COMPARE (found_timestamp, sizeof (time_t) > 4);
++  }
++
++  /* Same as before, but for timespec.  */
++  {
++    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMPNS_OLD, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++
++    do_sendto (&srv_addr, 42);
++    do_recvmsg_ancillary (mc, &mmhdr, &control, sizeof control, 42);
++
++    bool found_timestamp = false;
++    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR (&mmhdr.msg_hdr);
++	 cmsg != NULL;
++	 cmsg = CMSG_NXTHDR (&mmhdr.msg_hdr, cmsg))
++    {
++      if (cmsg->cmsg_level != SOL_SOCKET)
++	continue;
++
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMPNS_NEW)
++	found_timestamp = true;
++      else
++	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMPNS_NEW);
++    }
++
++    TEST_COMPARE (found_timestamp, sizeof (time_t) > 4);
++  }
++}
++
++/* Check if recvmsg does not create the additional 64 bit timestamp if
++   only 32 bit timestamp is enabled if the ancillary buffer is not large
++   enought.  Also checks if MSG_CTRUNC is set iff for 64 bit recvmsg
++   symbol.  */
++static void
++do_test_small_buffer (bool mc)
++{
++  struct mmsghdr mmhdr = { 0 };
++
++  /* Enable 32 bit timeval precision and check if no 64 bit timeval stamp
++     is created.  */
++  {
++    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMP_OLD, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++
++    union
++    {
++      struct cmsghdr cmsghdr;
++      char msgbuf[CMSG_SPACE (sizeof (struct timeval))];
++    } control;
++
++    do_sendto (&srv_addr, 42);
++    do_recvmsg_ancillary (mc, &mmhdr, &control, sizeof control, 42);
++
++    bool found_timestamp = false;
++    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR (&mmhdr.msg_hdr);
++	 cmsg != NULL;
++	 cmsg = CMSG_NXTHDR (&mmhdr.msg_hdr, cmsg))
++    {
++      if (cmsg->cmsg_level != SOL_SOCKET)
++	continue;
++
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMP_NEW)
++	found_timestamp = true;
++      else
++	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMP_NEW);
++    }
++
++    if (sizeof (time_t) > 4)
++      {
++	TEST_VERIFY ((mmhdr.msg_hdr.msg_flags & MSG_CTRUNC));
++	TEST_COMPARE (found_timestamp, 0);
++      }
++    else
++      {
++	TEST_VERIFY (!(mmhdr.msg_hdr.msg_flags & MSG_CTRUNC));
++	TEST_COMPARE (found_timestamp, 0);
++      }
++  }
++
++  /* Same as before, but for timespec.  */
++  {
++    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMPNS_OLD, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++
++    union
++    {
++      struct cmsghdr cmsghdr;
++      char msgbuf[CMSG_SPACE (sizeof (struct timespec))];
++    } control;
++
++    do_sendto (&srv_addr, 42);
++    do_recvmsg_ancillary (mc, &mmhdr, &control, sizeof control, 42);
++
++    bool found_timestamp = false;
++    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR (&mmhdr.msg_hdr);
++	 cmsg != NULL;
++	 cmsg = CMSG_NXTHDR (&mmhdr.msg_hdr, cmsg))
++    {
++      if (cmsg->cmsg_level != SOL_SOCKET)
++	continue;
++
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMPNS_NEW)
++	found_timestamp = true;
++      else
++	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMPNS_NEW);
++    }
++
++    if (sizeof (time_t) > 4)
++      {
++	TEST_VERIFY ((mmhdr.msg_hdr.msg_flags & MSG_CTRUNC));
++	TEST_COMPARE (found_timestamp, 0);
++      }
++    else
++      {
++	TEST_VERIFY ((mmhdr.msg_hdr.msg_flags & MSG_CTRUNC) == 0);
++	TEST_COMPARE (found_timestamp, 0);
++      }
++  }
++}
++
++static int
++do_test (void)
++{
++  /* This test only make sense for ABIs that support 32 bit time_t socket
++     timestampss.  */
++  if (sizeof (time_t) > 4 && __TIMESIZE == 64)
++    return 0;
++
++  srv = xsocket (AF_INET, SOCK_DGRAM, 0);
++  srv_addr = (struct sockaddr_in) {
++    .sin_family = AF_INET,
++    .sin_addr = {.s_addr = htonl (INADDR_LOOPBACK) },
++  };
++  xbind (srv, (struct sockaddr *) &srv_addr, sizeof (srv_addr));
++  {
++    socklen_t sa_len = sizeof (srv_addr);
++    xgetsockname (srv, (struct sockaddr *) &srv_addr, &sa_len);
++    TEST_VERIFY (sa_len == sizeof (srv_addr));
++  }
++
++  /* Check recvmsg;  */
++  do_test_large_buffer (false);
++  do_test_small_buffer (false);
++  /* Check recvmmsg.  */
++  do_test_large_buffer (true);
++  do_test_small_buffer (true);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp-time64.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp-time64.c
+new file mode 100644
+index 0000000000..ae424c2a70
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/tst-socket-timestamp-time64.c
+@@ -0,0 +1 @@
++#include "tst-socket-timestamp.c"
+diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp.c
+new file mode 100644
+index 0000000000..9c2e76f7e2
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/tst-socket-timestamp.c
+@@ -0,0 +1,336 @@
++/* Check recvmsg/recvmmsg 64-bit timestamp support.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <array_length.h>
++#include <arpa/inet.h>
++#include <errno.h>
++#include <string.h>
++#include <stdio.h>
++#include <support/check.h>
++#include <support/next_to_fault.h>
++#include <support/support.h>
++#include <support/test-driver.h>
++#include <support/xunistd.h>
++#include <support/xsocket.h>
++#include <sys/mman.h>
++
++/* Some extra space added for ancillary data, it might be used to convert
++   32-bit timestamp to 64-bit for _TIME_BITS=64.  */
++enum { slack_max_size = 64 };
++static const int slack[] = { 0, 4, 8, 16, 32, slack_max_size };
++
++static bool support_64_timestamp;
++/* AF_INET socket and address used to receive data.  */
++static int srv;
++static struct sockaddr_in srv_addr;
++
++static int
++do_sendto (const struct sockaddr_in *addr, int nmsgs)
++{
++  int s = xsocket (AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
++  xconnect (s, (const struct sockaddr *) addr, sizeof (*addr));
++
++  for (int i = 0; i < nmsgs; i++)
++    xsendto (s, &i, sizeof (i), 0, (const struct sockaddr *) addr,
++	     sizeof (*addr));
++
++  xclose (s);
++
++  return 0;
++}
++
++static void
++do_recvmsg_slack_ancillary (bool use_multi_call, int s, void *cmsg,
++			    size_t slack, size_t tsize, int exp_payload)
++{
++  int payload;
++  struct iovec iov =
++    {
++      .iov_base = &payload,
++      .iov_len = sizeof (payload)
++    };
++  size_t msg_controllen = CMSG_SPACE (tsize) + slack;
++  char *msg_control = cmsg - msg_controllen;
++  memset (msg_control, 0x55, msg_controllen);
++  struct mmsghdr mmhdr =
++    {
++      .msg_hdr =
++      {
++        .msg_name = NULL,
++        .msg_namelen = 0,
++        .msg_iov = &iov,
++        .msg_iovlen = 1,
++        .msg_control = msg_control,
++        .msg_controllen = msg_controllen
++      },
++    };
++
++  int r;
++  if (use_multi_call)
++    {
++      r = recvmmsg (s, &mmhdr, 1, 0, NULL);
++      if (r >= 0)
++	r = mmhdr.msg_len;
++    }
++  else
++    r = recvmsg (s, &mmhdr.msg_hdr, 0);
++  TEST_COMPARE (r, sizeof (int));
++  TEST_COMPARE (payload, exp_payload);
++
++  if (cmsg == NULL)
++    return;
++
++  /* A timestamp is expected if 32-bit timestamp are used (support in every
++     configuration) or if underlying kernel support 64-bit timestamps.
++     Otherwise recvmsg will need extra space do add the 64-bit timestamp.  */
++  bool exp_timestamp;
++  if (sizeof (time_t) == 4 || support_64_timestamp)
++    exp_timestamp = true;
++   else
++    exp_timestamp = slack >= CMSG_SPACE (tsize);
++
++  bool timestamp = false;
++  for (struct cmsghdr *cmsg = CMSG_FIRSTHDR (&mmhdr.msg_hdr);
++       cmsg != NULL;
++       cmsg = CMSG_NXTHDR (&mmhdr.msg_hdr, cmsg))
++    {
++      if (cmsg->cmsg_level != SOL_SOCKET)
++	continue;
++      if (cmsg->cmsg_type == SCM_TIMESTAMP
++	  && cmsg->cmsg_len == CMSG_LEN (sizeof (struct timeval)))
++	{
++	  struct timeval tv;
++	  memcpy (&tv, CMSG_DATA (cmsg), sizeof (tv));
++	  if (test_verbose)
++	    printf ("SCM_TIMESTAMP:   {%jd, %jd}\n", (intmax_t)tv.tv_sec,
++		    (intmax_t)tv.tv_usec);
++	  timestamp = true;
++	}
++      else if (cmsg->cmsg_type == SCM_TIMESTAMPNS
++	       && cmsg->cmsg_len == CMSG_LEN (sizeof (struct timespec)))
++	{
++	  struct timespec ts;
++	  memcpy (&ts, CMSG_DATA (cmsg), sizeof (ts));
++	  if (test_verbose)
++	    printf ("SCM_TIMESTAMPNS: {%jd, %jd}\n", (intmax_t)ts.tv_sec,
++		    (intmax_t)ts.tv_nsec);
++	  timestamp = true;
++	}
++    }
++
++  TEST_COMPARE (timestamp, exp_timestamp);
++}
++
++/* Check if the extra ancillary space is correctly handled by recvmsg and
++   recvmmsg with different extra space for the ancillaty buffer.  */
++static void
++do_test_slack_space (void)
++{
++  /* Setup the ancillary data buffer with an extra page with PROT_NONE to
++     check the possible timestamp conversion on some systems.  */
++  struct support_next_to_fault nf =
++    support_next_to_fault_allocate (slack_max_size);
++  void *msgbuf = nf.buffer + slack_max_size;
++
++  /* Enable the timestamp using struct timeval precision.  */
++  {
++    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMP, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++  }
++  /* Check recvmsg.  */
++  do_sendto (&srv_addr, array_length (slack));
++  for (int s = 0; s < array_length (slack); s++)
++    {
++      memset (nf.buffer, 0x55, nf.length);
++      do_recvmsg_slack_ancillary (false, srv, msgbuf, slack[s],
++				  sizeof (struct timeval), s);
++    }
++  /* Check recvmmsg.  */
++  do_sendto (&srv_addr, array_length (slack));
++  for (int s = 0; s < array_length (slack); s++)
++    {
++      memset (nf.buffer, 0x55, nf.length);
++      do_recvmsg_slack_ancillary (true, srv, msgbuf, slack[s],
++				  sizeof (struct timeval), s);
++    }
++
++  /* Now enable timestamp using a higher precision, it overwrites the previous
++     precision.  */
++  {
++    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMPNS, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++  }
++  /* Check recvmsg.  */
++  do_sendto (&srv_addr, array_length (slack));
++  for (int s = 0; s < array_length (slack); s++)
++    do_recvmsg_slack_ancillary (false, srv, msgbuf, slack[s],
++				sizeof (struct timespec), s);
++  /* Check recvmmsg.  */
++  do_sendto (&srv_addr, array_length (slack));
++  for (int s = 0; s < array_length (slack); s++)
++    do_recvmsg_slack_ancillary (true, srv, msgbuf, slack[s],
++				sizeof (struct timespec), s);
++
++  support_next_to_fault_free (&nf);
++}
++
++/* Check if the converted 64-bit timestamp is correctly appended when there
++   are multiple ancillary messages.  */
++static void
++do_recvmsg_multiple_ancillary (bool use_multi_call, int s, void *cmsg,
++			       size_t cmsgsize, int exp_msg)
++{
++  int msg;
++  struct iovec iov =
++    {
++      .iov_base = &msg,
++      .iov_len = sizeof (msg)
++    };
++  size_t msgs = cmsgsize;
++  struct mmsghdr mmhdr =
++    {
++      .msg_hdr =
++      {
++        .msg_name = NULL,
++        .msg_namelen = 0,
++        .msg_iov = &iov,
++        .msg_iovlen = 1,
++        .msg_controllen = msgs,
++        .msg_control = cmsg,
++      },
++    };
++
++  int r;
++  if (use_multi_call)
++    {
++      r = recvmmsg (s, &mmhdr, 1, 0, NULL);
++      if (r >= 0)
++	r = mmhdr.msg_len;
++    }
++  else
++    r = recvmsg (s, &mmhdr.msg_hdr, 0);
++  TEST_COMPARE (r, sizeof (int));
++  TEST_COMPARE (msg, exp_msg);
++
++  if (cmsg == NULL)
++    return;
++
++  bool timestamp = false;
++  bool origdstaddr = false;
++  for (struct cmsghdr *cmsg = CMSG_FIRSTHDR (&mmhdr.msg_hdr);
++       cmsg != NULL;
++       cmsg = CMSG_NXTHDR (&mmhdr.msg_hdr, cmsg))
++    {
++      if (cmsg->cmsg_level == SOL_IP
++	  && cmsg->cmsg_type == IP_ORIGDSTADDR
++	  && cmsg->cmsg_len >= CMSG_LEN (sizeof (struct sockaddr_in)))
++	{
++	  struct sockaddr_in sa;
++	  memcpy (&sa, CMSG_DATA (cmsg), sizeof (sa));
++	  if (test_verbose)
++	    {
++	      char str[INET_ADDRSTRLEN];
++	      inet_ntop (AF_INET, &sa.sin_addr, str, INET_ADDRSTRLEN);
++	      printf ("IP_ORIGDSTADDR:  %s:%d\n", str, ntohs (sa.sin_port));
++	    }
++	  origdstaddr = sa.sin_addr.s_addr == srv_addr.sin_addr.s_addr
++			&& sa.sin_port == srv_addr.sin_port;
++	}
++      if (cmsg->cmsg_level == SOL_SOCKET
++	  && cmsg->cmsg_type == SCM_TIMESTAMP
++	  && cmsg->cmsg_len >= CMSG_LEN (sizeof (struct timeval)))
++	{
++	  struct timeval tv;
++	  memcpy (&tv, CMSG_DATA (cmsg), sizeof (tv));
++	  if (test_verbose)
++	    printf ("SCM_TIMESTAMP:   {%jd, %jd}\n", (intmax_t)tv.tv_sec,
++		    (intmax_t)tv.tv_usec);
++	  timestamp = true;
++	}
++    }
++
++  TEST_COMPARE (timestamp, true);
++  TEST_COMPARE (origdstaddr, true);
++}
++
++static void
++do_test_multiple_ancillary (void)
++{
++  {
++    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMP, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++  }
++  {
++    int r = setsockopt (srv, IPPROTO_IP, IP_RECVORIGDSTADDR, &(int){1},
++			sizeof (int));
++    TEST_VERIFY_EXIT (r != -1);
++  }
++
++  /* Enougth data for default SO_TIMESTAMP, the IP_RECVORIGDSTADDR, and the
++     extra 64-bit SO_TIMESTAMP.  */
++  enum { msgbuflen = CMSG_SPACE (2 * sizeof (uint64_t))
++		     + CMSG_SPACE (sizeof (struct sockaddr_in))
++		     + CMSG_SPACE (2 * sizeof (uint64_t)) };
++  char msgbuf[msgbuflen];
++
++  enum { nmsgs = 8 };
++  /* Check recvmsg.  */
++  do_sendto (&srv_addr, nmsgs);
++  for (int s = 0; s < nmsgs; s++)
++    do_recvmsg_multiple_ancillary (false, srv, msgbuf, msgbuflen, s);
++  /* Check recvmmsg.  */
++  do_sendto (&srv_addr, nmsgs);
++  for (int s = 0; s < nmsgs; s++)
++    do_recvmsg_multiple_ancillary (true, srv, msgbuf, msgbuflen, s);
++}
++
++static int
++do_test (void)
++{
++  srv = xsocket (AF_INET, SOCK_DGRAM, 0);
++  srv_addr = (struct sockaddr_in) {
++    .sin_family = AF_INET,
++    .sin_addr = {.s_addr = htonl (INADDR_LOOPBACK) },
++  };
++  xbind (srv, (struct sockaddr *) &srv_addr, sizeof (srv_addr));
++  {
++    socklen_t sa_len = sizeof (srv_addr);
++    xgetsockname (srv, (struct sockaddr *) &srv_addr, &sa_len);
++    TEST_VERIFY (sa_len == sizeof (srv_addr));
++  }
++
++  TEST_COMPARE (recvmsg (-1, NULL, 0), -1);
++  TEST_COMPARE (errno, EBADF);
++  TEST_COMPARE (recvmmsg (-1, NULL, 0, 0, NULL), -1);
++  TEST_COMPARE (errno, EBADF);
++
++  /* If underlying kernel does not support   */
++  support_64_timestamp = support_socket_so_timestamp_time64 (srv);
++
++  do_test_slack_space ();
++  do_test_multiple_ancillary ();
++
++  xclose (srv);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h b/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
 index 8e028eb62b..28558279b4 100644
 --- a/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
