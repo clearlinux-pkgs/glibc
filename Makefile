@@ -3,7 +3,7 @@ PKG_NAME := glibc
 include ../common/Makefile.common
 
 GLIBC_GIT = ~/git/glibc
-GLIBC_VER = 2.34
+GLIBC_VER = 2.35
 
 GLIBC_TAG = glibc-$(GLIBC_VER)
 GLIBC_BRANCH = origin/release/$(GLIBC_VER)/master

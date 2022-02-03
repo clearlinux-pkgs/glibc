@@ -4,13 +4,13 @@
 
 
 Name:           glibc
-Version:        2.34
-Release:        439
+Version:        2.35
+Release:        440
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.34.tar.gz
+Source0:        https://mirrors.kernel.org/gnu/glibc/glibc-2.35.tar.gz
 
 Patch1:                glibc-stable-branch.patch
 
@@ -263,7 +263,7 @@ export ASFLAGS=""
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.34/configure \
+../glibc-2.35/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -314,7 +314,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.34/configure \
+../glibc-2.35/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -363,7 +363,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -D__AVX512__=1 -msse2avx -D__FMA__=1 -W
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.34/configure \
+../glibc-2.35/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -412,7 +412,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -mstackrealign -g2  -Wl,-
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.34/configure \
+../glibc-2.35/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -494,7 +494,7 @@ make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
 mkdir -p %{buildroot}/var/cache/locale
 
-# FIXME: As of glibc 2.34, the --prefix flag to iconvconfig appears to behave
+# FIXME: As of glibc 2.35, the --prefix flag to iconvconfig appears to behave
 # differently, since it hardcodes the prefix path to the cache's module lookup
 # path, which in turn breaks iconv completely (unless GCONV_PATH is set in the
 # environment). Once that issue is resolved (or another BKM is found),
@@ -550,13 +550,13 @@ mv %{buildroot}/usr/sbin/* %{buildroot}/usr/bin/
 
 # swup compatibility hack 
 cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.33.so
-cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.34.so
+cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.35.so
 cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.33.so
-cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.34.so
+cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.35.so
 rm %{buildroot}/usr/lib64/libc.so.6
 rm %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
-ln -s libc-2.34.so %{buildroot}/usr/lib64/libc.so.6
-ln -s ld-2.34.so  %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
+ln -s libc-2.35.so %{buildroot}/usr/lib64/libc.so.6
+ln -s ld-2.35.so  %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
 
 %check
 pushd ../glibc-buildroot
@@ -724,13 +724,13 @@ popd
 /usr/lib64/glibc/getconf
 /usr/lib64/ld-linux-x86-64.so.2
 /usr/lib64/ld-2.33.so
-/usr/lib64/ld-2.34.so
+/usr/lib64/ld-2.35.so
 /usr/lib64/libBrokenLocale.so.1
 /usr/lib64/libSegFault.so
 /usr/lib64/libanl.so.1
 /usr/lib64/libc.so.6
 /usr/lib64/libc-2.33.so
-/usr/lib64/libc-2.34.so
+/usr/lib64/libc-2.35.so
 /usr/lib64/libcrypt.so.1
 /usr/lib64/libdl.so.2
 /usr/lib64/libm.so.6
@@ -996,7 +996,7 @@ popd
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
 /usr/lib64/libresolv.a
-/usr/lib64/libm-2.34.a
+/usr/lib64/libm-2.35.a
 
 
 %files doc
@@ -1006,10 +1006,10 @@ popd
 /usr/bin/makedb
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
-#/usr/lib64/libnss_nis-2.34.so
+#/usr/lib64/libnss_nis-2.35.so
 #/usr/lib64/libnss_nis.so
 #/usr/lib64/libnss_nis.so.2
-#/usr/lib64/libnss_nisplus-2.34.so
+#/usr/lib64/libnss_nisplus-2.35.so
 #/usr/lib64/libnss_nisplus.so
 #/usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
