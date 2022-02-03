@@ -26,7 +26,6 @@ Patch14:	nonscd.patch
 Patch17:	alternate_trim.patch
 Patch18:	madvise-bss.patch
 Patch20:	tzselect-proper-zone-file.patch
-Patch21:	large-page-huge-page.patch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
@@ -45,11 +44,6 @@ Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 Patch57:	glibc-backport.patch
 
-# Fix upstream issue (not merged) with rtld-audit (LD_AUDIT) modules
-# Required for linux-steam-integration
-Patch61: 	fix-ld-audit-performance.patch
-
-Patch62:	c-utf8-locale.patch
 Patch63:	utf8-locale-naming.patch
 Patch64:	noclone3yet.patch
 
@@ -221,7 +215,6 @@ GNU C library extra components.
 %patch17 -p1
 #%patch18 -p1
 %patch20 -p1
-%patch21 -p1
 %patch24 -p1
 %patch26 -p1
 %patch28 -p1
@@ -235,8 +228,6 @@ GNU C library extra components.
 %patch55 -p1
 %patch56 -p1
 #%patch57 -p1
-%patch61 -p1
-%patch62 -p1
 %patch63 -p1
 %patch64 -p1
 
@@ -564,7 +555,7 @@ pushd ../glibc-buildroot
 popd
 
 %files bin
-/usr/bin/catchsegv
+#/usr/bin/catchsegv
 /usr/bin/sln
 
 %files nscd
@@ -587,6 +578,7 @@ popd
 /usr/bin/iconvconfig
 /usr/bin/zdump
 /usr/bin/zic
+/usr/bin/ld.so
 
 %files bench
 /usr/bin/bench-*
@@ -726,7 +718,7 @@ popd
 /usr/lib64/ld-2.33.so
 /usr/lib64/ld-2.35.so
 /usr/lib64/libBrokenLocale.so.1
-/usr/lib64/libSegFault.so
+#/usr/lib64/libSegFault.so
 /usr/lib64/libanl.so.1
 /usr/lib64/libc.so.6
 /usr/lib64/libc-2.33.so
