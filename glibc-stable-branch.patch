@@ -1,5 +1,7 @@
-Adhemerval Zanella (1):
+Adhemerval Zanella (3):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
+      linux: Fix missing __convert_scm_timestamps (BZ #28860)
+      Add BZ#28860 reference on NEWS
 
 Andreas Schwab (1):
       Regenerate configure
@@ -8,10 +10,10 @@ Gleb Fotengauer-Malinovskiy (1):
       linux: __get_nprocs_sched: do not feed CPU_COUNT_S with garbage [BZ #28850]
 
 diff --git a/NEWS b/NEWS
-index faa7ec1871..d1602051d1 100644
+index faa7ec1871..6b8db4e947 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,15 @@ See the end for copying conditions.
+@@ -4,6 +4,17 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -23,6 +25,8 @@ index faa7ec1871..d1602051d1 100644
 +  [28850] linux: __get_nprocs_sched reads uninitialized memory from the stack
 +  [28853] libc: tst-spawn6 changes current foreground process group
 +    (breaks test isolation)
++  [28860] build: --enable-kernel=5.1.0 build fails because of missing
++    __convert_scm_timestamps
 +
  
  Version 2.35
@@ -174,6 +178,22 @@ index 911e90a461..044abd8535 100644
 +
  #define TEST_FUNCTION_ARGV do_test
  #include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c b/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
+index 82171bf325..dfc8c2beff 100644
+--- a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
++++ b/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
+@@ -16,9 +16,9 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <kernel-features.h>
++#include <bits/timesize.h>
+ 
+-#ifndef __ASSUME_TIME64_SYSCALLS
++#if __TIMESIZE != 64
+ # include <stdint.h>
+ # include <string.h>
+ # include <sys/socket.h>
 diff --git a/sysdeps/unix/sysv/linux/getsysstats.c b/sysdeps/unix/sysv/linux/getsysstats.c
 index 4798cc337e..c98c8ce3d4 100644
 --- a/sysdeps/unix/sysv/linux/getsysstats.c
