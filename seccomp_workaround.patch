@@ -1,0 +1,28 @@
+seccomp blocks syscalls with EUNCLEAN even if ENOSYS would have been better to trigger a fallback
+
+this breaks for newer containers on older distros
+
+diff -purN glibc-2.35.org/sysdeps/unix/sysv/linux/clone-internal.c glibc-2.35/sysdeps/unix/sysv/linux/clone-internal.c
+--- glibc-2.35.org/sysdeps/unix/sysv/linux/clone-internal.c	2022-02-03 05:27:54.000000000 +0000
++++ glibc-2.35/sysdeps/unix/sysv/linux/clone-internal.c	2022-02-07 22:37:27.724594602 +0000
+@@ -52,7 +52,7 @@ __clone_internal (struct clone_args *cl_
+   /* Try clone3 first.  */
+   int saved_errno = errno;
+   ret = __clone3 (cl_args, sizeof (*cl_args), func, arg);
+-  if (ret != -1 || errno != ENOSYS)
++  if (ret != -1 || errno != ENOSYS || errno != EUCLEAN)
+     return ret;
+ 
+   /* NB: Restore errno since errno may be checked against non-zero
+diff -purN glibc-2.35.org/sysdeps/unix/sysv/linux/faccessat.c glibc-2.35/sysdeps/unix/sysv/linux/faccessat.c
+--- glibc-2.35.org/sysdeps/unix/sysv/linux/faccessat.c	2022-02-03 05:27:54.000000000 +0000
++++ glibc-2.35/sysdeps/unix/sysv/linux/faccessat.c	2022-02-07 22:13:07.780614929 +0000
+@@ -30,7 +30,7 @@ __faccessat (int fd, const char *file, i
+ #if __ASSUME_FACCESSAT2
+   return ret;
+ #else
+-  if (ret == 0 || errno != ENOSYS)
++  if (ret == 0 || errno != ENOSYS || errno != EUCLEAN)
+     return ret;
+ 
+   if (flag & ~(AT_SYMLINK_NOFOLLOW | AT_EACCESS))
