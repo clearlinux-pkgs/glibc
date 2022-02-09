@@ -10,7 +10,7 @@ diff -purN glibc-2.35.org/sysdeps/unix/sysv/linux/clone-internal.c glibc-2.35/sy
    int saved_errno = errno;
    ret = __clone3 (cl_args, sizeof (*cl_args), func, arg);
 -  if (ret != -1 || errno != ENOSYS)
-+  if (ret != -1 || errno != ENOSYS || errno != EUCLEAN)
++  if (ret != -1 || (errno != ENOSYS && errno != EUCLEAN))
      return ret;
  
    /* NB: Restore errno since errno may be checked against non-zero
@@ -22,7 +22,7 @@ diff -purN glibc-2.35.org/sysdeps/unix/sysv/linux/faccessat.c glibc-2.35/sysdeps
    return ret;
  #else
 -  if (ret == 0 || errno != ENOSYS)
-+  if (ret == 0 || errno != ENOSYS || errno != EUCLEAN)
++  if (ret == 0 || (errno != ENOSYS && errno != EUCLEAN))
      return ret;
  
    if (flag & ~(AT_SYMLINK_NOFOLLOW | AT_EACCESS))
