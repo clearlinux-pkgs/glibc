@@ -1,7 +1,8 @@
-Adhemerval Zanella (3):
+Adhemerval Zanella (4):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
+      linux: Use socket-constants-time64.h on tst-socket-timestamp-compat
 
 Andreas Schwab (1):
       Regenerate configure
@@ -365,3 +366,103 @@ index 4798cc337e..d1ea074f0d 100644
  }
  libc_hidden_def (__get_nprocs_conf)
  weak_alias (__get_nprocs_conf, get_nprocs_conf)
+diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
+index 0ff1a214e6..2b1feb4766 100644
+--- a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
++++ b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
+@@ -22,6 +22,7 @@
+ #include <support/xsocket.h>
+ #include <support/xunistd.h>
+ #include <stdbool.h>
++#include <socket-constants-time64.h>
+ 
+ /* AF_INET socket and address used to receive data.  */
+ static int srv;
+@@ -88,7 +89,7 @@ do_test_large_buffer (bool mc)
+   /* Enable 32 bit timeval precision and check if no 64 bit timeval stamp
+      is created.  */
+   {
+-    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMP_OLD, &(int){1},
++    int r = setsockopt (srv, SOL_SOCKET, COMPAT_SO_TIMESTAMP_OLD, &(int){1},
+ 			sizeof (int));
+     TEST_VERIFY_EXIT (r != -1);
+ 
+@@ -103,10 +104,10 @@ do_test_large_buffer (bool mc)
+       if (cmsg->cmsg_level != SOL_SOCKET)
+ 	continue;
+ 
+-      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMP_NEW)
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == COMPAT_SO_TIMESTAMP_NEW)
+ 	found_timestamp = true;
+       else
+-	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMP_NEW);
++	TEST_VERIFY (cmsg->cmsg_type != COMPAT_SO_TIMESTAMP_NEW);
+     }
+ 
+     TEST_COMPARE (found_timestamp, sizeof (time_t) > 4);
+@@ -114,7 +115,7 @@ do_test_large_buffer (bool mc)
+ 
+   /* Same as before, but for timespec.  */
+   {
+-    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMPNS_OLD, &(int){1},
++    int r = setsockopt (srv, SOL_SOCKET, COMPAT_SO_TIMESTAMPNS_OLD, &(int){1},
+ 			sizeof (int));
+     TEST_VERIFY_EXIT (r != -1);
+ 
+@@ -129,10 +130,10 @@ do_test_large_buffer (bool mc)
+       if (cmsg->cmsg_level != SOL_SOCKET)
+ 	continue;
+ 
+-      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMPNS_NEW)
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == COMPAT_SO_TIMESTAMPNS_NEW)
+ 	found_timestamp = true;
+       else
+-	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMPNS_NEW);
++	TEST_VERIFY (cmsg->cmsg_type != COMPAT_SO_TIMESTAMPNS_NEW);
+     }
+ 
+     TEST_COMPARE (found_timestamp, sizeof (time_t) > 4);
+@@ -151,7 +152,7 @@ do_test_small_buffer (bool mc)
+   /* Enable 32 bit timeval precision and check if no 64 bit timeval stamp
+      is created.  */
+   {
+-    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMP_OLD, &(int){1},
++    int r = setsockopt (srv, SOL_SOCKET, COMPAT_SO_TIMESTAMP_OLD, &(int){1},
+ 			sizeof (int));
+     TEST_VERIFY_EXIT (r != -1);
+ 
+@@ -172,10 +173,10 @@ do_test_small_buffer (bool mc)
+       if (cmsg->cmsg_level != SOL_SOCKET)
+ 	continue;
+ 
+-      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMP_NEW)
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == COMPAT_SO_TIMESTAMP_NEW)
+ 	found_timestamp = true;
+       else
+-	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMP_NEW);
++	TEST_VERIFY (cmsg->cmsg_type != COMPAT_SO_TIMESTAMP_NEW);
+     }
+ 
+     if (sizeof (time_t) > 4)
+@@ -192,7 +193,7 @@ do_test_small_buffer (bool mc)
+ 
+   /* Same as before, but for timespec.  */
+   {
+-    int r = setsockopt (srv, SOL_SOCKET, SO_TIMESTAMPNS_OLD, &(int){1},
++    int r = setsockopt (srv, SOL_SOCKET, COMPAT_SO_TIMESTAMPNS_OLD, &(int){1},
+ 			sizeof (int));
+     TEST_VERIFY_EXIT (r != -1);
+ 
+@@ -213,10 +214,10 @@ do_test_small_buffer (bool mc)
+       if (cmsg->cmsg_level != SOL_SOCKET)
+ 	continue;
+ 
+-      if (sizeof (time_t) > 4 && cmsg->cmsg_type == SO_TIMESTAMPNS_NEW)
++      if (sizeof (time_t) > 4 && cmsg->cmsg_type == COMPAT_SO_TIMESTAMPNS_NEW)
+ 	found_timestamp = true;
+       else
+-	TEST_VERIFY (cmsg->cmsg_type != SO_TIMESTAMPNS_NEW);
++	TEST_VERIFY (cmsg->cmsg_type != COMPAT_SO_TIMESTAMPNS_NEW);
+     }
+ 
+     if (sizeof (time_t) > 4)
