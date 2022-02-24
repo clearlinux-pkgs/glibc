@@ -24,6 +24,9 @@ Noah Goldstein (3):
       x86: Test wcscmp RTM in the wcsncmp overflow case [BZ #28896]
       x86: Fix TEST_NAME to make it a string in tst-strncmp-rtm.c
 
+Stafford Horne (1):
+      resolv: Fix tst-resolv tests for 2.35 ABIs and later
+
 diff --git a/NEWS b/NEWS
 index faa7ec1871..008941555d 100644
 --- a/NEWS
@@ -224,6 +227,56 @@ index 911e90a461..044abd8535 100644
 +
  #define TEST_FUNCTION_ARGV do_test
  #include <support/test-driver.c>
+diff --git a/resolv/Makefile b/resolv/Makefile
+index c465479e8b..438672786f 100644
+--- a/resolv/Makefile
++++ b/resolv/Makefile
+@@ -79,11 +79,6 @@ generate := mtrace-tst-leaks.out tst-leaks.mtrace tst-leaks2.mtrace
+ extra-libs := libresolv libnss_dns
+ ifeq ($(have-thread-library),yes)
+ routines += gai_sigqueue
+-endif
+-
+-ifeq ($(have-GLIBC_2.34)$(have-thread-library),yesyes)
+-# Empty compatibility library for old binaries.
+-extra-libs += libanl
+ 
+ tests += \
+   tst-bug18665 \
+@@ -144,7 +139,8 @@ xtests += tst-resolv-qtypes
+ 
+ # This test has dropped packet tests and runs for a long time.
+ xtests += tst-resolv-rotate
+-endif
++endif # $(have-thread-library)
++
+ extra-libs-others = $(extra-libs)
+ libresolv-routines := \
+   base64 \
+@@ -168,6 +164,13 @@ libresolv-routines := \
+   resolv-deprecated \
+   # libresolv-routines
+ 
++ifeq ($(have-GLIBC_2.34)$(have-thread-library),yesyes)
++# Empty compatibility library for old binaries.
++extra-libs += libanl
++libanl-routines += libanl-compat
++libanl-shared-only-routines += libanl-compat
++endif
++
+ $(libanl-routines-var) += \
+   gai_cancel \
+   gai_error \
+@@ -177,9 +180,6 @@ $(libanl-routines-var) += \
+   getaddrinfo_a \
+   # $(libanl-routines-var)
+ 
+-libanl-routines += libanl-compat
+-libanl-shared-only-routines += libanl-compat
+-
+ # Pretend that libanl.so is a linker script, so that the symbolic link
+ # is not installed.
+ install-lib-ldscripts = libanl.so
 diff --git a/string/test-strncmp.c b/string/test-strncmp.c
 index e7d5edea39..22b7dfa73b 100644
 --- a/string/test-strncmp.c
