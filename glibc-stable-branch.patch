@@ -13,11 +13,12 @@ Dmitry V. Levin (1):
 Gleb Fotengauer-Malinovskiy (1):
       linux: __get_nprocs_sched: do not feed CPU_COUNT_S with garbage [BZ #28850]
 
-H.J. Lu (4):
+H.J. Lu (5):
       string: Add a testcase for wcsncmp with SIZE_MAX [BZ #28755]
       NEWS: Add a bug fix entry for BZ #28896
       elf: Check invalid hole in PT_LOAD segments [BZ #28838]
       elf: Replace tst-audit24bmod2.so with tst-audit24bmod2
+      NEWS: Add a bug fix entry for BZ #28688
 
 Noah Goldstein (3):
       x86: Fallback {str|wcs}cmp RTM in the ncmp overflow case [BZ #28896]
@@ -28,10 +29,10 @@ Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
 
 diff --git a/NEWS b/NEWS
-index faa7ec1871..008941555d 100644
+index faa7ec1871..094a979afb 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,21 @@ See the end for copying conditions.
+@@ -4,6 +4,22 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -40,6 +41,7 @@ index faa7ec1871..008941555d 100644
 +
 +The following bugs are resolved with this release:
 +
++  [28838] FAIL: elf/tst-p_align3
 +  [28850] linux: __get_nprocs_sched reads uninitialized memory from the stack
 +  [28853] libc: tst-spawn6 changes current foreground process group
 +    (breaks test isolation)
