@@ -1,8 +1,9 @@
-Adhemerval Zanella (4):
+Adhemerval Zanella (5):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
       linux: Use socket-constants-time64.h on tst-socket-timestamp-compat
+      hppa: Fix bind-now audit (BZ #28857)
 
 Andreas Schwab (1):
       Regenerate configure
@@ -27,6 +28,13 @@ H.J. Lu (5):
       elf: Replace tst-audit24bmod2.so with tst-audit24bmod2
       NEWS: Add a bug fix entry for BZ #28688
 
+John David Anglin (5):
+      Fix elf/tst-audit2 on hppa
+      hppa: Fix swapcontext
+      hppa: Revise gettext trampoline design
+      hppa: Fix warnings from _dl_lookup_address
+      nptl: Fix cleanups for stack grows up [BZ# 28899]
+
 Noah Goldstein (3):
       x86: Fallback {str|wcs}cmp RTM in the ncmp overflow case [BZ #28896]
       x86: Test wcscmp RTM in the wcsncmp overflow case [BZ #28896]
@@ -36,10 +44,10 @@ Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
 
 diff --git a/NEWS b/NEWS
-index faa7ec1871..094a979afb 100644
+index faa7ec1871..d11e2d9d31 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,22 @@ See the end for copying conditions.
+@@ -4,6 +4,23 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -52,6 +60,7 @@ index faa7ec1871..094a979afb 100644
 +  [28850] linux: __get_nprocs_sched reads uninitialized memory from the stack
 +  [28853] libc: tst-spawn6 changes current foreground process group
 +    (breaks test isolation)
++  [28857] libc: FAIL: elf/tst-audit24a
 +  [28860] build: --enable-kernel=5.1.0 build fails because of missing
 +    __convert_scm_timestamps
 +  [28865] linux: _SC_NPROCESSORS_CONF and _SC_NPROCESSORS_ONLN are inaccurate
@@ -116,7 +125,7 @@ index 00dc638388..8e5bee775a 100755
    --includedir=DIR        C header files [PREFIX/include]
    --oldincludedir=DIR     C header files for non-gcc [/usr/include]
 diff --git a/elf/Makefile b/elf/Makefile
-index 5bdf0a383d..ac37159b89 100644
+index 5bdf0a383d..b2bd03a9f6 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
 @@ -943,7 +943,7 @@ extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
@@ -128,6 +137,29 @@ index 5bdf0a383d..ac37159b89 100644
  
  tests += $(tests-static)
  
+@@ -2210,7 +2210,7 @@ $(objpfx)tst-audit24c.out: $(objpfx)tst-auditmod24c.so
+ $(objpfx)tst-audit24c: $(objpfx)tst-audit24amod1.so \
+ 		       $(objpfx)tst-audit24amod2.so
+ tst-audit24c-ENV = LD_BIND_NOW=1 LD_AUDIT=$(objpfx)tst-auditmod24c.so
+-LDFLAGS-tst-audit24b = -Wl,-z,lazy
++LDFLAGS-tst-audit24c = -Wl,-z,lazy
+ 
+ $(objpfx)tst-audit24d.out: $(objpfx)tst-auditmod24d.so
+ $(objpfx)tst-audit24d: $(objpfx)tst-audit24dmod1.so \
+diff --git a/elf/dl-audit.c b/elf/dl-audit.c
+index 794bfd45cd..efc0492474 100644
+--- a/elf/dl-audit.c
++++ b/elf/dl-audit.c
+@@ -257,7 +257,8 @@ _dl_audit_symbind (struct link_map *l, struct reloc_result *reloc_result,
+       reloc_result->flags = flags;
+     }
+ 
+-  DL_FIXUP_BINDNOW_RELOC (value, new_value, sym.st_value);
++  if (flags & LA_SYMB_ALTVALUE)
++    DL_FIXUP_BINDNOW_RELOC (value, new_value, sym.st_value);
+ }
+ 
+ void
 diff --git a/elf/dl-map-segments.h b/elf/dl-map-segments.h
 index 172692b120..fd24cf5d01 100644
 --- a/elf/dl-map-segments.h
@@ -142,6 +174,45 @@ index 172692b120..fd24cf5d01 100644
            if (__glibc_unlikely
                (__mprotect ((caddr_t) (l->l_addr + c->mapend),
                             loadcmds[nloadcmds - 1].mapstart - c->mapend,
+diff --git a/elf/tst-auditmod24a.c b/elf/tst-auditmod24a.c
+index d8e88f3984..3075dfae2f 100644
+--- a/elf/tst-auditmod24a.c
++++ b/elf/tst-auditmod24a.c
+@@ -110,5 +110,7 @@ la_symbind32 (Elf32_Sym *sym, unsigned int ndx,
+       return sym->st_value;
+     }
+ 
+-  abort ();
++  if (symname[0] != '\0')
++    abort ();
++  return sym->st_value;
+ }
+diff --git a/elf/tst-auditmod24d.c b/elf/tst-auditmod24d.c
+index 8c803ecc0a..badc6be451 100644
+--- a/elf/tst-auditmod24d.c
++++ b/elf/tst-auditmod24d.c
+@@ -116,5 +116,7 @@ la_symbind32 (Elf32_Sym *sym, unsigned int ndx,
+ 	}
+     }
+ 
+-  abort ();
++  if (symname[0] != '\0')
++    abort ();
++  return sym->st_value;
+ }
+diff --git a/elf/tst-auditmod25.c b/elf/tst-auditmod25.c
+index 526f5c54bc..20640a8daf 100644
+--- a/elf/tst-auditmod25.c
++++ b/elf/tst-auditmod25.c
+@@ -72,7 +72,7 @@ la_symbind32 (Elf32_Sym *sym, unsigned int ndx,
+ 	      unsigned int *flags, const char *symname)
+ #endif
+ {
+-  if (*refcook != -1 && *defcook != -1)
++  if (*refcook != -1 && *defcook != -1 && symname[0] != '\0')
+     fprintf (stderr, "la_symbind: %s %u\n", symname,
+ 	     *flags & (LA_SYMB_NOPLTENTER | LA_SYMB_NOPLTEXIT) ? 1 : 0);
+   return sym->st_value;
 diff --git a/locale/programs/ld-monetary.c b/locale/programs/ld-monetary.c
 index 3b0412b405..18698bbe94 100644
 --- a/locale/programs/ld-monetary.c
@@ -450,6 +521,19 @@ index 7fce35f212..8053c816a6 100644
  
  # For SJIS the charmap is SHIFT_JIS. We just want the locale to have
  # a slightly nicer name instead of using "*.SHIFT_SJIS", but that
+diff --git a/nptl/unwind.c b/nptl/unwind.c
+index c3563e3467..33b0d87579 100644
+--- a/nptl/unwind.c
++++ b/nptl/unwind.c
+@@ -25,7 +25,7 @@
+ #include <jmpbuf-unwind.h>
+ #include <shlib-compat.h>
+ 
+-#ifdef _STACK_GROWS_DOWN
++#if _STACK_GROWS_DOWN
+ # define FRAME_LEFT(frame, other, adj) \
+   ((uintptr_t) frame - adj >= (uintptr_t) other - adj)
+ #elif _STACK_GROWS_UP
 diff --git a/posix/tst-spawn6.c b/posix/tst-spawn6.c
 index 911e90a461..044abd8535 100644
 --- a/posix/tst-spawn6.c
@@ -625,6 +709,177 @@ index e7d5edea39..22b7dfa73b 100644
  
    printf ("%23s", "");
    FOR_EACH_IMPL (impl, 0)
+diff --git a/sysdeps/hppa/dl-fptr.c b/sysdeps/hppa/dl-fptr.c
+index 2584557c4f..9ed21602d6 100644
+--- a/sysdeps/hppa/dl-fptr.c
++++ b/sysdeps/hppa/dl-fptr.c
+@@ -26,6 +26,7 @@
+ #include <ldsodefs.h>
+ #include <elf/dynamic-link.h>
+ #include <dl-fptr.h>
++#include <dl-runtime.h>
+ #include <dl-unmap-segments.h>
+ #include <atomic.h>
+ #include <libc-pointer-arith.h>
+@@ -351,21 +352,20 @@ _dl_lookup_address (const void *address)
+ {
+   ElfW(Addr) addr = (ElfW(Addr)) address;
+   ElfW(Word) reloc_arg;
+-  volatile unsigned int *desc;
+-  unsigned int *gptr;
++  unsigned int *desc, *gptr;
+ 
+   /* Return ADDR if the least-significant two bits of ADDR are not consistent
+      with ADDR being a linker defined function pointer.  The normal value for
+      a code address in a backtrace is 3.  */
+-  if (((unsigned int) addr & 3) != 2)
++  if (((uintptr_t) addr & 3) != 2)
+     return addr;
+ 
+   /* Handle special case where ADDR points to page 0.  */
+-  if ((unsigned int) addr < 4096)
++  if ((uintptr_t) addr < 4096)
+     return addr;
+ 
+   /* Clear least-significant two bits from descriptor address.  */
+-  desc = (unsigned int *) ((unsigned int) addr & ~3);
++  desc = (unsigned int *) ((uintptr_t) addr & ~3);
+   if (!_dl_read_access_allowed (desc))
+     return addr;
+ 
+@@ -376,7 +376,7 @@ _dl_lookup_address (const void *address)
+   /* Then load first word of candidate descriptor.  It should be a pointer
+      with word alignment and point to memory that can be read.  */
+   gptr = (unsigned int *) desc[0];
+-  if (((unsigned int) gptr & 3) != 0
++  if (((uintptr_t) gptr & 3) != 0
+       || !_dl_read_access_allowed (gptr))
+     return addr;
+ 
+@@ -400,10 +400,11 @@ _dl_lookup_address (const void *address)
+ 
+       /* If gp has been resolved, we need to hunt for relocation offset.  */
+       if (!(reloc_arg & PA_GP_RELOC))
+-	reloc_arg = _dl_fix_reloc_arg (addr, l);
++	reloc_arg = _dl_fix_reloc_arg ((struct fdesc *) addr, l);
+ 
+       _dl_fixup (l, reloc_arg);
+     }
+ 
+   return (ElfW(Addr)) desc[0];
+ }
++rtld_hidden_def (_dl_lookup_address)
+diff --git a/sysdeps/hppa/dl-lookupcfg.h b/sysdeps/hppa/dl-lookupcfg.h
+index 8da2412fea..de0a3b78e8 100644
+--- a/sysdeps/hppa/dl-lookupcfg.h
++++ b/sysdeps/hppa/dl-lookupcfg.h
+@@ -30,6 +30,7 @@ rtld_hidden_proto (_dl_symbol_address)
+ #define DL_SYMBOL_ADDRESS(map, ref) _dl_symbol_address(map, ref)
+ 
+ Elf32_Addr _dl_lookup_address (const void *address);
++rtld_hidden_proto (_dl_lookup_address)
+ 
+ #define DL_LOOKUP_ADDRESS(addr) _dl_lookup_address ((const void *) addr)
+ 
+@@ -79,7 +80,9 @@ void attribute_hidden _dl_unmap (struct link_map *map);
+ /* Extract the code address from a fixup value */
+ #define DL_FIXUP_VALUE_CODE_ADDR(value) ((value).ip)
+ #define DL_FIXUP_VALUE_ADDR(value) ((uintptr_t) &(value))
+-#define DL_FIXUP_ADDR_VALUE(addr) (*(struct fdesc *) (addr))
++/* Clear the plabel bit to get the actual address of the descriptor.  */
++#define DL_FIXUP_ADDR_VALUE(addr) \
++  (*(DL_FIXUP_VALUE_TYPE *) ((uintptr_t) (addr) & ~2))
+ #define DL_FIXUP_BINDNOW_ADDR_VALUE(addr) (addr)
+-#define DL_FIXUP_BINDNOW_RELOC(value, new_value, st_value) \
+-  (*value) = *(struct fdesc *) (st_value)
++#define DL_FIXUP_BINDNOW_RELOC(value, new_value, st_value)	\
++  *(value) = *(DL_FIXUP_VALUE_TYPE *) ((uintptr_t) (new_value) & ~2)
+diff --git a/sysdeps/hppa/dl-machine.h b/sysdeps/hppa/dl-machine.h
+index da4d57d2e4..7b7a697cbb 100644
+--- a/sysdeps/hppa/dl-machine.h
++++ b/sysdeps/hppa/dl-machine.h
+@@ -176,6 +176,15 @@ elf_machine_runtime_setup (struct link_map *l, struct r_scope_elem *scope[],
+     Elf32_Addr i[2];
+   } sig = {{0x00,0xc0,0xff,0xee, 0xde,0xad,0xbe,0xef}};
+ 
++  /* Initialize dp register for main executable.  */
++  if (l->l_main_map)
++    {
++      register Elf32_Addr dp asm ("%r27");
++
++      dp = D_PTR (l, l_info[DT_PLTGOT]);
++      asm volatile ("" : : "r" (dp));
++    }
++
+   /* If we don't have a PLT we can just skip all this... */
+   if (__builtin_expect (l->l_info[DT_JMPREL] == NULL,0))
+     return lazy;
+@@ -338,16 +347,6 @@ elf_machine_runtime_setup (struct link_map *l, struct r_scope_elem *scope[],
+    its return value is the user program's entry point.  */
+ 
+ #define RTLD_START \
+-/* Set up dp for any non-PIC lib constructors that may be called.  */	\
+-static struct link_map * __attribute__((used))				\
+-set_dp (struct link_map *map)						\
+-{									\
+-  register Elf32_Addr dp asm ("%r27");					\
+-  dp = D_PTR (map, l_info[DT_PLTGOT]);					\
+-  asm volatile ("" : : "r" (dp));					\
+-  return map;								\
+-}									\
+-									\
+ asm (									\
+ "	.text\n"							\
+ "	.globl _start\n"						\
+@@ -447,14 +446,11 @@ asm (									\
+ "	stw	%r24,-44(%sp)\n"					\
+ 									\
+ ".Lnofix:\n"								\
++	/* Call _dl_init(main_map, argc, argv, envp). */		\
+ "	addil	LT'_rtld_local,%r19\n"					\
+ "	ldw	RT'_rtld_local(%r1),%r26\n"				\
+-"	bl	set_dp, %r2\n"						\
+ "	ldw	0(%r26),%r26\n"						\
+ 									\
+-	/* Call _dl_init(_dl_loaded, argc, argv, envp). */		\
+-"	copy	%r28,%r26\n"						\
+-									\
+ 	/* envp = argv + argc + 1 */					\
+ "	sh2add	%r25,%r24,%r23\n"					\
+ "	bl	_dl_init,%r2\n"						\
+diff --git a/sysdeps/hppa/dl-runtime.c b/sysdeps/hppa/dl-runtime.c
+index 8b2ee58e37..192a6bee03 100644
+--- a/sysdeps/hppa/dl-runtime.c
++++ b/sysdeps/hppa/dl-runtime.c
+@@ -25,8 +25,7 @@
+    return that to the caller.  The caller will continue on to call
+    _dl_fixup with the relocation offset.  */
+ 
+-ElfW(Word)
+-attribute_hidden __attribute ((noinline)) DL_ARCH_FIXUP_ATTRIBUTE
++ElfW(Word) __attribute ((noinline)) DL_ARCH_FIXUP_ATTRIBUTE
+ _dl_fix_reloc_arg (struct fdesc *fptr, struct link_map *l)
+ {
+   Elf32_Addr l_addr, iplt, jmprel, end_jmprel, r_type;
+@@ -52,3 +51,4 @@ _dl_fix_reloc_arg (struct fdesc *fptr, struct link_map *l)
+   ABORT_INSTRUCTION;
+   return 0;
+ }
++rtld_hidden_def (_dl_fix_reloc_arg)
+diff --git a/sysdeps/hppa/dl-runtime.h b/sysdeps/hppa/dl-runtime.h
+index d4da46079b..5ced8e14e9 100644
+--- a/sysdeps/hppa/dl-runtime.h
++++ b/sysdeps/hppa/dl-runtime.h
+@@ -17,6 +17,9 @@
+    Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+    02111-1307 USA.  */
+ 
++ElfW(Word) _dl_fix_reloc_arg (struct fdesc *, struct link_map *);
++rtld_hidden_proto (_dl_fix_reloc_arg)
++
+ /* Clear PA_GP_RELOC bit in relocation offset.  */
+ static inline uintptr_t
+ reloc_offset (uintptr_t plt0, uintptr_t pltn)
 diff --git a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c b/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
 index 82171bf325..dfc8c2beff 100644
 --- a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
@@ -807,6 +1062,226 @@ index 4798cc337e..d1ea074f0d 100644
  }
  libc_hidden_def (__get_nprocs_conf)
  weak_alias (__get_nprocs_conf, get_nprocs_conf)
+diff --git a/sysdeps/unix/sysv/linux/hppa/getcontext.S b/sysdeps/unix/sysv/linux/hppa/getcontext.S
+index 1e73587f13..dcdf986f2d 100644
+--- a/sysdeps/unix/sysv/linux/hppa/getcontext.S
++++ b/sysdeps/unix/sysv/linux/hppa/getcontext.S
+@@ -21,22 +21,28 @@
+ #include "ucontext_i.h"
+ 
+ 
+-	/* Trampoline function. Non-standard calling ABI.  */
++	/* Trampoline function.  Non-standard calling ABI.  */
+ 	/* Can not use ENTRY(__getcontext_ret) here.  */
+ 	.type	__getcontext_ret, @function
+ 	.hidden	__getcontext_ret
+ __getcontext_ret:
+ 	.proc
+ 	.callinfo FRAME=0,NO_CALLS
+-	/* r26-r23 contain original r3-r6, but because setcontext
+-	   does not reload r3-r6 (it's using them as temporaries)
+-	   we must save them elsewhere and swap them back in.  */
+-	copy	%r23, %r3
+-	copy	%r24, %r4
+-	copy	%r25, %r5
+-	copy	%r26, %r6
+-	/* r20 contains original return pointer.  */
+-	bv	0(%r20)
++	/* Because setcontext does not reload r3-r6 (it's using them
++	   as temporaries), we must load them ourself.  */
++	ldw	oR3(%r26), %r3
++	ldw	oR4(%r26), %r4
++	ldw	oR5(%r26), %r5
++	ldw	oR6(%r26), %r6
++
++	/* Also reload registers clobbered by $$dyncall.  */
++	ldw	oR21(%r26), %r21
++	ldw	oR22(%r26), %r22
++	ldw	oR31(%r26), %r31
++
++	/* oR0 contains original return pointer.  */
++	ldw	oR0(%r26), %rp
++	bv	0(%rp)
+ 	copy	%r0, %ret0
+ 	.procend
+ 	.size	__getcontext_ret, .-__getcontext_ret
+@@ -64,13 +70,13 @@ ENTRY(__getcontext)
+ 	stw	%r17, oR17(%r26)
+ 	stw	%r18, oR18(%r26)
+ 	stw	%r19, oR19(%r26)
+-	/* stw	%r20, oR20(%r26) - used for trampoline.  */
++	stw	%r20, oR20(%r26)
+ 	stw	%r21, oR21(%r26)
+ 	stw	%r22, oR22(%r26)
+-	/* stw	%r23, oR23(%r26) - used for trampoline.  */
+-	/* stw	%r24, oR24(%r26) - used for trampoline.  */
+-	/* stw	%r25, oR25(%r26) - used for trampoline.  */
+-	/* stw	%r26, oR26(%r26) - used for trampoline.  */
++	stw	%r23, oR23(%r26)
++	stw	%r24, oR24(%r26)
++	stw	%r25, oR25(%r26)
++	stw	%r26, oR26(%r26)
+ 	stw	%r27, oR27(%r26)
+ 	stw	%r28, oR28(%r26)
+ 	stw	%r29, oR29(%r26)
+@@ -89,7 +95,10 @@ ENTRY(__getcontext)
+ 	stw	%r0, oIASQ1(%r26)
+ 	stw	%r0, oIAOQ0(%r26)
+ 	stw	%r0, oIAOQ1(%r26)
+-	stw	%r0, oSAR(%r26) /* used as flag in swapcontext().  */
++
++	/* Save SAR register.  */
++	mfctl	%sar, %r1
++	stw	%r1, oSAR(%r26) /* MSB used as flag in swapcontext().  */
+ 
+ 
+ 	/* Store floating-point regs.  */
+@@ -137,15 +146,12 @@ ENTRY(__getcontext)
+ 	stw	%r19, -32(%sp)
+ 	.cfi_offset 19, 32
+ #endif
++	stw	%ret1, -60(%sp)
++	.cfi_offset 29, 4
+ 
+ 	/* Set up the trampoline registers.
+-	   r20, r23, r24, r25, r26 and r2 are clobbered
+-	   by call to getcontext() anyway. Reuse them.  */
+-	stw	%r2, oR20(%r26)
+-	stw	%r3, oR23(%r26)
+-	stw	%r4, oR24(%r26)
+-	stw	%r5, oR25(%r26)
+-	stw	%r6, oR26(%r26)
++	   Use oR0 context slot to save return value.  */
++	stw	%r2, oR0(%r26)
+ #ifdef PIC
+ 	addil	LT%__getcontext_ret, %r19
+ 	ldw     RT%__getcontext_ret(%r1), %r1
+@@ -167,6 +173,7 @@ ENTRY(__getcontext)
+ #ifdef PIC
+ 	ldw	-32(%sp), %r19
+ #endif
++	ldw	-60(%sp), %ret1
+ 	bv	%r0(%r2)
+ 	ldwm	-64(%sp), %r4
+ END(__getcontext)
+diff --git a/sysdeps/unix/sysv/linux/hppa/setcontext.S b/sysdeps/unix/sysv/linux/hppa/setcontext.S
+index bc4872c8e2..dfa794ad5c 100644
+--- a/sysdeps/unix/sysv/linux/hppa/setcontext.S
++++ b/sysdeps/unix/sysv/linux/hppa/setcontext.S
+@@ -33,6 +33,8 @@ ENTRY(__setcontext)
+ 	stw	%r19, -32(%sp)
+ 	.cfi_offset 19, 32
+ #endif
++	stw	%ret1, -60(%sp)
++	.cfi_offset 29, 4
+ 
+ 	/* Save ucp.  */
+ 	copy	%r26, %r3
+@@ -73,7 +75,7 @@ ENTRY(__setcontext)
+ 	ldw	oR18(%r3), %r18
+ 	ldw	oR19(%r3), %r19
+ 	ldw	oR20(%r3), %r20
+-	ldw	oR21(%r3), %r21
++	ldw	oR21(%r3), %r21 /* maybe clobbered by dyncall */
+ 	/* ldw	oR22(%r3), %r22 - dyncall arg.  */
+ 	ldw	oR23(%r3), %r23
+ 	ldw	oR24(%r3), %r24
+@@ -85,6 +87,10 @@ ENTRY(__setcontext)
+ 	ldw	oR30(%r3), %sp
+ 	/* ldw	oR31(%r3), %r31 - dyncall scratch register */
+ 
++	/* Restore SAR register.  */
++	ldw	oSAR(%r3), %r22
++	mtsar	%r22
++
+ 	/* Restore floating-point registers.  */
+ 	ldo	 oFPREGS31(%r3), %r22
+ 	fldds	  0(%r22), %fr31
+@@ -154,6 +160,7 @@ ENTRY(__setcontext)
+ #ifdef PIC
+ 	ldw	-32(%r30), %r19
+ #endif
++	ldw	-60(%r30), %ret1
+ 	bv	%r0(%r2)
+ 	ldwm	-64(%r30), %r3
+ L(pseudo_end):
+diff --git a/sysdeps/unix/sysv/linux/hppa/swapcontext.c b/sysdeps/unix/sysv/linux/hppa/swapcontext.c
+index 5cbe00f1e9..e5bf6c9933 100644
+--- a/sysdeps/unix/sysv/linux/hppa/swapcontext.c
++++ b/sysdeps/unix/sysv/linux/hppa/swapcontext.c
+@@ -17,6 +17,7 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include <ucontext.h>
++#include "ucontext_i.h"
+ 
+ extern int __getcontext (ucontext_t *ucp);
+ extern int __setcontext (const ucontext_t *ucp);
+@@ -24,17 +25,57 @@ extern int __setcontext (const ucontext_t *ucp);
+ int
+ __swapcontext (ucontext_t *oucp, const ucontext_t *ucp)
+ {
++  /* Save rp for debugger.  */
++  asm ("stw %rp,-20(%sp)");
++  asm (".cfi_offset 2, -20");
++
++  /* Copy rp to ret0 (r28).  */
++  asm ("copy %rp,%ret0");
++
++  /* Create a frame.  */
++  asm ("ldo 64(%sp),%sp");
++  asm (".cfi_def_cfa_offset -64");
++
+   /* Save the current machine context to oucp.  */
+-  __getcontext (oucp);
++  asm ("bl __getcontext,%rp");
++
++  /* Copy oucp to register ret1 (r29).  __getcontext saves and restores it
++     on a normal return.  It is restored from oR29 on reactivation.  */
++  asm ("copy %r26,%ret1");
++
++  /* Pop frame.  */
++  asm ("ldo -64(%sp),%sp");
++  asm (".cfi_def_cfa_offset 0");
++
++  /* Load return pointer from oR28.  */
++  asm ("ldw %0(%%ret1),%%rp" : : "i" (oR28));
++
++  /* Return if error.  */
++  asm ("or,= %r0,%ret0,%r0");
++  asm ("bv,n %r0(%rp)");
++
++  /* Load sc_sar flag.  */
++  asm ("ldb %0(%%ret1),%%r20" : : "i" (oSAR));
++
++  /* Return if oucp context has been reactivated.  */
++  asm ("or,= %r0,%r20,%r0");
++  asm ("bv,n %r0(%rp)");
++
++  /* Mark sc_sar flag.  */
++  asm ("1: ldi 1,%r20");
++  asm ("stb %%r20,%0(%%ret1)" : : "i" (oSAR));
++
++  /* Activate the machine context in ucp.  */
++  asm ("bl __setcontext,%rp");
++  asm ("ldw %0(%%ret1),%%r26" : : "i" (oR25));
+ 
+-  /* mark sc_sar flag to skip the setcontext call on reactivation.  */
+-  if (oucp->uc_mcontext.sc_sar == 0) {
+-	oucp->uc_mcontext.sc_sar++;
++  /* Load return pointer.  */
++  asm ("ldw %0(%%ret1),%%rp" : : "i" (oR28));
+ 
+-	/* Restore the machine context in ucp.  */
+-	__setcontext (ucp);
+-  }
++  /* A successful call to setcontext does not return.  */
++  asm ("bv,n %r0(%rp)");
+ 
++  /* Make gcc happy.  */
+   return 0;
+ }
+ 
 diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
 index 0ff1a214e6..2b1feb4766 100644
 --- a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
