@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.35
-Release:        456
+Release:        457
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -47,6 +47,7 @@ Patch57:	glibc-backport.patch
 Patch63:	utf8-locale-naming.patch
 Patch64:	noclone3yet.patch
 Patch65:	seccomp_workaround.patch
+Patch66:	populate.patch
 
 
 # cves: patches 101 through 200
@@ -232,6 +233,7 @@ GNU C library extra components.
 %patch63 -p1
 %patch64 -p1
 %patch65 -p1
+%patch66 -p1
 
 
 %patch9 -p1
