@@ -18,6 +18,11 @@ Carlos O'Donell (2):
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
 
+Florian Weimer (3):
+      io: Add fsync call in tst-stat
+      nss: Do not mention NSS test modules in <gnu/lib-names.h>
+      nss: Protect against errno changes in function lookup (bug 28953)
+
 Gleb Fotengauer-Malinovskiy (1):
       linux: __get_nprocs_sched: do not feed CPU_COUNT_S with garbage [BZ #28850]
 
@@ -44,10 +49,10 @@ Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
 
 diff --git a/NEWS b/NEWS
-index faa7ec1871..d11e2d9d31 100644
+index faa7ec1871..aa1b337520 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,23 @@ See the end for copying conditions.
+@@ -4,6 +4,24 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -67,6 +72,7 @@ index faa7ec1871..d11e2d9d31 100644
 +    without /sys and /proc
 +  [28896] strncmp-avx2-rtm and wcsncmp-avx2-rtm fallback on non-rtm
 +    variants when avoiding overflow
++  [28953] nss: Protect against errno changes in function lookup
 +
  
  Version 2.35
@@ -213,6 +219,21 @@ index 526f5c54bc..20640a8daf 100644
      fprintf (stderr, "la_symbind: %s %u\n", symname,
  	     *flags & (LA_SYMB_NOPLTENTER | LA_SYMB_NOPLTEXIT) ? 1 : 0);
    return sym->st_value;
+diff --git a/io/tst-stat.c b/io/tst-stat.c
+index 2b7975e162..237988203a 100644
+--- a/io/tst-stat.c
++++ b/io/tst-stat.c
+@@ -69,6 +69,10 @@ do_test (void)
+   TEST_VERIFY_EXIT (fd >= 0);
+   support_write_file_string (path, "abc");
+ 
++  /* This should help to prevent delayed allocation, which may result
++     in a spurious stx_blocks/st_blocks difference.  */
++  fsync (fd);
++
+   bool check_ns = support_stat_nanoseconds (path);
+   if (!check_ns)
+     printf ("warning: timestamp with nanoseconds not supported\n");
 diff --git a/locale/programs/ld-monetary.c b/locale/programs/ld-monetary.c
 index 3b0412b405..18698bbe94 100644
 --- a/locale/programs/ld-monetary.c
@@ -534,6 +555,224 @@ index c3563e3467..33b0d87579 100644
  # define FRAME_LEFT(frame, other, adj) \
    ((uintptr_t) frame - adj >= (uintptr_t) other - adj)
  #elif _STACK_GROWS_UP
+diff --git a/nss/Makefile b/nss/Makefile
+index 552e5d03e1..de439d4911 100644
+--- a/nss/Makefile
++++ b/nss/Makefile
+@@ -60,7 +60,8 @@ tests			= test-netdb test-digits-dots tst-nss-getpwent bug17079 \
+ 			  tst-nss-test1 \
+ 			  tst-nss-test2 \
+ 			  tst-nss-test4 \
+-			  tst-nss-test5
++			  tst-nss-test5 \
++			  tst-nss-test_errno
+ xtests			= bug-erange
+ 
+ tests-container = \
+@@ -132,7 +133,7 @@ libnss_compat-inhibit-o	= $(filter-out .os,$(object-suffixes))
+ ifeq ($(build-static-nss),yes)
+ tests-static		+= tst-nss-static
+ endif
+-extra-test-objs		+= nss_test1.os nss_test2.os
++extra-test-objs		+= nss_test1.os nss_test2.os nss_test_errno.os
+ 
+ include ../Rules
+ 
+@@ -166,22 +167,26 @@ rtld-tests-LDFLAGS += -Wl,--dynamic-list=nss_test.ver
+ 
+ libof-nss_test1 = extramodules
+ libof-nss_test2 = extramodules
++libof-nss_test_errno = extramodules
+ $(objpfx)/libnss_test1.so: $(objpfx)nss_test1.os $(link-libc-deps)
+ 	$(build-module)
+ $(objpfx)/libnss_test2.so: $(objpfx)nss_test2.os $(link-libc-deps)
+ 	$(build-module)
++$(objpfx)/libnss_test_errno.so: $(objpfx)nss_test_errno.os $(link-libc-deps)
++	$(build-module)
+ $(objpfx)nss_test2.os : nss_test1.c
+-ifdef libnss_test1.so-version
+-$(objpfx)/libnss_test1.so$(libnss_test1.so-version): $(objpfx)/libnss_test1.so
++# Use the nss_files suffix for these objects as well.
++$(objpfx)/libnss_test1.so$(libnss_files.so-version): $(objpfx)/libnss_test1.so
+ 	$(make-link)
+-endif
+-ifdef libnss_test2.so-version
+-$(objpfx)/libnss_test2.so$(libnss_test2.so-version): $(objpfx)/libnss_test2.so
++$(objpfx)/libnss_test2.so$(libnss_files.so-version): $(objpfx)/libnss_test2.so
++	$(make-link)
++$(objpfx)/libnss_test_errno.so$(libnss_files.so-version): \
++  $(objpfx)/libnss_test_errno.so
+ 	$(make-link)
+-endif
+ $(patsubst %,$(objpfx)%.out,$(tests) $(tests-container)) : \
+-	$(objpfx)/libnss_test1.so$(libnss_test1.so-version) \
+-	$(objpfx)/libnss_test2.so$(libnss_test2.so-version)
++	$(objpfx)/libnss_test1.so$(libnss_files.so-version) \
++	$(objpfx)/libnss_test2.so$(libnss_files.so-version) \
++	$(objpfx)/libnss_test_errno.so$(libnss_files.so-version)
+ 
+ ifeq (yes,$(have-thread-library))
+ $(objpfx)tst-cancel-getpwuid_r: $(shared-thread-library)
+@@ -197,3 +202,4 @@ LDFLAGS-tst-nss-test2 = -Wl,--disable-new-dtags
+ LDFLAGS-tst-nss-test3 = -Wl,--disable-new-dtags
+ LDFLAGS-tst-nss-test4 = -Wl,--disable-new-dtags
+ LDFLAGS-tst-nss-test5 = -Wl,--disable-new-dtags
++LDFLAGS-tst-nss-test_errno = -Wl,--disable-new-dtags
+diff --git a/nss/nss_module.c b/nss/nss_module.c
+index f9a1263e5a..f00bbd9e1a 100644
+--- a/nss/nss_module.c
++++ b/nss/nss_module.c
+@@ -330,8 +330,18 @@ name_search (const void *left, const void *right)
+ void *
+ __nss_module_get_function (struct nss_module *module, const char *name)
+ {
++  /* A successful dlopen might clobber errno.   */
++  int saved_errno = errno;
++
+   if (!__nss_module_load (module))
+-    return NULL;
++    {
++      /* Reporting module load failure is currently inaccurate.  See
++	 bug 22041.  Not changing errno is the conservative choice.  */
++      __set_errno (saved_errno);
++      return NULL;
++    }
++
++  __set_errno (saved_errno);
+ 
+   function_name *name_entry = bsearch (name, nss_function_name_array,
+                                        array_length (nss_function_name_array),
+diff --git a/nss/nss_test_errno.c b/nss/nss_test_errno.c
+new file mode 100644
+index 0000000000..680f8a07b9
+--- /dev/null
++++ b/nss/nss_test_errno.c
+@@ -0,0 +1,58 @@
++/* NSS service provider with errno clobber.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <nss.h>
++#include <stdlib.h>
++
++/* Catch misnamed and functions.  */
++#pragma GCC diagnostic error "-Wmissing-prototypes"
++NSS_DECLARE_MODULE_FUNCTIONS (test_errno)
++
++static void __attribute__ ((constructor))
++init (void)
++{
++  /* An arbitrary error code which is otherwise not used.  */
++  errno = ELIBBAD;
++}
++
++/* Lookup functions for pwd follow that do not return any data.  */
++
++/* Catch misnamed function definitions.  */
++
++enum nss_status
++_nss_test_errno_setpwent (int stayopen)
++{
++  setenv ("_nss_test_errno_setpwent", "yes", 1);
++  return NSS_STATUS_SUCCESS;
++}
++
++enum nss_status
++_nss_test_errno_getpwent_r (struct passwd *result,
++                            char *buffer, size_t size, int *errnop)
++{
++  setenv ("_nss_test_errno_getpwent_r", "yes", 1);
++  return NSS_STATUS_NOTFOUND;
++}
++
++enum nss_status
++_nss_test_errno_endpwent (void)
++{
++  setenv ("_nss_test_errno_endpwent", "yes", 1);
++  return NSS_STATUS_SUCCESS;
++}
+diff --git a/nss/tst-nss-test_errno.c b/nss/tst-nss-test_errno.c
+new file mode 100644
+index 0000000000..d2c42dd363
+--- /dev/null
++++ b/nss/tst-nss-test_errno.c
+@@ -0,0 +1,61 @@
++/* getpwent failure when dlopen clobbers errno (bug 28953).
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <nss.h>
++#include <support/check.h>
++#include <stdlib.h>
++#include <errno.h>
++#include <stdbool.h>
++#include <pwd.h>
++#include <string.h>
++
++static int
++do_test (void)
++{
++  __nss_configure_lookup ("passwd", "files test_errno");
++
++  errno = 0;
++  setpwent ();
++  TEST_COMPARE (errno, 0);
++
++  bool root_seen = false;
++  while (true)
++    {
++      errno = 0;
++      struct passwd *e = getpwent ();
++      if (e == NULL)
++        break;
++      if (strcmp (e->pw_name, "root"))
++        root_seen = true;
++    }
++
++  TEST_COMPARE (errno, 0);
++  TEST_VERIFY (root_seen);
++
++  errno = 0;
++  endpwent ();
++  TEST_COMPARE (errno, 0);
++
++  TEST_COMPARE_STRING (getenv ("_nss_test_errno_setpwent"), "yes");
++  TEST_COMPARE_STRING (getenv ("_nss_test_errno_getpwent_r"), "yes");
++  TEST_COMPARE_STRING (getenv ("_nss_test_errno_endpwent"), "yes");
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/posix/tst-spawn6.c b/posix/tst-spawn6.c
 index 911e90a461..044abd8535 100644
 --- a/posix/tst-spawn6.c
@@ -678,6 +917,22 @@ index c465479e8b..438672786f 100644
  # Pretend that libanl.so is a linker script, so that the symbolic link
  # is not installed.
  install-lib-ldscripts = libanl.so
+diff --git a/shlib-versions b/shlib-versions
+index df6603e699..b87ab50c59 100644
+--- a/shlib-versions
++++ b/shlib-versions
+@@ -47,11 +47,6 @@ libnss_ldap=2
+ libnss_hesiod=2
+ libnss_db=2
+ 
+-# Tests for NSS.  They must have the same NSS_SHLIB_REVISION number as
+-# the rest.
+-libnss_test1=2
+-libnss_test2=2
+-
+ # Version for libnsl with YP and NIS+ functions.
+ libnsl=1
+ 
 diff --git a/string/test-strncmp.c b/string/test-strncmp.c
 index e7d5edea39..22b7dfa73b 100644
 --- a/string/test-strncmp.c
