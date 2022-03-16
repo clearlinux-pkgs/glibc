@@ -33,12 +33,14 @@ H.J. Lu (5):
       elf: Replace tst-audit24bmod2.so with tst-audit24bmod2
       NEWS: Add a bug fix entry for BZ #28688
 
-John David Anglin (5):
+John David Anglin (7):
       Fix elf/tst-audit2 on hppa
       hppa: Fix swapcontext
       hppa: Revise gettext trampoline design
       hppa: Fix warnings from _dl_lookup_address
       nptl: Fix cleanups for stack grows up [BZ# 28899]
+      hppa: Implement swapcontext in assembler (bug 28960)
+      hppa: Use END instead of PSEUDO_END in swapcontext.S
 
 Noah Goldstein (3):
       x86: Fallback {str|wcs}cmp RTM in the ncmp overflow case [BZ #28896]
@@ -1460,83 +1462,131 @@ index bc4872c8e2..dfa794ad5c 100644
  	bv	%r0(%r2)
  	ldwm	-64(%r30), %r3
  L(pseudo_end):
-diff --git a/sysdeps/unix/sysv/linux/hppa/swapcontext.c b/sysdeps/unix/sysv/linux/hppa/swapcontext.c
-index 5cbe00f1e9..e5bf6c9933 100644
---- a/sysdeps/unix/sysv/linux/hppa/swapcontext.c
-+++ b/sysdeps/unix/sysv/linux/hppa/swapcontext.c
-@@ -17,6 +17,7 @@
-    <https://www.gnu.org/licenses/>.  */
- 
- #include <ucontext.h>
+diff --git a/sysdeps/unix/sysv/linux/hppa/swapcontext.S b/sysdeps/unix/sysv/linux/hppa/swapcontext.S
+new file mode 100644
+index 0000000000..fbc22586d1
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/hppa/swapcontext.S
+@@ -0,0 +1,72 @@
++/* Swap to new context.
++   Copyright (C) 2008-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
 +#include "ucontext_i.h"
- 
- extern int __getcontext (ucontext_t *ucp);
- extern int __setcontext (const ucontext_t *ucp);
-@@ -24,17 +25,57 @@ extern int __setcontext (const ucontext_t *ucp);
- int
- __swapcontext (ucontext_t *oucp, const ucontext_t *ucp)
- {
-+  /* Save rp for debugger.  */
-+  asm ("stw %rp,-20(%sp)");
-+  asm (".cfi_offset 2, -20");
 +
-+  /* Copy rp to ret0 (r28).  */
-+  asm ("copy %rp,%ret0");
++	.text
++ENTRY(__swapcontext)
 +
-+  /* Create a frame.  */
-+  asm ("ldo 64(%sp),%sp");
-+  asm (".cfi_def_cfa_offset -64");
++	/* Copy rp to ret0 (r28).  */
++	copy %rp,%ret0
 +
-   /* Save the current machine context to oucp.  */
++	/* Create a frame.  */
++	ldo 64(%sp),%sp
++	.cfi_def_cfa_offset -64
++
++	/* Save the current machine context to oucp.  */
++	bl __getcontext,%rp
++
++	/* Copy oucp to register ret1 (r29).  __getcontext saves and
++	   restores it on a normal return.  It is restored from oR29
++	   on reactivation.  */
++	copy %r26,%ret1
++
++	/* Pop frame.  */
++	ldo -64(%sp),%sp
++	.cfi_def_cfa_offset 0
++
++	/* Load return pointer from oR28.  */
++	ldw oR28(%ret1),%rp
++
++	/* Return if error.  */
++	or,= %r0,%ret0,%r0
++	bv,n %r0(%rp)
++
++	/* Load sc_sar flag.  */
++	ldb oSAR(%ret1),%r20
++
++	/* Return if oucp context has been reactivated.  */
++	or,= %r0,%r20,%r0
++	bv,n %r0(%rp)
++
++	/* Mark sc_sar flag.  */
++	ldi 1,%r20
++	stb %r20,oSAR(%ret1)
++
++	/* Activate the machine context in ucp.  */
++	bl __setcontext,%rp
++	ldw oR25(%ret1),%r26
++
++	/* Load return pointer.  */
++	ldw oR28(%ret1),%rp
++	bv,n %r0(%rp)
++
++END(__swapcontext)
++
++weak_alias (__swapcontext, swapcontext)
+diff --git a/sysdeps/unix/sysv/linux/hppa/swapcontext.c b/sysdeps/unix/sysv/linux/hppa/swapcontext.c
+deleted file mode 100644
+index 5cbe00f1e9..0000000000
+--- a/sysdeps/unix/sysv/linux/hppa/swapcontext.c
++++ /dev/null
+@@ -1,41 +0,0 @@
+-/* Swap to new context.
+-   Copyright (C) 2008-2022 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library.  If not, see
+-   <https://www.gnu.org/licenses/>.  */
+-
+-#include <ucontext.h>
+-
+-extern int __getcontext (ucontext_t *ucp);
+-extern int __setcontext (const ucontext_t *ucp);
+-
+-int
+-__swapcontext (ucontext_t *oucp, const ucontext_t *ucp)
+-{
+-  /* Save the current machine context to oucp.  */
 -  __getcontext (oucp);
-+  asm ("bl __getcontext,%rp");
-+
-+  /* Copy oucp to register ret1 (r29).  __getcontext saves and restores it
-+     on a normal return.  It is restored from oR29 on reactivation.  */
-+  asm ("copy %r26,%ret1");
-+
-+  /* Pop frame.  */
-+  asm ("ldo -64(%sp),%sp");
-+  asm (".cfi_def_cfa_offset 0");
-+
-+  /* Load return pointer from oR28.  */
-+  asm ("ldw %0(%%ret1),%%rp" : : "i" (oR28));
-+
-+  /* Return if error.  */
-+  asm ("or,= %r0,%ret0,%r0");
-+  asm ("bv,n %r0(%rp)");
-+
-+  /* Load sc_sar flag.  */
-+  asm ("ldb %0(%%ret1),%%r20" : : "i" (oSAR));
-+
-+  /* Return if oucp context has been reactivated.  */
-+  asm ("or,= %r0,%r20,%r0");
-+  asm ("bv,n %r0(%rp)");
-+
-+  /* Mark sc_sar flag.  */
-+  asm ("1: ldi 1,%r20");
-+  asm ("stb %%r20,%0(%%ret1)" : : "i" (oSAR));
-+
-+  /* Activate the machine context in ucp.  */
-+  asm ("bl __setcontext,%rp");
-+  asm ("ldw %0(%%ret1),%%r26" : : "i" (oR25));
- 
+-
 -  /* mark sc_sar flag to skip the setcontext call on reactivation.  */
 -  if (oucp->uc_mcontext.sc_sar == 0) {
 -	oucp->uc_mcontext.sc_sar++;
-+  /* Load return pointer.  */
-+  asm ("ldw %0(%%ret1),%%rp" : : "i" (oR28));
- 
+-
 -	/* Restore the machine context in ucp.  */
 -	__setcontext (ucp);
 -  }
-+  /* A successful call to setcontext does not return.  */
-+  asm ("bv,n %r0(%rp)");
- 
-+  /* Make gcc happy.  */
-   return 0;
- }
- 
+-
+-  return 0;
+-}
+-
+-weak_alias (__swapcontext, swapcontext)
 diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
 index 0ff1a214e6..2b1feb4766 100644
 --- a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
