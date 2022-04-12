@@ -11,9 +11,10 @@ Andreas Schwab (1):
 Arjun Shankar (1):
       localedef: Handle symbolic links when generating locale-archive
 
-Carlos O'Donell (2):
+Carlos O'Donell (3):
       localedef: Update LC_MONETARY handling (Bug 28845)
       localedata: Do not generate output if warnings were present.
+      NEWS: Move PLT tracking slowdown to glibc 2.35.
 
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
@@ -51,7 +52,7 @@ Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
 
 diff --git a/NEWS b/NEWS
-index faa7ec1871..aa1b337520 100644
+index faa7ec1871..cc64dbf58f 100644
 --- a/NEWS
 +++ b/NEWS
 @@ -4,6 +4,24 @@ See the end for copying conditions.
@@ -79,6 +80,26 @@ index faa7ec1871..aa1b337520 100644
  
  Version 2.35
  
+@@ -139,6 +157,9 @@ Major new features:
+   fortification balanced against additional runtime cost (checking non-constant
+   bounds).
+ 
++* The audit libraries will avoid unnecessary slowdown if it is not required
++  PLT tracking (by not implementing the la_pltenter or la_pltexit callbacks).
++
+ Deprecated and removed features, and other changes affecting compatibility:
+ 
+ * On x86-64, the LD_PREFER_MAP_32BIT_EXEC environment variable support
+@@ -431,9 +452,6 @@ Major new features:
+   execute programs that do not have any dynamic dependency (that is,
+   they are statically linked).  This feature is Linux-specific.
+ 
+-* The audit libraries will avoid unnecessary slowdown if it is not required
+-  PLT tracking (by not implementing the la_pltenter or la_pltexit callbacks).
+-
+ Deprecated and removed features, and other changes affecting compatibility:
+ 
+ * The function pthread_mutex_consistent_np has been deprecated; programs
 diff --git a/configure b/configure
 index 00dc638388..8e5bee775a 100755
 --- a/configure
