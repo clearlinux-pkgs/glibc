@@ -19,10 +19,11 @@ Carlos O'Donell (3):
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
 
-Florian Weimer (3):
+Florian Weimer (4):
       io: Add fsync call in tst-stat
       nss: Do not mention NSS test modules in <gnu/lib-names.h>
       nss: Protect against errno changes in function lookup (bug 28953)
+      elf: Fix memory leak in _dl_find_object_update (bug 29062)
 
 Gleb Fotengauer-Malinovskiy (1):
       linux: __get_nprocs_sched: do not feed CPU_COUNT_S with garbage [BZ #28850]
@@ -52,10 +53,10 @@ Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
 
 diff --git a/NEWS b/NEWS
-index faa7ec1871..cc64dbf58f 100644
+index faa7ec1871..728670db02 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,24 @@ See the end for copying conditions.
+@@ -4,6 +4,25 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -76,11 +77,12 @@ index faa7ec1871..cc64dbf58f 100644
 +  [28896] strncmp-avx2-rtm and wcsncmp-avx2-rtm fallback on non-rtm
 +    variants when avoiding overflow
 +  [28953] nss: Protect against errno changes in function lookup
++  [29062] elf: Fix memory leak in _dl_find_object_update
 +
  
  Version 2.35
  
-@@ -139,6 +157,9 @@ Major new features:
+@@ -139,6 +158,9 @@ Major new features:
    fortification balanced against additional runtime cost (checking non-constant
    bounds).
  
@@ -90,7 +92,7 @@ index faa7ec1871..cc64dbf58f 100644
  Deprecated and removed features, and other changes affecting compatibility:
  
  * On x86-64, the LD_PREFER_MAP_32BIT_EXEC environment variable support
-@@ -431,9 +452,6 @@ Major new features:
+@@ -431,9 +453,6 @@ Major new features:
    execute programs that do not have any dynamic dependency (that is,
    they are statically linked).  This feature is Linux-specific.
  
@@ -189,6 +191,29 @@ index 794bfd45cd..efc0492474 100644
  }
  
  void
+diff --git a/elf/dl-find_object.c b/elf/dl-find_object.c
+index 2b8df2fd67..4d5831b6f4 100644
+--- a/elf/dl-find_object.c
++++ b/elf/dl-find_object.c
+@@ -788,6 +788,9 @@ _dl_find_object_update (struct link_map *new_map)
+   for (struct link_map *l = new_map; l != NULL; l = l->l_next)
+     /* Skip proxy maps and already-processed maps.  */
+     count += l == l->l_real && !l->l_find_object_processed;
++  if (count == 0)
++    return true;
++
+   struct link_map **map_array = malloc (count * sizeof (*map_array));
+   if (map_array == NULL)
+     return false;
+@@ -797,8 +800,6 @@ _dl_find_object_update (struct link_map *new_map)
+       if (l == l->l_real && !l->l_find_object_processed)
+         map_array[i++] = l;
+   }
+-  if (count == 0)
+-    return true;
+ 
+   _dl_find_object_link_map_sort (map_array, count);
+   bool ok = _dl_find_object_update_1 (map_array, count);
 diff --git a/elf/dl-map-segments.h b/elf/dl-map-segments.h
 index 172692b120..fd24cf5d01 100644
 --- a/elf/dl-map-segments.h
