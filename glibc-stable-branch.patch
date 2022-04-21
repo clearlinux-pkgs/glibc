@@ -1,13 +1,14 @@
 =Joshua Kinard (1):
       mips: Fix mips64n32 64 bit time_t stat support (BZ#29069)
 
-Adhemerval Zanella (6):
+Adhemerval Zanella (7):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
       linux: Use socket-constants-time64.h on tst-socket-timestamp-compat
       hppa: Fix bind-now audit (BZ #28857)
       nptl: Handle spurious EINTR when thread cancellation is disabled (BZ#29029)
+      nptl: Fix pthread_cancel cancelhandling atomic operations
 
 Andreas Schwab (1):
       Regenerate configure
@@ -22,6 +23,9 @@ Carlos O'Donell (3):
 
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
+
+Fangrui Song (1):
+      m68k: Handle fewer relocations for RTLD_BOOTSTRAP (#BZ29071)
 
 Florian Weimer (4):
       io: Add fsync call in tst-stat
@@ -956,7 +960,7 @@ index cb4c226281..c4a83591bf 100644
  }
  libc_hidden_def (__libc_cleanup_pop_restore)
 diff --git a/nptl/pthread_cancel.c b/nptl/pthread_cancel.c
-index 7524c7ce4d..c76882e279 100644
+index 7524c7ce4d..e67b2df5cc 100644
 --- a/nptl/pthread_cancel.c
 +++ b/nptl/pthread_cancel.c
 @@ -42,18 +42,29 @@ sigcancel_handler (int sig, siginfo_t *si, void *ctx)
@@ -1001,7 +1005,7 @@ index 7524c7ce4d..c76882e279 100644
  }
  
  int
-@@ -92,29 +103,70 @@ __pthread_cancel (pthread_t th)
+@@ -92,29 +103,71 @@ __pthread_cancel (pthread_t th)
    }
  #endif
  
@@ -1033,6 +1037,7 @@ index 7524c7ce4d..c76882e279 100644
 -	 we set multiple_threads to true so that cancellation points get
 -	 executed.  */
 -      THREAD_SETMEM (THREAD_SELF, header.multiple_threads, 1);
++    again:
 +      newval = oldval | CANCELING_BITMASK | CANCELED_BITMASK;
 +      if (oldval == newval)
 +	break;
@@ -1046,7 +1051,7 @@ index 7524c7ce4d..c76882e279 100644
 +	  int newval2 = oldval | CANCELING_BITMASK;
 +	  if (!atomic_compare_exchange_weak_acquire (&pd->cancelhandling,
 +						     &oldval, newval2))
-+	    continue;
++	    goto again;
 +
 +	  if (pd == THREAD_SELF)
 +	    /* This is not merely an optimization: An application may
@@ -1801,6 +1806,52 @@ index d4da46079b..5ced8e14e9 100644
  /* Clear PA_GP_RELOC bit in relocation offset.  */
  static inline uintptr_t
  reloc_offset (uintptr_t plt0, uintptr_t pltn)
+diff --git a/sysdeps/m68k/dl-machine.h b/sysdeps/m68k/dl-machine.h
+index c44ab055aa..bb51b4198c 100644
+--- a/sysdeps/m68k/dl-machine.h
++++ b/sysdeps/m68k/dl-machine.h
+@@ -234,6 +234,11 @@ elf_machine_rela (struct link_map *map, struct r_scope_elem *scope[],
+ 
+       switch (r_type)
+ 	{
++	case R_68K_GLOB_DAT:
++	case R_68K_JMP_SLOT:
++	  *reloc_addr = value;
++	  break;
++#ifndef RTLD_BOOTSTRAP
+ 	case R_68K_COPY:
+ 	  if (sym == NULL)
+ 	    /* This can happen in trace mode if an object could not be
+@@ -252,10 +257,6 @@ elf_machine_rela (struct link_map *map, struct r_scope_elem *scope[],
+ 	  memcpy (reloc_addr_arg, (void *) value,
+ 		  MIN (sym->st_size, refsym->st_size));
+ 	  break;
+-	case R_68K_GLOB_DAT:
+-	case R_68K_JMP_SLOT:
+-	  *reloc_addr = value;
+-	  break;
+ 	case R_68K_8:
+ 	  *(char *) reloc_addr = value + reloc->r_addend;
+ 	  break;
+@@ -276,7 +277,6 @@ elf_machine_rela (struct link_map *map, struct r_scope_elem *scope[],
+ 	case R_68K_PC32:
+ 	  *reloc_addr = value + reloc->r_addend - (Elf32_Addr) reloc_addr;
+ 	  break;
+-#ifndef RTLD_BOOTSTRAP
+ 	case R_68K_TLS_DTPMOD32:
+ 	  /* Get the information from the link map returned by the
+ 	     resolv function.  */
+@@ -294,9 +294,9 @@ elf_machine_rela (struct link_map *map, struct r_scope_elem *scope[],
+ 	      *reloc_addr = TLS_TPREL_VALUE (sym_map, sym, reloc);
+ 	    }
+ 	  break;
+-#endif /* !RTLD_BOOTSTRAP */
+ 	case R_68K_NONE:		/* Alright, Wilbur.  */
+ 	  break;
++#endif /* !RTLD_BOOTSTRAP */
+ 	default:
+ 	  _dl_reloc_bad_type (map, r_type, 0);
+ 	  break;
 diff --git a/sysdeps/nptl/dl-tls_init_tp.c b/sysdeps/nptl/dl-tls_init_tp.c
 index 1294c91816..53fba774a5 100644
 --- a/sysdeps/nptl/dl-tls_init_tp.c
