@@ -45,6 +45,9 @@ H.J. Lu (5):
       elf: Replace tst-audit24bmod2.so with tst-audit24bmod2
       NEWS: Add a bug fix entry for BZ #28688
 
+Joan Bruguera (1):
+      misc: Fix rare fortify crash on wchar funcs. [BZ 29030]
+
 John David Anglin (7):
       Fix elf/tst-audit2 on hppa
       hppa: Fix swapcontext
@@ -352,6 +355,22 @@ index 87f67d25ec..228261a494 100644
  AC_CACHE_CHECK(for GLOB_DAT reloc,
  	       libc_cv_has_glob_dat, [dnl
  cat > conftest.c <<EOF
+diff --git a/debug/tst-fortify.c b/debug/tst-fortify.c
+index d65a2fe6e1..03c9867714 100644
+--- a/debug/tst-fortify.c
++++ b/debug/tst-fortify.c
+@@ -1504,6 +1504,11 @@ do_test (void)
+       CHK_FAIL_END
+ #endif
+ 
++      /* Bug 29030 regresion check */
++      cp = "HelloWorld";
++      if (mbsrtowcs (NULL, &cp, (size_t)-1, &s) != 10)
++        FAIL ();
++
+       cp = "A";
+       if (mbstowcs (wenough, cp, 10) != 1
+ 	  || wcscmp (wenough, L"A") != 0)
 diff --git a/elf/Makefile b/elf/Makefile
 index 5bdf0a383d..a0ee2edc6e 100644
 --- a/elf/Makefile
@@ -1334,6 +1353,30 @@ index 28c9531f42..9307379194 100644
  @c       do_cancel @ascuplugin @ascuheap @acsmem
  @c    cancel_handler ok
  @c     kill syscall ok
+diff --git a/misc/sys/cdefs.h b/misc/sys/cdefs.h
+index 44d3826bca..f1faf8292c 100644
+--- a/misc/sys/cdefs.h
++++ b/misc/sys/cdefs.h
+@@ -162,13 +162,13 @@
+    || (__builtin_constant_p (__l) && (__l) > 0))
+ 
+ /* Length is known to be safe at compile time if the __L * __S <= __OBJSZ
+-   condition can be folded to a constant and if it is true.  The -1 check is
+-   redundant because since it implies that __glibc_safe_len_cond is true.  */
++   condition can be folded to a constant and if it is true, or unknown (-1) */
+ #define __glibc_safe_or_unknown_len(__l, __s, __osz) \
+-  (__glibc_unsigned_or_positive (__l)					      \
+-   && __builtin_constant_p (__glibc_safe_len_cond ((__SIZE_TYPE__) (__l),     \
+-						   __s, __osz))		      \
+-   && __glibc_safe_len_cond ((__SIZE_TYPE__) (__l), __s, __osz))
++  ((__osz) == (__SIZE_TYPE__) -1					      \
++   || (__glibc_unsigned_or_positive (__l)				      \
++       && __builtin_constant_p (__glibc_safe_len_cond ((__SIZE_TYPE__) (__l), \
++						       (__s), (__osz)))	      \
++       && __glibc_safe_len_cond ((__SIZE_TYPE__) (__l), (__s), (__osz))))
+ 
+ /* Conversely, we know at compile time that the length is unsafe if the
+    __L * __S <= __OBJSZ condition can be folded to a constant and if it is
 diff --git a/nptl/allocatestack.c b/nptl/allocatestack.c
 index 34a33164ff..01a282f3f6 100644
 --- a/nptl/allocatestack.c

@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.35
-Release:        467
+Release:        468
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -350,7 +350,7 @@ popd
 mkdir ../glibc-buildroot-avx512
 pushd ../glibc-buildroot-avx512
 
-export CFLAGS="-O3 -march=skylake-avx512 -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wa,-mbranches-within-32B-boundaries "
+export CFLAGS="-O3 -march=skylake-avx512 -mtune=icelake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wa,-mbranches-within-32B-boundaries "
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -D__AVX512__=1 -msse2avx -D__FMA__=1 -Wa,-mbranches-within-32B-boundaries"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
