@@ -27,13 +27,16 @@ Dmitry V. Levin (1):
 Fangrui Song (1):
       m68k: Handle fewer relocations for RTLD_BOOTSTRAP (#BZ29071)
 
-Florian Weimer (6):
+Florian Weimer (9):
       io: Add fsync call in tst-stat
       nss: Do not mention NSS test modules in <gnu/lib-names.h>
       nss: Protect against errno changes in function lookup (bug 28953)
       elf: Fix memory leak in _dl_find_object_update (bug 29062)
       scripts: Add glibcelf.py module
       Default to --with-default-link=no (bug 25812)
+      INSTALL: Rephrase -with-default-link documentation
+      dlfcn: Do not use rtld_active () to determine ld.so state (bug 29078)
+      scripts/glibcelf.py: Mark as UNSUPPORTED on Python 3.5 and earlier
 
 Gleb Fotengauer-Malinovskiy (1):
       linux: __get_nprocs_sched: do not feed CPU_COUNT_S with garbage [BZ #28850]
@@ -72,27 +75,27 @@ Stefan Liebler (1):
       S390: Add new s390 platform z16.
 
 diff --git a/INSTALL b/INSTALL
-index 63c022d6b9..b68884ccd6 100644
+index 63c022d6b9..237a2f9482 100644
 --- a/INSTALL
 +++ b/INSTALL
 @@ -90,6 +90,12 @@ if 'CFLAGS' is specified it must enable optimization.  For example:
       library will still be usable, but functionality may be lost--for
       example, you can't build a shared libc with old binutils.
  
-+'--with-default-link=FLAG'
-+     With '--with-default-link=yes', the build system does not use a
-+     custom linker script for linking shared objects.  The default for
-+     FLAG is the opposite, 'no', because the custom linker script is
++'--with-default-link'
++     With '--with-default-link', the build system does not use a custom
++     linker script for linking shared objects.  The default is
++     '--without-default-link', because the custom linker script is
 +     needed for full RELRO protection.
 +
  '--with-nonshared-cflags=CFLAGS'
       Use additional compiler flags CFLAGS to build the parts of the
       library which are always statically linked into applications and
 diff --git a/NEWS b/NEWS
-index faa7ec1871..a1d8090bee 100644
+index faa7ec1871..2bfadde72d 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,28 @@ See the end for copying conditions.
+@@ -4,6 +4,29 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -117,11 +120,12 @@ index faa7ec1871..a1d8090bee 100644
 +  [29029] nptl: poll() spuriously returns EINTR during thread
 +    cancellation and with cancellation disabled
 +  [29062] elf: Fix memory leak in _dl_find_object_update
++  [29078] <dlfcn.h> functions unusable during early auditing
 +
  
  Version 2.35
  
-@@ -139,6 +161,9 @@ Major new features:
+@@ -139,6 +162,9 @@ Major new features:
    fortification balanced against additional runtime cost (checking non-constant
    bounds).
  
@@ -131,7 +135,7 @@ index faa7ec1871..a1d8090bee 100644
  Deprecated and removed features, and other changes affecting compatibility:
  
  * On x86-64, the LD_PREFER_MAP_32BIT_EXEC environment variable support
-@@ -335,6 +360,8 @@ The following bugs are resolved with this release:
+@@ -335,6 +361,8 @@ The following bugs are resolved with this release:
    [28837] libc: FAIL: socket/tst-socket-timestamp-compat
    [28847] locale: Empty mon_decimal_point in LC_MONETARY results in non-
      empty mon_decimal_point_wc
@@ -140,7 +144,7 @@ index faa7ec1871..a1d8090bee 100644
  
  
  Version 2.34
-@@ -431,9 +458,6 @@ Major new features:
+@@ -431,9 +459,6 @@ Major new features:
    execute programs that do not have any dynamic dependency (that is,
    they are statically linked).  This feature is Linux-specific.
  
@@ -371,11 +375,149 @@ index d65a2fe6e1..03c9867714 100644
        cp = "A";
        if (mbstowcs (wenough, cp, 10) != 1
  	  || wcscmp (wenough, L"A") != 0)
+diff --git a/dlfcn/dladdr.c b/dlfcn/dladdr.c
+index ead117326f..d188d0e289 100644
+--- a/dlfcn/dladdr.c
++++ b/dlfcn/dladdr.c
+@@ -24,7 +24,7 @@ int
+ __dladdr (const void *address, Dl_info *info)
+ {
+ #ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dladdr (address, info);
+ #endif
+   return _dl_addr (address, info, NULL, NULL);
+diff --git a/dlfcn/dladdr1.c b/dlfcn/dladdr1.c
+index 5dadfd1220..e0c9526c90 100644
+--- a/dlfcn/dladdr1.c
++++ b/dlfcn/dladdr1.c
+@@ -24,7 +24,7 @@ int
+ __dladdr1 (const void *address, Dl_info *info, void **extra, int flags)
+ {
+ #ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dladdr1 (address, info, extra, flags);
+ #endif
+ 
+diff --git a/dlfcn/dlclose.c b/dlfcn/dlclose.c
+index a9921c3169..aab88c47fc 100644
+--- a/dlfcn/dlclose.c
++++ b/dlfcn/dlclose.c
+@@ -24,7 +24,7 @@ int
+ __dlclose (void *handle)
+ {
+ #ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlclose (handle);
+ #endif
+ 
+diff --git a/dlfcn/dlerror.c b/dlfcn/dlerror.c
+index 3bf6049e3c..b899d252a1 100644
+--- a/dlfcn/dlerror.c
++++ b/dlfcn/dlerror.c
+@@ -32,7 +32,7 @@ char *
+ __dlerror (void)
+ {
+ # ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlerror ();
+ # endif
+ 
+diff --git a/dlfcn/dlinfo.c b/dlfcn/dlinfo.c
+index fc63c02681..068db5260c 100644
+--- a/dlfcn/dlinfo.c
++++ b/dlfcn/dlinfo.c
+@@ -89,7 +89,7 @@ dlinfo_implementation (void *handle, int request, void *arg)
+ int
+ ___dlinfo (void *handle, int request, void *arg)
+ {
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlinfo (handle, request, arg);
+   else
+     return dlinfo_implementation (handle, request, arg);
+diff --git a/dlfcn/dlmopen.c b/dlfcn/dlmopen.c
+index 2437f5ce22..b41778f16c 100644
+--- a/dlfcn/dlmopen.c
++++ b/dlfcn/dlmopen.c
+@@ -80,7 +80,7 @@ dlmopen_implementation (Lmid_t nsid, const char *file, int mode,
+ void *
+ ___dlmopen (Lmid_t nsid, const char *file, int mode)
+ {
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlmopen (nsid, file, mode, RETURN_ADDRESS (0));
+   else
+     return dlmopen_implementation (nsid, file, mode, RETURN_ADDRESS (0));
+diff --git a/dlfcn/dlopen.c b/dlfcn/dlopen.c
+index 846ca38338..2696dde4b1 100644
+--- a/dlfcn/dlopen.c
++++ b/dlfcn/dlopen.c
+@@ -75,7 +75,7 @@ dlopen_implementation (const char *file, int mode, void *dl_caller)
+ void *
+ ___dlopen (const char *file, int mode)
+ {
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlopen (file, mode, RETURN_ADDRESS (0));
+   else
+     return dlopen_implementation (file, mode, RETURN_ADDRESS (0));
+diff --git a/dlfcn/dlopenold.c b/dlfcn/dlopenold.c
+index 67601434df..5c21a00496 100644
+--- a/dlfcn/dlopenold.c
++++ b/dlfcn/dlopenold.c
+@@ -70,7 +70,7 @@ __dlopen_nocheck (const char *file, int mode)
+     mode |= RTLD_LAZY;
+   args.mode = mode;
+ 
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlopen (file, mode, RETURN_ADDRESS (0));
+ 
+   return _dlerror_run (dlopen_doit, &args) ? NULL : args.new;
+diff --git a/dlfcn/dlsym.c b/dlfcn/dlsym.c
+index a71f8ae247..2e9ff98e79 100644
+--- a/dlfcn/dlsym.c
++++ b/dlfcn/dlsym.c
+@@ -62,7 +62,7 @@ dlsym_implementation (void *handle, const char *name, void *dl_caller)
+ void *
+ ___dlsym (void *handle, const char *name)
+ {
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlsym (handle, name, RETURN_ADDRESS (0));
+   else
+     return dlsym_implementation (handle, name, RETURN_ADDRESS (0));
+diff --git a/dlfcn/dlvsym.c b/dlfcn/dlvsym.c
+index 72219d6da6..caa46ba1e0 100644
+--- a/dlfcn/dlvsym.c
++++ b/dlfcn/dlvsym.c
+@@ -65,7 +65,7 @@ dlvsym_implementation (void *handle, const char *name, const char *version,
+ void *
+ ___dlvsym (void *handle, const char *name, const char *version)
+ {
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->dlvsym (handle, name, version,
+ 					 RETURN_ADDRESS (0));
+   else
 diff --git a/elf/Makefile b/elf/Makefile
-index 5bdf0a383d..a0ee2edc6e 100644
+index 5bdf0a383d..4bca0424a3 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
-@@ -539,6 +539,39 @@ endif
+@@ -386,6 +386,7 @@ tests += \
+   tst-audit24d \
+   tst-audit25a \
+   tst-audit25b \
++  tst-audit26 \
+   tst-auditmany \
+   tst-auxobj \
+   tst-auxobj-dlopen \
+@@ -539,6 +540,39 @@ endif
  endif
  endif
  
@@ -415,7 +557,7 @@ index 5bdf0a383d..a0ee2edc6e 100644
  ifeq ($(run-built-tests),yes)
  tests-special += $(objpfx)tst-valgrind-smoke.out
  endif
-@@ -613,6 +646,11 @@ modules-names = \
+@@ -613,6 +647,11 @@ modules-names = \
    libmarkermod4-2 \
    libmarkermod4-3 \
    libmarkermod4-4 \
@@ -427,7 +569,15 @@ index 5bdf0a383d..a0ee2edc6e 100644
    ltglobmod1 \
    ltglobmod2 \
    neededobj1 \
-@@ -943,7 +981,7 @@ extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
+@@ -725,6 +764,7 @@ modules-names = \
+   tst-auditmod24c \
+   tst-auditmod24d \
+   tst-auditmod25 \
++  tst-auditmod26 \
+   tst-auxvalmod \
+   tst-big-note-lib \
+   tst-deep1mod1 \
+@@ -943,7 +983,7 @@ extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
  # filtmod1.so, tst-big-note-lib.so, tst-ro-dynamic-mod.so have special
  # rules.
  modules-names-nobuild := filtmod1 tst-big-note-lib tst-ro-dynamic-mod \
@@ -436,7 +586,7 @@ index 5bdf0a383d..a0ee2edc6e 100644
  
  tests += $(tests-static)
  
-@@ -1111,6 +1149,13 @@ CFLAGS-tst-prelink.c += -fno-pie
+@@ -1111,6 +1151,13 @@ CFLAGS-tst-prelink.c += -fno-pie
  tst-prelink-no-pie = yes
  endif
  
@@ -450,7 +600,7 @@ index 5bdf0a383d..a0ee2edc6e 100644
  # The test requires shared _and_ PIE because the executable
  # unit test driver must be able to link with the shared object
  # that is going to eventually go into an installed DSO.
-@@ -2210,7 +2255,7 @@ $(objpfx)tst-audit24c.out: $(objpfx)tst-auditmod24c.so
+@@ -2210,7 +2257,7 @@ $(objpfx)tst-audit24c.out: $(objpfx)tst-auditmod24c.so
  $(objpfx)tst-audit24c: $(objpfx)tst-audit24amod1.so \
  		       $(objpfx)tst-audit24amod2.so
  tst-audit24c-ENV = LD_BIND_NOW=1 LD_AUDIT=$(objpfx)tst-auditmod24c.so
@@ -459,7 +609,18 @@ index 5bdf0a383d..a0ee2edc6e 100644
  
  $(objpfx)tst-audit24d.out: $(objpfx)tst-auditmod24d.so
  $(objpfx)tst-audit24d: $(objpfx)tst-audit24dmod1.so \
-@@ -2509,6 +2554,7 @@ LDFLAGS-libmarkermod1-1.so += -Wl,-soname,libmarkermod1.so
+@@ -2242,6 +2289,10 @@ $(objpfx)tst-audit25b: $(objpfx)tst-audit25mod1.so \
+ LDFLAGS-tst-audit25b = -Wl,-z,now
+ tst-audit25b-ARGS = -- $(host-test-program-cmd)
+ 
++$(objpfx)tst-audit26.out: $(objpfx)tst-auditmod26.so
++$(objpfx)tst-auditmod26.so: $(libsupport)
++tst-audit26-ENV = LD_AUDIT=$(objpfx)tst-auditmod26.so
++
+ # tst-sonamemove links against an older implementation of the library.
+ LDFLAGS-tst-sonamemove-linkmod1.so = \
+   -Wl,--version-script=tst-sonamemove-linkmod1.map \
+@@ -2509,6 +2560,7 @@ LDFLAGS-libmarkermod1-1.so += -Wl,-soname,libmarkermod1.so
  LDFLAGS-libmarkermod2-1.so += -Wl,-soname,libmarkermod2.so
  LDFLAGS-libmarkermod3-1.so += -Wl,-soname,libmarkermod3.so
  LDFLAGS-libmarkermod4-1.so += -Wl,-soname,libmarkermod4.so
@@ -467,7 +628,7 @@ index 5bdf0a383d..a0ee2edc6e 100644
  $(objpfx)libmarkermod%.os : markermodMARKER-VALUE.c
  	$(compile-command.c) \
  	  -DMARKER=marker$(firstword $(subst -, ,$*)) \
-@@ -2521,6 +2567,8 @@ $(objpfx)libmarkermod3.so: $(objpfx)libmarkermod3-1.so
+@@ -2521,6 +2573,8 @@ $(objpfx)libmarkermod3.so: $(objpfx)libmarkermod3-1.so
  	cp $< $@
  $(objpfx)libmarkermod4.so: $(objpfx)libmarkermod4-1.so
  	cp $< $@
@@ -513,6 +674,46 @@ index 2b8df2fd67..4d5831b6f4 100644
  
    _dl_find_object_link_map_sort (map_array, count);
    bool ok = _dl_find_object_update_1 (map_array, count);
+diff --git a/elf/dl-libc.c b/elf/dl-libc.c
+index a7180d0af8..266e068da6 100644
+--- a/elf/dl-libc.c
++++ b/elf/dl-libc.c
+@@ -156,7 +156,7 @@ __libc_dlopen_mode (const char *name, int mode)
+   args.caller_dlopen = RETURN_ADDRESS (0);
+ 
+ #ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->libc_dlopen_mode (name, mode);
+ #endif
+   return dlerror_run (do_dlopen, &args) ? NULL : (void *) args.map;
+@@ -184,7 +184,7 @@ __libc_dlsym (void *map, const char *name)
+   args.name = name;
+ 
+ #ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->libc_dlsym (map, name);
+ #endif
+   return (dlerror_run (do_dlsym, &args) ? NULL
+@@ -198,7 +198,7 @@ void *
+ __libc_dlvsym (void *map, const char *name, const char *version)
+ {
+ #ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->libc_dlvsym (map, name, version);
+ #endif
+ 
+@@ -221,7 +221,7 @@ int
+ __libc_dlclose (void *map)
+ {
+ #ifdef SHARED
+-  if (!rtld_active ())
++  if (GLRO (dl_dlfcn_hook) != NULL)
+     return GLRO (dl_dlfcn_hook)->libc_dlclose (map);
+ #endif
+   return dlerror_run (do_dlclose, map);
 diff --git a/elf/dl-map-segments.h b/elf/dl-map-segments.h
 index 172692b120..fd24cf5d01 100644
 --- a/elf/dl-map-segments.h
@@ -527,6 +728,47 @@ index 172692b120..fd24cf5d01 100644
            if (__glibc_unlikely
                (__mprotect ((caddr_t) (l->l_addr + c->mapend),
                             loadcmds[nloadcmds - 1].mapstart - c->mapend,
+diff --git a/elf/tst-audit26.c b/elf/tst-audit26.c
+new file mode 100644
+index 0000000000..3f920e83ba
+--- /dev/null
++++ b/elf/tst-audit26.c
+@@ -0,0 +1,35 @@
++/* Check the usability of <dlfcn.h> functions in audit modules.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <gnu/lib-names.h>
++
++#include <support/check.h>
++#include <support/xdlfcn.h>
++
++static int
++do_test (void)
++{
++  /* Check that the audit module has been loaded.  */
++  void *handle = xdlopen ("mapped to libc", RTLD_LOCAL | RTLD_NOW);
++  TEST_VERIFY (handle
++	       == xdlopen (LIBC_SO, RTLD_LOCAL | RTLD_NOW | RTLD_NOLOAD));
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/elf/tst-auditmod24a.c b/elf/tst-auditmod24a.c
 index d8e88f3984..3075dfae2f 100644
 --- a/elf/tst-auditmod24a.c
@@ -566,6 +808,116 @@ index 526f5c54bc..20640a8daf 100644
      fprintf (stderr, "la_symbind: %s %u\n", symname,
  	     *flags & (LA_SYMB_NOPLTENTER | LA_SYMB_NOPLTEXIT) ? 1 : 0);
    return sym->st_value;
+diff --git a/elf/tst-auditmod26.c b/elf/tst-auditmod26.c
+new file mode 100644
+index 0000000000..db7ba95abe
+--- /dev/null
++++ b/elf/tst-auditmod26.c
+@@ -0,0 +1,104 @@
++/* Check the usability of <dlfcn.h> functions in audit modules.  Audit module.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <dlfcn.h>
++#include <first-versions.h>
++#include <gnu/lib-names.h>
++#include <link.h>
++#include <stdio.h>
++#include <string.h>
++#include <unistd.h>
++
++#include <support/check.h>
++#include <support/xdlfcn.h>
++
++unsigned int
++la_version (unsigned int current)
++{
++  /* Exercise various <dlfcn.h> functions.  */
++
++  /* Check dlopen, dlsym, dlclose.   */
++  void *handle = xdlopen (LIBM_SO, RTLD_LOCAL | RTLD_NOW);
++  void *ptr = xdlsym (handle, "sincos");
++  TEST_VERIFY (ptr != NULL);
++  ptr = dlsym (handle, "SINCOS");
++  TEST_VERIFY (ptr == NULL);
++  const char *message = dlerror ();
++  TEST_VERIFY (strstr (message, ": undefined symbol: SINCOS") != NULL);
++  ptr = dlsym (handle, "SINCOS");
++  TEST_VERIFY (ptr == NULL);
++  xdlclose (handle);
++  TEST_COMPARE_STRING (dlerror (), NULL);
++
++  handle = xdlopen (LIBC_SO, RTLD_LOCAL | RTLD_NOW | RTLD_NOLOAD);
++
++  /* Check dlvsym.  _exit is unlikely to gain another symbol
++     version.  */
++  TEST_VERIFY (xdlsym (handle, "_exit")
++               == xdlvsym (handle, "_exit", FIRST_VERSION_libc__exit_STRING));
++
++  /* Check dlinfo.  */
++  {
++    void *handle2 = NULL;
++    TEST_COMPARE (dlinfo (handle, RTLD_DI_LINKMAP, &handle2), 0);
++    TEST_VERIFY (handle2 == handle);
++  }
++
++  /* Check dladdr and dladdr1.  */
++  Dl_info info = { };
++  TEST_VERIFY (dladdr (&_exit, &info) != 0);
++  if (strcmp (info.dli_sname, "_Exit") != 0) /* _Exit is an alias.  */
++    TEST_COMPARE_STRING (info.dli_sname, "_exit");
++  TEST_VERIFY (info.dli_saddr == &_exit);
++  TEST_VERIFY (strstr (info.dli_fname, LIBC_SO));
++  void *extra_info;
++  memset (&info, 0, sizeof (info));
++  TEST_VERIFY (dladdr1 (&_exit, &info, &extra_info, RTLD_DL_LINKMAP) != 0);
++  TEST_VERIFY (extra_info == handle);
++
++  /* Verify that dlmopen creates a new namespace.  */
++  void *dlmopen_handle = xdlmopen (LM_ID_NEWLM, LIBC_SO, RTLD_NOW);
++  TEST_VERIFY (dlmopen_handle != handle);
++  memset (&info, 0, sizeof (info));
++  extra_info = NULL;
++  ptr = xdlsym (dlmopen_handle, "_exit");
++  TEST_VERIFY (dladdr1 (ptr, &info, &extra_info, RTLD_DL_LINKMAP) != 0);
++  TEST_VERIFY (extra_info == dlmopen_handle);
++  xdlclose (dlmopen_handle);
++
++  /* Terminate the process with an error state.  This does not happen
++     automatically because the audit module state is not shared with
++     the main program.  */
++  if (support_record_failure_is_failed ())
++    {
++      fflush (stdout);
++      fflush (stderr);
++      _exit (1);
++    }
++
++  return LAV_CURRENT;
++}
++
++char *
++la_objsearch (const char *name, uintptr_t *cookie, unsigned int flag)
++{
++  if (strcmp (name, "mapped to libc") == 0)
++    return (char *) LIBC_SO;
++  else
++    return (char *) name;
++}
 diff --git a/elf/tst-glibc-hwcaps-cache.script b/elf/tst-glibc-hwcaps-cache.script
 index c3271f61f9..d58fc8c5de 100644
 --- a/elf/tst-glibc-hwcaps-cache.script
@@ -1323,18 +1675,18 @@ index 7fce35f212..8053c816a6 100644
  # For SJIS the charmap is SHIFT_JIS. We just want the locale to have
  # a slightly nicer name instead of using "*.SHIFT_SJIS", but that
 diff --git a/manual/install.texi b/manual/install.texi
-index 29c52f2927..fcfb6901e4 100644
+index 29c52f2927..5feccfb6ed 100644
 --- a/manual/install.texi
 +++ b/manual/install.texi
 @@ -117,6 +117,12 @@ problem and suppress these constructs, so that the library will still be
  usable, but functionality may be lost---for example, you can't build a
  shared libc with old binutils.
  
-+@item --with-default-link=@var{FLAG}
-+With @code{--with-default-link=yes}, the build system does not use a
-+custom linker script for linking shared objects.  The default for
-+@var{FLAG} is the opposite, @samp{no}, because the custom linker script
-+is needed for full RELRO protection.
++@item --with-default-link
++With @code{--with-default-link}, the build system does not use a custom
++linker script for linking shared objects.  The default is
++@code{--without-default-link}, because the custom linker script is
++needed for full RELRO protection.
 +
  @item --with-nonshared-cflags=@var{cflags}
  Use additional compiler flags @var{cflags} to build the parts of the
@@ -2285,10 +2637,10 @@ index c465479e8b..438672786f 100644
  install-lib-ldscripts = libanl.so
 diff --git a/scripts/glibcelf.py b/scripts/glibcelf.py
 new file mode 100644
-index 0000000000..8f7d0ca184
+index 0000000000..da0d5380f3
 --- /dev/null
 +++ b/scripts/glibcelf.py
-@@ -0,0 +1,1135 @@
+@@ -0,0 +1,1141 @@
 +#!/usr/bin/python3
 +# ELF support functionality for Python.
 +# Copyright (C) 2022 Free Software Foundation, Inc.
@@ -2318,6 +2670,12 @@ index 0000000000..8f7d0ca184
 +import collections
 +import enum
 +import struct
++
++if not hasattr(enum, 'IntFlag'):
++    import sys
++    sys.stdout.write(
++        'warning: glibcelf.py needs Python 3.6 for enum support\n')
++    sys.exit(77)
 +
 +class _OpenIntEnum(enum.IntEnum):
 +    """Integer enumeration that supports arbitrary int values."""
