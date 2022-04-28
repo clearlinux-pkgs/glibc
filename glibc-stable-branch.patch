@@ -1,7 +1,7 @@
 =Joshua Kinard (1):
       mips: Fix mips64n32 64 bit time_t stat support (BZ#29069)
 
-Adhemerval Zanella (9):
+Adhemerval Zanella (10):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
@@ -11,6 +11,7 @@ Adhemerval Zanella (9):
       nptl: Fix pthread_cancel cancelhandling atomic operations
       elf: Fix DFS sorting algorithm for LD_TRACE_LOADED_OBJECTS with missing libraries (BZ #28868)
       linux: Fix missing internal 64 bit time_t stat usage
+      linux: Fix fchmodat with AT_SYMLINK_NOFOLLOW for 64 bit time_t (BZ#29097)
 
 Andreas Schwab (1):
       Regenerate configure
@@ -23,6 +24,9 @@ Carlos O'Donell (4):
       localedata: Do not generate output if warnings were present.
       NEWS: Move PLT tracking slowdown to glibc 2.35.
       i386: Regenerate ulps
+
+DJ Delorie (1):
+      posix/glob.c: update from gnulib
 
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
@@ -95,10 +99,10 @@ index 63c022d6b9..237a2f9482 100644
       Use additional compiler flags CFLAGS to build the parts of the
       library which are always statically linked into applications and
 diff --git a/NEWS b/NEWS
-index faa7ec1871..87224df4c7 100644
+index faa7ec1871..5e75481e4b 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,31 @@ See the end for copying conditions.
+@@ -4,6 +4,33 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -126,11 +130,13 @@ index faa7ec1871..87224df4c7 100644
 +    cancellation and with cancellation disabled
 +  [29062] elf: Fix memory leak in _dl_find_object_update
 +  [29078] <dlfcn.h> functions unusable during early auditing
++  [29097] time: fchmodat does not handle 64 bit time_t for
++    AT_SYMLINK_NOFOLLOW
 +
  
  Version 2.35
  
-@@ -139,6 +164,9 @@ Major new features:
+@@ -139,6 +166,9 @@ Major new features:
    fortification balanced against additional runtime cost (checking non-constant
    bounds).
  
@@ -140,7 +146,7 @@ index faa7ec1871..87224df4c7 100644
  Deprecated and removed features, and other changes affecting compatibility:
  
  * On x86-64, the LD_PREFER_MAP_32BIT_EXEC environment variable support
-@@ -335,6 +363,8 @@ The following bugs are resolved with this release:
+@@ -335,6 +365,8 @@ The following bugs are resolved with this release:
    [28837] libc: FAIL: socket/tst-socket-timestamp-compat
    [28847] locale: Empty mon_decimal_point in LC_MONETARY results in non-
      empty mon_decimal_point_wc
@@ -149,7 +155,7 @@ index faa7ec1871..87224df4c7 100644
  
  
  Version 2.34
-@@ -431,9 +461,6 @@ Major new features:
+@@ -431,9 +463,6 @@ Major new features:
    execute programs that do not have any dynamic dependency (that is,
    they are statically linked).  This feature is Linux-specific.
  
@@ -1542,6 +1548,93 @@ index 0000000000..5d7d953726
 +libtracemod3.so 1
 +libtracemod4.so 1
 +libtracemod5.so 1
+diff --git a/io/Makefile b/io/Makefile
+index cf265dc9b9..b1710407d0 100644
+--- a/io/Makefile
++++ b/io/Makefile
+@@ -83,16 +83,17 @@ tests		:= test-utime test-stat test-stat2 test-lfs tst-getcwd \
+ 		   tst-ftw-bz28126
+ 
+ tests-time64 := \
++  tst-fcntl-time64 \
++  tst-fts-time64 \
+   tst-futimens-time64 \
+   tst-futimes-time64\
+-  tst-fts-time64 \
++  tst-futimesat-time64 \
++  tst-lchmod-time64 \
+   tst-lutimes-time64 \
+   tst-stat-time64 \
+-  tst-futimesat-time64 \
+   tst-utime-time64 \
+   tst-utimensat-time64 \
+   tst-utimes-time64 \
+-  tst-fcntl-time64 \
+   # tests-time64
+ 
+ # Likewise for statx, but we do not need static linking here.
+@@ -136,6 +137,7 @@ CFLAGS-close.c += -fexceptions -fasynchronous-unwind-tables
+ 
+ CFLAGS-test-stat.c += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE
+ CFLAGS-test-lfs.c += -D_LARGEFILE64_SOURCE
++CFLAGS-tst-lchmod.c += -D_FILE_OFFSET_BITS=64
+ 
+ test-stat2-ARGS = Makefile . $(objpfx)test-stat2
+ 
+diff --git a/io/tst-lchmod-time64.c b/io/tst-lchmod-time64.c
+new file mode 100644
+index 0000000000..f2b7cc9d35
+--- /dev/null
++++ b/io/tst-lchmod-time64.c
+@@ -0,0 +1,2 @@
++#define CHECK_TIME64
++#include "tst-lchmod.c"
+diff --git a/io/tst-lchmod.c b/io/tst-lchmod.c
+index c644f565f6..c1c41bda88 100644
+--- a/io/tst-lchmod.c
++++ b/io/tst-lchmod.c
+@@ -66,10 +66,27 @@ select_path (bool do_relative_path, const char *full_path, const char *relative_
+     return full_path;
+ }
+ 
++static void
++update_file_time_to_y2038 (const char *fname, int flags)
++{
++#ifdef CHECK_TIME64
++  /* Y2038 threshold plus 1 second.  */
++  const struct timespec ts[] = { { 0x80000001LL, 0}, { 0x80000001LL } };
++  TEST_VERIFY_EXIT (utimensat (AT_FDCWD, fname, ts, flags) == 0);
++#endif
++}
++
+ static void
+ test_1 (bool do_relative_path, int (*chmod_func) (int fd, const char *, mode_t, int))
+ {
+   char *tempdir = support_create_temp_directory ("tst-lchmod-");
++#ifdef CHECK_TIME64
++  if (!support_path_support_time64 (tempdir))
++    {
++      puts ("info: test skipped, filesystem does not support 64 bit time_t");
++      return;
++    }
++#endif
+ 
+   char *path_dangling = xasprintf ("%s/dangling", tempdir);
+   char *path_file = xasprintf ("%s/file", tempdir);
+@@ -93,9 +110,12 @@ test_1 (bool do_relative_path, int (*chmod_func) (int fd, const char *, mode_t,
+   xsymlink ("loop", path_loop);
+   xsymlink ("target-does-not-exist", path_dangling);
+ 
++  update_file_time_to_y2038 (path_file, 0);
++  update_file_time_to_y2038 (path_to_file, AT_SYMLINK_NOFOLLOW);
++
+   /* Check that the modes do not collide with what we will use in the
+      test.  */
+-  struct stat64 st;
++  struct stat st;
+   xstat (path_file, &st);
+   TEST_VERIFY ((st.st_mode & 0777) != 1);
+   xlstat (path_to_file, &st);
 diff --git a/io/tst-stat.c b/io/tst-stat.c
 index 2b7975e162..237988203a 100644
 --- a/io/tst-stat.c
@@ -2682,6 +2775,170 @@ index 0000000000..d2c42dd363
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/posix/glob.c b/posix/glob.c
+index a2b5aabada..f6993a3706 100644
+--- a/posix/glob.c
++++ b/posix/glob.c
+@@ -21,13 +21,14 @@
+    optimizes away the pattern == NULL test below.  */
+ # define _GL_ARG_NONNULL(params)
+ 
+-# include <config.h>
++# include <libc-config.h>
+ 
+ #endif
+ 
+ #include <glob.h>
+ 
+ #include <errno.h>
++#include <fcntl.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <stdbool.h>
+@@ -56,6 +57,8 @@
+ # define sysconf(id) __sysconf (id)
+ # define closedir(dir) __closedir (dir)
+ # define opendir(name) __opendir (name)
++# undef dirfd
++# define dirfd(str) __dirfd (str)
+ # define readdir(str) __readdir64 (str)
+ # define getpwnam_r(name, bufp, buf, len, res) \
+     __getpwnam_r (name, bufp, buf, len, res)
+@@ -69,11 +72,8 @@
+ # ifndef GLOB_LSTAT
+ #  define GLOB_LSTAT            gl_lstat
+ # endif
+-# ifndef GLOB_STAT64
+-#  define GLOB_STAT64           __stat64
+-# endif
+-# ifndef GLOB_LSTAT64
+-#  define GLOB_LSTAT64          __lstat64
++# ifndef GLOB_FSTATAT64
++#  define GLOB_FSTATAT64        __fstatat64
+ # endif
+ # include <shlib-compat.h>
+ #else /* !_LIBC */
+@@ -88,8 +88,7 @@
+ # define struct_stat            struct stat
+ # define struct_stat64          struct stat
+ # define GLOB_LSTAT             gl_lstat
+-# define GLOB_STAT64            stat
+-# define GLOB_LSTAT64           lstat
++# define GLOB_FSTATAT64         fstatat
+ #endif /* _LIBC */
+ 
+ #include <fnmatch.h>
+@@ -215,7 +214,8 @@ glob_lstat (glob_t *pglob, int flags, const char *fullname)
+   } ust;
+   return (__glibc_unlikely (flags & GLOB_ALTDIRFUNC)
+           ? pglob->GLOB_LSTAT (fullname, &ust.st)
+-          : GLOB_LSTAT64 (fullname, &ust.st64));
++          : GLOB_FSTATAT64 (AT_FDCWD, fullname, &ust.st64,
++                            AT_SYMLINK_NOFOLLOW));
+ }
+ 
+ /* Set *R = A + B.  Return true if the answer is mathematically
+@@ -257,7 +257,8 @@ is_dir (char const *filename, int flags, glob_t const *pglob)
+   struct_stat64 st64;
+   return (__glibc_unlikely (flags & GLOB_ALTDIRFUNC)
+           ? pglob->gl_stat (filename, &st) == 0 && S_ISDIR (st.st_mode)
+-          : GLOB_STAT64 (filename, &st64) == 0 && S_ISDIR (st64.st_mode));
++          : (GLOB_FSTATAT64 (AT_FDCWD, filename, &st64, 0) == 0
++             && S_ISDIR (st64.st_mode)));
+ }
+ 
+ /* Find the end of the sub-pattern in a brace expression.  */
+@@ -747,6 +748,8 @@ __glob (const char *pattern, int flags, int (*errfunc) (const char *, int),
+       else
+         {
+ #ifndef WINDOWS32
++          /* Recognize ~user as a shorthand for the specified user's home
++             directory.  */
+           char *end_name = strchr (dirname, '/');
+           char *user_name;
+           int malloc_user_name = 0;
+@@ -885,7 +888,22 @@ __glob (const char *pattern, int flags, int (*errfunc) (const char *, int),
+               }
+             scratch_buffer_free (&pwtmpbuf);
+           }
+-#endif /* !WINDOWS32 */
++#else /* WINDOWS32 */
++          /* On native Windows, access to a user's home directory
++             (via GetUserProfileDirectory) or to a user's environment
++             variables (via ExpandEnvironmentStringsForUser) requires
++             the credentials of the user.  Therefore we cannot support
++             the ~user syntax on this platform.
++             Handling ~user specially (and treat it like plain ~) if
++             user is getenv ("USERNAME") would not be a good idea,
++             since it would make people think that ~user is supported
++             in general.  */
++          if (flags & GLOB_TILDE_CHECK)
++            {
++              retval = GLOB_NOMATCH;
++              goto out;
++            }
++#endif /* WINDOWS32 */
+         }
+     }
+ 
+@@ -1266,6 +1284,8 @@ glob_in_dir (const char *pattern, const char *directory, int flags,
+ {
+   size_t dirlen = strlen (directory);
+   void *stream = NULL;
++  struct scratch_buffer s;
++  scratch_buffer_init (&s);
+ # define GLOBNAMES_MEMBERS(nnames) \
+     struct globnames *next; size_t count; char *name[nnames];
+   struct globnames { GLOBNAMES_MEMBERS (FLEXIBLE_ARRAY_MEMBER) };
+@@ -1337,6 +1357,7 @@ glob_in_dir (const char *pattern, const char *directory, int flags,
+         }
+       else
+         {
++          int dfd = dirfd (stream);
+           int fnm_flags = ((!(flags & GLOB_PERIOD) ? FNM_PERIOD : 0)
+                            | ((flags & GLOB_NOESCAPE) ? FNM_NOESCAPE : 0));
+           flags |= GLOB_MAGCHAR;
+@@ -1364,8 +1385,32 @@ glob_in_dir (const char *pattern, const char *directory, int flags,
+               if (flags & GLOB_ONLYDIR)
+                 switch (readdir_result_type (d))
+                   {
+-                  case DT_DIR: case DT_LNK: case DT_UNKNOWN: break;
+                   default: continue;
++                  case DT_DIR: break;
++                  case DT_LNK: case DT_UNKNOWN:
++                    /* The filesystem was too lazy to give us a hint,
++                       so we have to do it the hard way.  */
++                    if (__glibc_unlikely (dfd < 0 || flags & GLOB_ALTDIRFUNC))
++                      {
++                        size_t namelen = strlen (d.name);
++                        size_t need = dirlen + 1 + namelen + 1;
++                        if (s.length < need
++                            && !scratch_buffer_set_array_size (&s, need, 1))
++                          goto memory_error;
++                        char *p = mempcpy (s.data, directory, dirlen);
++                        *p = '/';
++                        p += p[-1] != '/';
++                        memcpy (p, d.name, namelen + 1);
++                        if (! is_dir (s.data, flags, pglob))
++                          continue;
++                      }
++                    else
++                      {
++                        struct_stat64 st64;
++                        if (! (GLOB_FSTATAT64 (dfd, d.name, &st64, 0) == 0
++                               && S_ISDIR (st64.st_mode)))
++                          continue;
++                      }
+                   }
+ 
+               if (fnmatch (pattern, d.name, fnm_flags) == 0)
+@@ -1497,5 +1542,6 @@ glob_in_dir (const char *pattern, const char *directory, int flags,
+       __set_errno (save);
+     }
+ 
++  scratch_buffer_free (&s);
+   return result;
+ }
 diff --git a/posix/tst-spawn6.c b/posix/tst-spawn6.c
 index 911e90a461..044abd8535 100644
 --- a/posix/tst-spawn6.c
@@ -4819,6 +5076,21 @@ index 59ee4b6f8b..1378bb2db8 100644
      return -1;
  
    mode &= (X_OK | W_OK | R_OK);	/* Clear any bogus bits. */
+diff --git a/sysdeps/unix/sysv/linux/fchmodat.c b/sysdeps/unix/sysv/linux/fchmodat.c
+index 7aa073bf3c..7aae02148a 100644
+--- a/sysdeps/unix/sysv/linux/fchmodat.c
++++ b/sysdeps/unix/sysv/linux/fchmodat.c
+@@ -48,8 +48,8 @@ fchmodat (int fd, const char *file, mode_t mode, int flag)
+ 
+       /* Use fstatat because fstat does not work on O_PATH descriptors
+ 	 before Linux 3.6.  */
+-      struct stat64 st;
+-      if (__fstatat64 (pathfd, "", &st, AT_EMPTY_PATH) != 0)
++      struct __stat64_t64 st;
++      if (__fstatat64_time64 (pathfd, "", &st, AT_EMPTY_PATH) != 0)
+ 	{
+ 	  __close_nocancel (pathfd);
+ 	  return -1;
 diff --git a/sysdeps/unix/sysv/linux/getsysstats.c b/sysdeps/unix/sysv/linux/getsysstats.c
 index 4798cc337e..d1ea074f0d 100644
 --- a/sysdeps/unix/sysv/linux/getsysstats.c
@@ -4985,6 +5257,18 @@ index 4798cc337e..d1ea074f0d 100644
  }
  libc_hidden_def (__get_nprocs_conf)
  weak_alias (__get_nprocs_conf, get_nprocs_conf)
+diff --git a/sysdeps/unix/sysv/linux/glob64-time64.c b/sysdeps/unix/sysv/linux/glob64-time64.c
+index 32b4929a1b..1d485dc806 100644
+--- a/sysdeps/unix/sysv/linux/glob64-time64.c
++++ b/sysdeps/unix/sysv/linux/glob64-time64.c
+@@ -37,6 +37,7 @@
+ # define GLOB_LSTAT      gl_lstat
+ # define GLOB_STAT64     __stat64_time64
+ # define GLOB_LSTAT64    __lstat64_time64
++# define GLOB_FSTATAT64    __fstatat64_time64
+ 
+ # define COMPILE_GLOB64	1
+ 
 diff --git a/sysdeps/unix/sysv/linux/hppa/getcontext.S b/sysdeps/unix/sysv/linux/hppa/getcontext.S
 index 1e73587f13..dcdf986f2d 100644
 --- a/sysdeps/unix/sysv/linux/hppa/getcontext.S
