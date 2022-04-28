@@ -1,7 +1,7 @@
 =Joshua Kinard (1):
       mips: Fix mips64n32 64 bit time_t stat support (BZ#29069)
 
-Adhemerval Zanella (7):
+Adhemerval Zanella (9):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
@@ -9,6 +9,8 @@ Adhemerval Zanella (7):
       hppa: Fix bind-now audit (BZ #28857)
       nptl: Handle spurious EINTR when thread cancellation is disabled (BZ#29029)
       nptl: Fix pthread_cancel cancelhandling atomic operations
+      elf: Fix DFS sorting algorithm for LD_TRACE_LOADED_OBJECTS with missing libraries (BZ #28868)
+      linux: Fix missing internal 64 bit time_t stat usage
 
 Andreas Schwab (1):
       Regenerate configure
@@ -16,10 +18,11 @@ Andreas Schwab (1):
 Arjun Shankar (1):
       localedef: Handle symbolic links when generating locale-archive
 
-Carlos O'Donell (3):
+Carlos O'Donell (4):
       localedef: Update LC_MONETARY handling (Bug 28845)
       localedata: Do not generate output if warnings were present.
       NEWS: Move PLT tracking slowdown to glibc 2.35.
+      i386: Regenerate ulps
 
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
@@ -92,10 +95,10 @@ index 63c022d6b9..237a2f9482 100644
       Use additional compiler flags CFLAGS to build the parts of the
       library which are always statically linked into applications and
 diff --git a/NEWS b/NEWS
-index faa7ec1871..2bfadde72d 100644
+index faa7ec1871..87224df4c7 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,29 @@ See the end for copying conditions.
+@@ -4,6 +4,31 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -114,6 +117,8 @@ index faa7ec1871..2bfadde72d 100644
 +    __convert_scm_timestamps
 +  [28865] linux: _SC_NPROCESSORS_CONF and _SC_NPROCESSORS_ONLN are inaccurate
 +    without /sys and /proc
++  [28868] dynamic-link: Dynamic loader DFS algorithm segfaults on
++    missing libraries
 +  [28896] strncmp-avx2-rtm and wcsncmp-avx2-rtm fallback on non-rtm
 +    variants when avoiding overflow
 +  [28953] nss: Protect against errno changes in function lookup
@@ -125,7 +130,7 @@ index faa7ec1871..2bfadde72d 100644
  
  Version 2.35
  
-@@ -139,6 +162,9 @@ Major new features:
+@@ -139,6 +164,9 @@ Major new features:
    fortification balanced against additional runtime cost (checking non-constant
    bounds).
  
@@ -135,7 +140,7 @@ index faa7ec1871..2bfadde72d 100644
  Deprecated and removed features, and other changes affecting compatibility:
  
  * On x86-64, the LD_PREFER_MAP_32BIT_EXEC environment variable support
-@@ -335,6 +361,8 @@ The following bugs are resolved with this release:
+@@ -335,6 +363,8 @@ The following bugs are resolved with this release:
    [28837] libc: FAIL: socket/tst-socket-timestamp-compat
    [28847] locale: Empty mon_decimal_point in LC_MONETARY results in non-
      empty mon_decimal_point_wc
@@ -144,7 +149,7 @@ index faa7ec1871..2bfadde72d 100644
  
  
  Version 2.34
-@@ -431,9 +459,6 @@ Major new features:
+@@ -431,9 +461,6 @@ Major new features:
    execute programs that do not have any dynamic dependency (that is,
    they are statically linked).  This feature is Linux-specific.
  
@@ -506,7 +511,7 @@ index 72219d6da6..caa46ba1e0 100644
  					 RETURN_ADDRESS (0));
    else
 diff --git a/elf/Makefile b/elf/Makefile
-index 5bdf0a383d..4bca0424a3 100644
+index 5bdf0a383d..fa1ea28b25 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
 @@ -386,6 +386,7 @@ tests += \
@@ -557,7 +562,7 @@ index 5bdf0a383d..4bca0424a3 100644
  ifeq ($(run-built-tests),yes)
  tests-special += $(objpfx)tst-valgrind-smoke.out
  endif
-@@ -613,6 +647,11 @@ modules-names = \
+@@ -613,6 +647,16 @@ modules-names = \
    libmarkermod4-2 \
    libmarkermod4-3 \
    libmarkermod4-4 \
@@ -566,10 +571,15 @@ index 5bdf0a383d..4bca0424a3 100644
 +  libmarkermod5-3 \
 +  libmarkermod5-4 \
 +  libmarkermod5-5 \
++  libtracemod1-1 \
++  libtracemod2-1 \
++  libtracemod3-1 \
++  libtracemod4-1 \
++  libtracemod5-1 \
    ltglobmod1 \
    ltglobmod2 \
    neededobj1 \
-@@ -725,6 +764,7 @@ modules-names = \
+@@ -725,6 +769,7 @@ modules-names = \
    tst-auditmod24c \
    tst-auditmod24d \
    tst-auditmod25 \
@@ -577,7 +587,7 @@ index 5bdf0a383d..4bca0424a3 100644
    tst-auxvalmod \
    tst-big-note-lib \
    tst-deep1mod1 \
-@@ -943,7 +983,7 @@ extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
+@@ -943,7 +988,7 @@ extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
  # filtmod1.so, tst-big-note-lib.so, tst-ro-dynamic-mod.so have special
  # rules.
  modules-names-nobuild := filtmod1 tst-big-note-lib tst-ro-dynamic-mod \
@@ -586,7 +596,19 @@ index 5bdf0a383d..4bca0424a3 100644
  
  tests += $(tests-static)
  
-@@ -1111,6 +1151,13 @@ CFLAGS-tst-prelink.c += -fno-pie
+@@ -1072,6 +1117,11 @@ tests-special += \
+   $(objpfx)tst-initorder2-cmp.out \
+   $(objpfx)tst-unused-dep-cmp.out \
+   $(objpfx)tst-unused-dep.out \
++  $(objpfx)tst-trace1.out \
++  $(objpfx)tst-trace2.out \
++  $(objpfx)tst-trace3.out \
++  $(objpfx)tst-trace4.out \
++  $(objpfx)tst-trace5.out \
+   # tests-special
+ endif
+ 
+@@ -1111,6 +1161,13 @@ CFLAGS-tst-prelink.c += -fno-pie
  tst-prelink-no-pie = yes
  endif
  
@@ -600,7 +622,7 @@ index 5bdf0a383d..4bca0424a3 100644
  # The test requires shared _and_ PIE because the executable
  # unit test driver must be able to link with the shared object
  # that is going to eventually go into an installed DSO.
-@@ -2210,7 +2257,7 @@ $(objpfx)tst-audit24c.out: $(objpfx)tst-auditmod24c.so
+@@ -2210,7 +2267,7 @@ $(objpfx)tst-audit24c.out: $(objpfx)tst-auditmod24c.so
  $(objpfx)tst-audit24c: $(objpfx)tst-audit24amod1.so \
  		       $(objpfx)tst-audit24amod2.so
  tst-audit24c-ENV = LD_BIND_NOW=1 LD_AUDIT=$(objpfx)tst-auditmod24c.so
@@ -609,7 +631,7 @@ index 5bdf0a383d..4bca0424a3 100644
  
  $(objpfx)tst-audit24d.out: $(objpfx)tst-auditmod24d.so
  $(objpfx)tst-audit24d: $(objpfx)tst-audit24dmod1.so \
-@@ -2242,6 +2289,10 @@ $(objpfx)tst-audit25b: $(objpfx)tst-audit25mod1.so \
+@@ -2242,6 +2299,10 @@ $(objpfx)tst-audit25b: $(objpfx)tst-audit25mod1.so \
  LDFLAGS-tst-audit25b = -Wl,-z,now
  tst-audit25b-ARGS = -- $(host-test-program-cmd)
  
@@ -620,7 +642,7 @@ index 5bdf0a383d..4bca0424a3 100644
  # tst-sonamemove links against an older implementation of the library.
  LDFLAGS-tst-sonamemove-linkmod1.so = \
    -Wl,--version-script=tst-sonamemove-linkmod1.map \
-@@ -2509,6 +2560,7 @@ LDFLAGS-libmarkermod1-1.so += -Wl,-soname,libmarkermod1.so
+@@ -2509,6 +2570,7 @@ LDFLAGS-libmarkermod1-1.so += -Wl,-soname,libmarkermod1.so
  LDFLAGS-libmarkermod2-1.so += -Wl,-soname,libmarkermod2.so
  LDFLAGS-libmarkermod3-1.so += -Wl,-soname,libmarkermod3.so
  LDFLAGS-libmarkermod4-1.so += -Wl,-soname,libmarkermod4.so
@@ -628,7 +650,7 @@ index 5bdf0a383d..4bca0424a3 100644
  $(objpfx)libmarkermod%.os : markermodMARKER-VALUE.c
  	$(compile-command.c) \
  	  -DMARKER=marker$(firstword $(subst -, ,$*)) \
-@@ -2521,6 +2573,8 @@ $(objpfx)libmarkermod3.so: $(objpfx)libmarkermod3-1.so
+@@ -2521,6 +2583,8 @@ $(objpfx)libmarkermod3.so: $(objpfx)libmarkermod3-1.so
  	cp $< $@
  $(objpfx)libmarkermod4.so: $(objpfx)libmarkermod4-1.so
  	cp $< $@
@@ -637,6 +659,54 @@ index 5bdf0a383d..4bca0424a3 100644
  
  # tst-glibc-hwcaps-prepend checks that --glibc-hwcaps-prepend is
  # preferred over auto-detected subdirectories.
+@@ -2733,3 +2797,47 @@ $(objpfx)tst-p_align3: $(objpfx)tst-p_alignmod3.so
+ $(objpfx)tst-p_align3.out: tst-p_align3.sh $(objpfx)tst-p_align3
+ 	$(SHELL) $< $(common-objpfx) '$(test-program-prefix)'; \
+ 	$(evaluate-test)
++
++LDFLAGS-libtracemod1-1.so += -Wl,-soname,libtracemod1.so
++LDFLAGS-libtracemod2-1.so += -Wl,-soname,libtracemod2.so
++LDFLAGS-libtracemod3-1.so += -Wl,-soname,libtracemod3.so
++LDFLAGS-libtracemod4-1.so += -Wl,-soname,libtracemod4.so
++LDFLAGS-libtracemod5-1.so += -Wl,-soname,libtracemod5.so
++
++$(objpfx)libtracemod1-1.so: $(objpfx)libtracemod2-1.so \
++			    $(objpfx)libtracemod3-1.so
++$(objpfx)libtracemod2-1.so: $(objpfx)libtracemod4-1.so \
++			    $(objpfx)libtracemod5-1.so
++
++define libtracemod-x
++$(objpfx)libtracemod$(1)/libtracemod$(1).so: $(objpfx)libtracemod$(1)-1.so
++	$$(make-target-directory)
++	cp $$< $$@
++endef
++libtracemod-suffixes = 1 2 3 4 5
++$(foreach i,$(libtracemod-suffixes), $(eval $(call libtracemod-x,$(i))))
++
++define tst-trace-skeleton
++$(objpfx)tst-trace$(1).out: $(objpfx)libtracemod1/libtracemod1.so \
++			    $(objpfx)libtracemod2/libtracemod2.so \
++			    $(objpfx)libtracemod3/libtracemod3.so \
++			    $(objpfx)libtracemod4/libtracemod4.so \
++			    $(objpfx)libtracemod5/libtracemod5.so \
++			    $(..)scripts/tst-ld-trace.py \
++			    tst-trace$(1).exp
++	${ $(PYTHON) $(..)scripts/tst-ld-trace.py \
++	    "$(test-wrapper-env) $(elf-objpfx)$(rtld-installed-name) \
++	    --library-path $(common-objpfx):$(strip $(2)) \
++	    $(objpfx)libtracemod1/libtracemod1.so" tst-trace$(1).exp \
++	} > $$@; $$(evaluate-test)
++endef
++
++$(eval $(call tst-trace-skeleton,1,))
++$(eval $(call tst-trace-skeleton,2,\
++	$(objpfx)libtracemod2))
++$(eval $(call tst-trace-skeleton,3,\
++	$(objpfx)libtracemod2:$(objpfx)libtracemod3))
++$(eval $(call tst-trace-skeleton,4,\
++	$(objpfx)libtracemod2:$(objpfx)libtracemod3:$(objpfx)libtracemod4))
++$(eval $(call tst-trace-skeleton,5,\
++	$(objpfx)libtracemod2:$(objpfx)libtracemod3:$(objpfx)libtracemod4:$(objpfx)libtracemod5))
 diff --git a/elf/dl-audit.c b/elf/dl-audit.c
 index 794bfd45cd..efc0492474 100644
 --- a/elf/dl-audit.c
@@ -651,6 +721,19 @@ index 794bfd45cd..efc0492474 100644
  }
  
  void
+diff --git a/elf/dl-deps.c b/elf/dl-deps.c
+index c8bab5cad5..cfe7f0743a 100644
+--- a/elf/dl-deps.c
++++ b/elf/dl-deps.c
+@@ -489,6 +489,8 @@ _dl_map_object_deps (struct link_map *map,
+ 
+   for (nlist = 0, runp = known; runp; runp = runp->next)
+     {
++      /* _dl_sort_maps ignores l_faked object, so it is safe to not consider
++	 them for nlist.  */
+       if (__builtin_expect (trace_mode, 0) && runp->map->l_faked)
+ 	/* This can happen when we trace the loading.  */
+ 	--map->l_searchlist.r_nlist;
 diff --git a/elf/dl-find_object.c b/elf/dl-find_object.c
 index 2b8df2fd67..4d5831b6f4 100644
 --- a/elf/dl-find_object.c
@@ -728,6 +811,56 @@ index 172692b120..fd24cf5d01 100644
            if (__glibc_unlikely
                (__mprotect ((caddr_t) (l->l_addr + c->mapend),
                             loadcmds[nloadcmds - 1].mapstart - c->mapend,
+diff --git a/elf/dl-sort-maps.c b/elf/dl-sort-maps.c
+index 9e9d53ec47..96638d7ed1 100644
+--- a/elf/dl-sort-maps.c
++++ b/elf/dl-sort-maps.c
+@@ -140,7 +140,9 @@ static void
+ dfs_traversal (struct link_map ***rpo, struct link_map *map,
+ 	       bool *do_reldeps)
+ {
+-  if (map->l_visited)
++  /* _dl_map_object_deps ignores l_faked objects when calculating the
++     number of maps before calling _dl_sort_maps, ignore them as well.  */
++  if (map->l_visited || map->l_faked)
+     return;
+ 
+   map->l_visited = 1;
+diff --git a/elf/libtracemod1-1.c b/elf/libtracemod1-1.c
+new file mode 100644
+index 0000000000..7c89c9a5a4
+--- /dev/null
++++ b/elf/libtracemod1-1.c
+@@ -0,0 +1 @@
++/* Empty  */
+diff --git a/elf/libtracemod2-1.c b/elf/libtracemod2-1.c
+new file mode 100644
+index 0000000000..7c89c9a5a4
+--- /dev/null
++++ b/elf/libtracemod2-1.c
+@@ -0,0 +1 @@
++/* Empty  */
+diff --git a/elf/libtracemod3-1.c b/elf/libtracemod3-1.c
+new file mode 100644
+index 0000000000..7c89c9a5a4
+--- /dev/null
++++ b/elf/libtracemod3-1.c
+@@ -0,0 +1 @@
++/* Empty  */
+diff --git a/elf/libtracemod4-1.c b/elf/libtracemod4-1.c
+new file mode 100644
+index 0000000000..7c89c9a5a4
+--- /dev/null
++++ b/elf/libtracemod4-1.c
+@@ -0,0 +1 @@
++/* Empty  */
+diff --git a/elf/libtracemod5-1.c b/elf/libtracemod5-1.c
+new file mode 100644
+index 0000000000..7c89c9a5a4
+--- /dev/null
++++ b/elf/libtracemod5-1.c
+@@ -0,0 +1 @@
++/* Empty  */
 diff --git a/elf/tst-audit26.c b/elf/tst-audit26.c
 new file mode 100644
 index 0000000000..3f920e83ba
@@ -1351,6 +1484,64 @@ index 0000000000..368ea3349f
 +
 +if __name__ == '__main__':
 +    main(sys.argv[1:])
+diff --git a/elf/tst-trace1.exp b/elf/tst-trace1.exp
+new file mode 100644
+index 0000000000..4a6f5211a6
+--- /dev/null
++++ b/elf/tst-trace1.exp
+@@ -0,0 +1,4 @@
++ld 1
++libc 1
++libtracemod2.so 0
++libtracemod3.so 0
+diff --git a/elf/tst-trace2.exp b/elf/tst-trace2.exp
+new file mode 100644
+index 0000000000..e13506e2eb
+--- /dev/null
++++ b/elf/tst-trace2.exp
+@@ -0,0 +1,6 @@
++ld 1
++libc 1
++libtracemod2.so 1
++libtracemod3.so 0
++libtracemod4.so 0
++libtracemod5.so 0
+diff --git a/elf/tst-trace3.exp b/elf/tst-trace3.exp
+new file mode 100644
+index 0000000000..e574549d12
+--- /dev/null
++++ b/elf/tst-trace3.exp
+@@ -0,0 +1,6 @@
++ld 1
++libc 1
++libtracemod2.so 1
++libtracemod3.so 1
++libtracemod4.so 0
++libtracemod5.so 0
+diff --git a/elf/tst-trace4.exp b/elf/tst-trace4.exp
+new file mode 100644
+index 0000000000..31ca97b35b
+--- /dev/null
++++ b/elf/tst-trace4.exp
+@@ -0,0 +1,6 @@
++ld 1
++libc 1
++libtracemod2.so 1
++libtracemod3.so 1
++libtracemod4.so 1
++libtracemod5.so 0
+diff --git a/elf/tst-trace5.exp b/elf/tst-trace5.exp
+new file mode 100644
+index 0000000000..5d7d953726
+--- /dev/null
++++ b/elf/tst-trace5.exp
+@@ -0,0 +1,6 @@
++ld 1
++libc 1
++libtracemod2.so 1
++libtracemod3.so 1
++libtracemod4.so 1
++libtracemod5.so 1
 diff --git a/io/tst-stat.c b/io/tst-stat.c
 index 2b7975e162..237988203a 100644
 --- a/io/tst-stat.c
@@ -3782,6 +3973,120 @@ index 0000000000..da0d5380f3
 +
 +
 +__all__ = [name for name in dir() if name[0].isupper()]
+diff --git a/scripts/tst-ld-trace.py b/scripts/tst-ld-trace.py
+new file mode 100755
+index 0000000000..f5a4028003
+--- /dev/null
++++ b/scripts/tst-ld-trace.py
+@@ -0,0 +1,108 @@
++#!/usr/bin/python3
++# Dump the output of LD_TRACE_LOADED_OBJECTS in architecture neutral format.
++# Copyright (C) 2022 Free Software Foundation, Inc.
++# Copyright The GNU Toolchain Authors.
++# This file is part of the GNU C Library.
++#
++# The GNU C Library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++#
++# The GNU C Library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++#
++# You should have received a copy of the GNU Lesser General Public
++# License along with the GNU C Library; if not, see
++# <https://www.gnu.org/licenses/>.
++
++import argparse
++import os
++import subprocess
++import sys
++
++try:
++    subprocess.run
++except:
++    class _CompletedProcess:
++        def __init__(self, args, returncode, stdout=None, stderr=None):
++            self.args = args
++            self.returncode = returncode
++            self.stdout = stdout
++            self.stderr = stderr
++
++    def _run(*popenargs, input=None, timeout=None, check=False, **kwargs):
++        assert(timeout is None)
++        with subprocess.Popen(*popenargs, **kwargs) as process:
++            try:
++                stdout, stderr = process.communicate(input)
++            except:
++                process.kill()
++                process.wait()
++                raise
++            returncode = process.poll()
++            if check and returncode:
++                raise subprocess.CalledProcessError(returncode, popenargs)
++        return _CompletedProcess(popenargs, returncode, stdout, stderr)
++
++    subprocess.run = _run
++
++def is_vdso(lib):
++    return lib.startswith('linux-gate') or lib.startswith('linux-vdso')
++
++
++def parse_trace(cmd, fref):
++    new_env = os.environ.copy()
++    new_env['LD_TRACE_LOADED_OBJECTS'] = '1'
++    trace_out = subprocess.run(cmd, stdout=subprocess.PIPE, check=True,
++                               universal_newlines=True, env=new_env).stdout
++    trace = []
++    for line in trace_out.splitlines():
++        line = line.strip()
++        if is_vdso(line):
++            continue
++        fields = line.split('=>' if '=>' in line else ' ')
++        lib = os.path.basename(fields[0].strip())
++        if lib.startswith('ld'):
++            lib = 'ld'
++        elif lib.startswith('libc'):
++            lib = 'libc'
++        found = 1 if fields[1].strip() != 'not found' else 0
++        trace += ['{} {}'.format(lib, found)]
++    trace = sorted(trace)
++
++    reference = sorted(line.replace('\n','') for line in fref.readlines())
++
++    ret = 0 if trace == reference else 1
++    if ret != 0:
++        for i in reference:
++            if i not in trace:
++                print("Only in {}: {}".format(fref.name, i))
++        for i in trace:
++            if i not in reference:
++                print("Only in trace: {}".format(i))
++
++    sys.exit(ret)
++
++
++def get_parser():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('command',
++                        help='comand to run')
++    parser.add_argument('reference',
++                        help='reference file to compare')
++    return parser
++
++
++def main(argv):
++    parser = get_parser()
++    opts = parser.parse_args(argv)
++    with open(opts.reference, 'r') as fref:
++        # Remove the initial 'env' command.
++        parse_trace(opts.command.split()[1:], fref)
++
++
++if __name__ == '__main__':
++    main(sys.argv[1:])
 diff --git a/shlib-versions b/shlib-versions
 index df6603e699..b87ab50c59 100644
 --- a/shlib-versions
@@ -4000,6 +4305,32 @@ index d4da46079b..5ced8e14e9 100644
  /* Clear PA_GP_RELOC bit in relocation offset.  */
  static inline uintptr_t
  reloc_offset (uintptr_t plt0, uintptr_t pltn)
+diff --git a/sysdeps/i386/fpu/libm-test-ulps b/sysdeps/i386/fpu/libm-test-ulps
+index 7601049110..84e6686eba 100644
+--- a/sysdeps/i386/fpu/libm-test-ulps
++++ b/sysdeps/i386/fpu/libm-test-ulps
+@@ -668,7 +668,7 @@ ldouble: 4
+ 
+ Function: Imaginary part of "clog10":
+ double: 2
+-float: 1
++float: 2
+ float128: 2
+ ldouble: 2
+ 
+diff --git a/sysdeps/i386/i686/fpu/multiarch/libm-test-ulps b/sysdeps/i386/i686/fpu/multiarch/libm-test-ulps
+index a39c89cec1..cc21e6907f 100644
+--- a/sysdeps/i386/i686/fpu/multiarch/libm-test-ulps
++++ b/sysdeps/i386/i686/fpu/multiarch/libm-test-ulps
+@@ -668,7 +668,7 @@ ldouble: 4
+ 
+ Function: Imaginary part of "clog10":
+ double: 2
+-float: 1
++float: 2
+ float128: 2
+ ldouble: 2
+ 
 diff --git a/sysdeps/m68k/dl-machine.h b/sysdeps/m68k/dl-machine.h
 index c44ab055aa..bb51b4198c 100644
 --- a/sysdeps/m68k/dl-machine.h
@@ -4473,6 +4804,21 @@ index 82171bf325..dfc8c2beff 100644
  # include <stdint.h>
  # include <string.h>
  # include <sys/socket.h>
+diff --git a/sysdeps/unix/sysv/linux/faccessat.c b/sysdeps/unix/sysv/linux/faccessat.c
+index 59ee4b6f8b..1378bb2db8 100644
+--- a/sysdeps/unix/sysv/linux/faccessat.c
++++ b/sysdeps/unix/sysv/linux/faccessat.c
+@@ -39,8 +39,8 @@ __faccessat (int fd, const char *file, int mode, int flag)
+   if ((flag == 0 || ((flag & ~AT_EACCESS) == 0 && ! __libc_enable_secure)))
+     return INLINE_SYSCALL (faccessat, 3, fd, file, mode);
+ 
+-  struct stat64 stats;
+-  if (__fstatat64 (fd, file, &stats, flag & AT_SYMLINK_NOFOLLOW))
++  struct __stat64_t64 stats;
++  if (__fstatat64_time64 (fd, file, &stats, flag & AT_SYMLINK_NOFOLLOW))
+     return -1;
+ 
+   mode &= (X_OK | W_OK | R_OK);	/* Clear any bogus bits. */
 diff --git a/sysdeps/unix/sysv/linux/getsysstats.c b/sysdeps/unix/sysv/linux/getsysstats.c
 index 4798cc337e..d1ea074f0d 100644
 --- a/sysdeps/unix/sysv/linux/getsysstats.c
@@ -5014,6 +5360,21 @@ index 7747b3e471..71594e4562 100644
  };
  #endif
  
+diff --git a/sysdeps/unix/sysv/linux/pathconf.c b/sysdeps/unix/sysv/linux/pathconf.c
+index 107cf98784..dc68648525 100644
+--- a/sysdeps/unix/sysv/linux/pathconf.c
++++ b/sysdeps/unix/sysv/linux/pathconf.c
+@@ -110,8 +110,8 @@ distinguish_extX (const struct statfs *fsbuf, const char *file, int fd)
+ 	      && strcmp (mntbuf.mnt_type, "ext4") != 0)
+ 	    continue;
+ 
+-	  struct stat64 fsst;
+-	  if (__stat64 (mntbuf.mnt_dir, &fsst) >= 0
++	  struct __stat64_t64 fsst;
++	  if (__stat64_time64 (mntbuf.mnt_dir, &fsst) >= 0
+ 	      && st.st_dev == fsst.st_dev)
+ 	    {
+ 	      if (strcmp (mntbuf.mnt_type, "ext4") == 0)
 diff --git a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c b/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
 index 0ff1a214e6..2b1feb4766 100644
 --- a/sysdeps/unix/sysv/linux/tst-socket-timestamp-compat.c
