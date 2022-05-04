@@ -82,6 +82,9 @@ Noah Goldstein (3):
 Samuel Thibault (1):
       hurd: Fix arbitrary error code
 
+Siddhesh Poyarekar (1):
+      manual: Clarify that abbreviations of long options are allowed
+
 Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
 
@@ -1965,6 +1968,20 @@ index 7fce35f212..8053c816a6 100644
  
  # For SJIS the charmap is SHIFT_JIS. We just want the locale to have
  # a slightly nicer name instead of using "*.SHIFT_SJIS", but that
+diff --git a/manual/getopt.texi b/manual/getopt.texi
+index 5485fc4694..b4c0b15ac2 100644
+--- a/manual/getopt.texi
++++ b/manual/getopt.texi
+@@ -250,7 +250,8 @@ option, and stores the option's argument (if it has one) in @code{optarg}.
+ 
+ When @code{getopt_long} encounters a long option, it takes actions based
+ on the @code{flag} and @code{val} fields of the definition of that
+-option.
++option.  The option name may be abbreviated as long as the abbreviation is
++unique.
+ 
+ If @code{flag} is a null pointer, then @code{getopt_long} returns the
+ contents of @code{val} to indicate which option it found.  You should
 diff --git a/manual/install.texi b/manual/install.texi
 index 29c52f2927..5feccfb6ed 100644
 --- a/manual/install.texi
