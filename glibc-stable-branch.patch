@@ -1,7 +1,7 @@
 =Joshua Kinard (1):
       mips: Fix mips64n32 64 bit time_t stat support (BZ#29069)
 
-Adhemerval Zanella (10):
+Adhemerval Zanella (12):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
@@ -12,6 +12,8 @@ Adhemerval Zanella (10):
       elf: Fix DFS sorting algorithm for LD_TRACE_LOADED_OBJECTS with missing libraries (BZ #28868)
       linux: Fix missing internal 64 bit time_t stat usage
       linux: Fix fchmodat with AT_SYMLINK_NOFOLLOW for 64 bit time_t (BZ#29097)
+      linux: Fix posix_spawn return code if clone fails (BZ#29109)
+      NEWS: Add a bug fix entry for BZ #29109
 
 Andreas Schwab (1):
       Regenerate configure
@@ -119,10 +121,10 @@ index 63c022d6b9..237a2f9482 100644
       Use additional compiler flags CFLAGS to build the parts of the
       library which are always statically linked into applications and
 diff --git a/NEWS b/NEWS
-index faa7ec1871..5e75481e4b 100644
+index faa7ec1871..6c6dc03c6e 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,33 @@ See the end for copying conditions.
+@@ -4,6 +4,35 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -152,11 +154,13 @@ index faa7ec1871..5e75481e4b 100644
 +  [29078] <dlfcn.h> functions unusable during early auditing
 +  [29097] time: fchmodat does not handle 64 bit time_t for
 +    AT_SYMLINK_NOFOLLOW
++  [29109] libc: posix_spawn() always returns 1 (EPERM) on clone()
++    failure
 +
  
  Version 2.35
  
-@@ -139,6 +166,9 @@ Major new features:
+@@ -139,6 +168,9 @@ Major new features:
    fortification balanced against additional runtime cost (checking non-constant
    bounds).
  
@@ -166,7 +170,7 @@ index faa7ec1871..5e75481e4b 100644
  Deprecated and removed features, and other changes affecting compatibility:
  
  * On x86-64, the LD_PREFER_MAP_32BIT_EXEC environment variable support
-@@ -335,6 +365,8 @@ The following bugs are resolved with this release:
+@@ -335,6 +367,8 @@ The following bugs are resolved with this release:
    [28837] libc: FAIL: socket/tst-socket-timestamp-compat
    [28847] locale: Empty mon_decimal_point in LC_MONETARY results in non-
      empty mon_decimal_point_wc
@@ -175,7 +179,7 @@ index faa7ec1871..5e75481e4b 100644
  
  
  Version 2.34
-@@ -431,9 +463,6 @@ Major new features:
+@@ -431,9 +465,6 @@ Major new features:
    execute programs that do not have any dynamic dependency (that is,
    they are statically linked).  This feature is Linux-specific.
  
@@ -6014,6 +6018,19 @@ index 76dbbe595f..2cc03d7a24 100644
  #define __NR_set_robust_list 300
  #define __NR_set_tid_address 166
  #define __NR_setdomainname 163
+diff --git a/sysdeps/unix/sysv/linux/spawni.c b/sysdeps/unix/sysv/linux/spawni.c
+index d703485e3f..d6f5ca89cd 100644
+--- a/sysdeps/unix/sysv/linux/spawni.c
++++ b/sysdeps/unix/sysv/linux/spawni.c
+@@ -409,7 +409,7 @@ __spawnix (pid_t * pid, const char *file,
+ 	__waitpid (new_pid, NULL, 0);
+     }
+   else
+-    ec = -new_pid;
++    ec = errno;
+ 
+   __munmap (stack, stack_size);
+ 
 diff --git a/sysdeps/unix/sysv/linux/syscall-names.list b/sysdeps/unix/sysv/linux/syscall-names.list
 index 6421806110..b8c0b0c586 100644
 --- a/sysdeps/unix/sysv/linux/syscall-names.list
