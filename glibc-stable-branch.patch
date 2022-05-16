@@ -96,8 +96,9 @@ Noah Goldstein (10):
 Samuel Thibault (1):
       hurd: Fix arbitrary error code
 
-Siddhesh Poyarekar (1):
+Siddhesh Poyarekar (2):
       manual: Clarify that abbreviations of long options are allowed
+      fortify: Ensure that __glibc_fortify condition is a constant [BZ #29141]
 
 Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
@@ -2332,7 +2333,7 @@ index 28c9531f42..9307379194 100644
  @c    cancel_handler ok
  @c     kill syscall ok
 diff --git a/misc/sys/cdefs.h b/misc/sys/cdefs.h
-index 44d3826bca..f1faf8292c 100644
+index 44d3826bca..1c2b044a0d 100644
 --- a/misc/sys/cdefs.h
 +++ b/misc/sys/cdefs.h
 @@ -162,13 +162,13 @@
@@ -2347,7 +2348,7 @@ index 44d3826bca..f1faf8292c 100644
 -   && __builtin_constant_p (__glibc_safe_len_cond ((__SIZE_TYPE__) (__l),     \
 -						   __s, __osz))		      \
 -   && __glibc_safe_len_cond ((__SIZE_TYPE__) (__l), __s, __osz))
-+  ((__osz) == (__SIZE_TYPE__) -1					      \
++  ((__builtin_constant_p (__osz) && (__osz) == (__SIZE_TYPE__) -1)	      \
 +   || (__glibc_unsigned_or_positive (__l)				      \
 +       && __builtin_constant_p (__glibc_safe_len_cond ((__SIZE_TYPE__) (__l), \
 +						       (__s), (__osz)))	      \
