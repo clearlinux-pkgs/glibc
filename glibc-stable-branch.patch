@@ -34,10 +34,11 @@ DJ Delorie (1):
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
 
-Fangrui Song (1):
+Fangrui Song (2):
       m68k: Handle fewer relocations for RTLD_BOOTSTRAP (#BZ29071)
+      elf: Remove __libc_init_secure
 
-Florian Weimer (11):
+Florian Weimer (26):
       io: Add fsync call in tst-stat
       nss: Do not mention NSS test modules in <gnu/lib-names.h>
       nss: Protect against errno changes in function lookup (bug 28953)
@@ -49,6 +50,21 @@ Florian Weimer (11):
       scripts/glibcelf.py: Mark as UNSUPPORTED on Python 3.5 and earlier
       manual: Document the dlinfo function
       dlfcn: Implement the RTLD_DI_PHDR request type for dlinfo
+      elf: Merge dl-sysdep.c into the Linux version
+      Linux: Remove HAVE_AUX_SECURE, HAVE_AUX_XID, HAVE_AUX_PAGESIZE
+      Linux: Remove DL_FIND_ARG_COMPONENTS
+      Linux: Assume that NEED_DL_SYSINFO_DSO is always defined
+      Linux: Consolidate auxiliary vector parsing
+      Revert "Linux: Consolidate auxiliary vector parsing"
+      Linux: Include <dl-auxv.h> in dl-sysdep.c only for SHARED
+      Linux: Consolidate auxiliary vector parsing (redo)
+      i386: Remove OPTIMIZE_FOR_GCC_5 from Linux libc-do-syscall.S
+      i386: Honor I386_USE_SYSENTER for 6-argument Linux system calls
+      Linux: Define MMAP_CALL_INTERNAL
+      ia64: Always define IA64_USE_NEW_STUB as a flag macro
+      Linux: Implement a useful version of _startup_fatal
+      Linux: Introduce __brk_call for invoking the brk system call
+      csu: Implement and use _dl_early_allocate during static startup
 
 Gleb Fotengauer-Malinovskiy (1):
       linux: __get_nprocs_sched: do not feed CPU_COUNT_S with garbage [BZ #28850]
@@ -423,6 +439,44 @@ index 87f67d25ec..228261a494 100644
  AC_CACHE_CHECK(for GLOB_DAT reloc,
  	       libc_cv_has_glob_dat, [dnl
  cat > conftest.c <<EOF
+diff --git a/csu/libc-start.c b/csu/libc-start.c
+index e91f996426..b34bb6dbbc 100644
+--- a/csu/libc-start.c
++++ b/csu/libc-start.c
+@@ -285,9 +285,6 @@ LIBC_START_MAIN (int (*main) (int, char **, char ** MAIN_AUXVEC_DECL),
+         }
+     }
+ 
+-  /* Initialize very early so that tunables can use it.  */
+-  __libc_init_secure ();
+-
+   __tunables_init (__environ);
+ 
+   ARCH_INIT_CPU_FEATURES ();
+diff --git a/csu/libc-tls.c b/csu/libc-tls.c
+index bef92a7568..0a216c5502 100644
+--- a/csu/libc-tls.c
++++ b/csu/libc-tls.c
+@@ -145,11 +145,16 @@ __libc_setup_tls (void)
+      _dl_allocate_tls_storage (in elf/dl-tls.c) does using __libc_memalign
+      and dl_tls_static_align.  */
+   tcb_offset = roundup (memsz + GLRO(dl_tls_static_surplus), max_align);
+-  tlsblock = __sbrk (tcb_offset + TLS_INIT_TCB_SIZE + max_align);
++  tlsblock = _dl_early_allocate (tcb_offset + TLS_INIT_TCB_SIZE + max_align);
++  if (tlsblock == NULL)
++    _startup_fatal ("Fatal glibc error: Cannot allocate TLS block\n");
+ #elif TLS_DTV_AT_TP
+   tcb_offset = roundup (TLS_INIT_TCB_SIZE, align ?: 1);
+-  tlsblock = __sbrk (tcb_offset + memsz + max_align
+-		     + TLS_PRE_TCB_SIZE + GLRO(dl_tls_static_surplus));
++  tlsblock = _dl_early_allocate (tcb_offset + memsz + max_align
++				 + TLS_PRE_TCB_SIZE
++				 + GLRO(dl_tls_static_surplus));
++  if (tlsblock == NULL)
++    _startup_fatal ("Fatal glibc error: Cannot allocate TLS block\n");
+   tlsblock += TLS_PRE_TCB_SIZE;
+ #else
+   /* In case a model with a different layout for the TCB and DTV
 diff --git a/debug/tst-fortify.c b/debug/tst-fortify.c
 index d65a2fe6e1..03c9867714 100644
 --- a/debug/tst-fortify.c
@@ -774,10 +828,46 @@ index 0000000000..a15a7d48eb
 +
 +#include <support/test-driver.c>
 diff --git a/elf/Makefile b/elf/Makefile
-index 5bdf0a383d..fa1ea28b25 100644
+index 5bdf0a383d..3536b6af5e 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
-@@ -386,6 +386,7 @@ tests += \
+@@ -33,6 +33,7 @@ routines = \
+   $(all-dl-routines) \
+   dl-addr \
+   dl-addr-obj \
++  dl-early_allocate \
+   dl-error \
+   dl-iteratephdr \
+   dl-libc \
+@@ -108,6 +109,7 @@ all-dl-routines = $(dl-routines) $(sysdep-dl-routines)
+ # But they are absent from the shared libc, because that code is in ld.so.
+ elide-routines.os = \
+   $(all-dl-routines) \
++  dl-early_allocate \
+   dl-exception \
+   dl-origin \
+   dl-reloc-static-pie \
+@@ -161,6 +163,11 @@ ifeq (yes,$(have-loop-to-function))
+ CFLAGS-rtld.c += -fno-tree-loop-distribute-patterns
+ endif
+ 
++ifeq (yes,$(have-loop-to-function))
++# Likewise, during static library startup, memset is not yet available.
++CFLAGS-dl-support.c = -fno-tree-loop-distribute-patterns
++endif
++
+ # Compile rtld itself without stack protection.
+ # Also compile all routines in the static library that are elided from
+ # the shared libc because they are in libc.a in the same way.
+@@ -272,6 +279,7 @@ tests-static-normal := \
+   tst-linkall-static \
+   tst-single_threaded-pthread-static \
+   tst-single_threaded-static \
++  tst-tls-allocation-failure-static \
+   tst-tlsalign-extern-static \
+   tst-tlsalign-static \
+   # tests-static-normal
+@@ -386,6 +394,7 @@ tests += \
    tst-audit24d \
    tst-audit25a \
    tst-audit25b \
@@ -785,7 +875,7 @@ index 5bdf0a383d..fa1ea28b25 100644
    tst-auditmany \
    tst-auxobj \
    tst-auxobj-dlopen \
-@@ -539,6 +540,39 @@ endif
+@@ -539,6 +548,39 @@ endif
  endif
  endif
  
@@ -825,7 +915,7 @@ index 5bdf0a383d..fa1ea28b25 100644
  ifeq ($(run-built-tests),yes)
  tests-special += $(objpfx)tst-valgrind-smoke.out
  endif
-@@ -613,6 +647,16 @@ modules-names = \
+@@ -613,6 +655,16 @@ modules-names = \
    libmarkermod4-2 \
    libmarkermod4-3 \
    libmarkermod4-4 \
@@ -842,7 +932,7 @@ index 5bdf0a383d..fa1ea28b25 100644
    ltglobmod1 \
    ltglobmod2 \
    neededobj1 \
-@@ -725,6 +769,7 @@ modules-names = \
+@@ -725,6 +777,7 @@ modules-names = \
    tst-auditmod24c \
    tst-auditmod24d \
    tst-auditmod25 \
@@ -850,7 +940,7 @@ index 5bdf0a383d..fa1ea28b25 100644
    tst-auxvalmod \
    tst-big-note-lib \
    tst-deep1mod1 \
-@@ -943,7 +988,7 @@ extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
+@@ -943,7 +996,7 @@ extra-test-objs += $(addsuffix .os,$(strip $(modules-names)))
  # filtmod1.so, tst-big-note-lib.so, tst-ro-dynamic-mod.so have special
  # rules.
  modules-names-nobuild := filtmod1 tst-big-note-lib tst-ro-dynamic-mod \
@@ -859,7 +949,7 @@ index 5bdf0a383d..fa1ea28b25 100644
  
  tests += $(tests-static)
  
-@@ -1072,6 +1117,11 @@ tests-special += \
+@@ -1072,6 +1125,11 @@ tests-special += \
    $(objpfx)tst-initorder2-cmp.out \
    $(objpfx)tst-unused-dep-cmp.out \
    $(objpfx)tst-unused-dep.out \
@@ -871,7 +961,7 @@ index 5bdf0a383d..fa1ea28b25 100644
    # tests-special
  endif
  
-@@ -1111,6 +1161,13 @@ CFLAGS-tst-prelink.c += -fno-pie
+@@ -1111,6 +1169,17 @@ CFLAGS-tst-prelink.c += -fno-pie
  tst-prelink-no-pie = yes
  endif
  
@@ -882,10 +972,14 @@ index 5bdf0a383d..fa1ea28b25 100644
 +          --cc="$(CC) $(patsubst -DMODULE_NAME=%,-DMODULE_NAME=testsuite,$(CPPFLAGS))" \
 +	  < /dev/null > $@ 2>&1; $(evaluate-test)
 +
++ifeq ($(run-built-tests),yes)
++tests-special += $(objpfx)tst-tls-allocation-failure-static-patched.out
++endif
++
  # The test requires shared _and_ PIE because the executable
  # unit test driver must be able to link with the shared object
  # that is going to eventually go into an installed DSO.
-@@ -2210,7 +2267,7 @@ $(objpfx)tst-audit24c.out: $(objpfx)tst-auditmod24c.so
+@@ -2210,7 +2279,7 @@ $(objpfx)tst-audit24c.out: $(objpfx)tst-auditmod24c.so
  $(objpfx)tst-audit24c: $(objpfx)tst-audit24amod1.so \
  		       $(objpfx)tst-audit24amod2.so
  tst-audit24c-ENV = LD_BIND_NOW=1 LD_AUDIT=$(objpfx)tst-auditmod24c.so
@@ -894,7 +988,7 @@ index 5bdf0a383d..fa1ea28b25 100644
  
  $(objpfx)tst-audit24d.out: $(objpfx)tst-auditmod24d.so
  $(objpfx)tst-audit24d: $(objpfx)tst-audit24dmod1.so \
-@@ -2242,6 +2299,10 @@ $(objpfx)tst-audit25b: $(objpfx)tst-audit25mod1.so \
+@@ -2242,6 +2311,10 @@ $(objpfx)tst-audit25b: $(objpfx)tst-audit25mod1.so \
  LDFLAGS-tst-audit25b = -Wl,-z,now
  tst-audit25b-ARGS = -- $(host-test-program-cmd)
  
@@ -905,7 +999,7 @@ index 5bdf0a383d..fa1ea28b25 100644
  # tst-sonamemove links against an older implementation of the library.
  LDFLAGS-tst-sonamemove-linkmod1.so = \
    -Wl,--version-script=tst-sonamemove-linkmod1.map \
-@@ -2509,6 +2570,7 @@ LDFLAGS-libmarkermod1-1.so += -Wl,-soname,libmarkermod1.so
+@@ -2509,6 +2582,7 @@ LDFLAGS-libmarkermod1-1.so += -Wl,-soname,libmarkermod1.so
  LDFLAGS-libmarkermod2-1.so += -Wl,-soname,libmarkermod2.so
  LDFLAGS-libmarkermod3-1.so += -Wl,-soname,libmarkermod3.so
  LDFLAGS-libmarkermod4-1.so += -Wl,-soname,libmarkermod4.so
@@ -913,7 +1007,7 @@ index 5bdf0a383d..fa1ea28b25 100644
  $(objpfx)libmarkermod%.os : markermodMARKER-VALUE.c
  	$(compile-command.c) \
  	  -DMARKER=marker$(firstword $(subst -, ,$*)) \
-@@ -2521,6 +2583,8 @@ $(objpfx)libmarkermod3.so: $(objpfx)libmarkermod3-1.so
+@@ -2521,6 +2595,8 @@ $(objpfx)libmarkermod3.so: $(objpfx)libmarkermod3-1.so
  	cp $< $@
  $(objpfx)libmarkermod4.so: $(objpfx)libmarkermod4-1.so
  	cp $< $@
@@ -922,7 +1016,7 @@ index 5bdf0a383d..fa1ea28b25 100644
  
  # tst-glibc-hwcaps-prepend checks that --glibc-hwcaps-prepend is
  # preferred over auto-detected subdirectories.
-@@ -2733,3 +2797,47 @@ $(objpfx)tst-p_align3: $(objpfx)tst-p_alignmod3.so
+@@ -2733,3 +2809,59 @@ $(objpfx)tst-p_align3: $(objpfx)tst-p_alignmod3.so
  $(objpfx)tst-p_align3.out: tst-p_align3.sh $(objpfx)tst-p_align3
  	$(SHELL) $< $(common-objpfx) '$(test-program-prefix)'; \
  	$(evaluate-test)
@@ -970,6 +1064,18 @@ index 5bdf0a383d..fa1ea28b25 100644
 +	$(objpfx)libtracemod2:$(objpfx)libtracemod3:$(objpfx)libtracemod4))
 +$(eval $(call tst-trace-skeleton,5,\
 +	$(objpfx)libtracemod2:$(objpfx)libtracemod3:$(objpfx)libtracemod4:$(objpfx)libtracemod5))
++
++$(objpfx)tst-tls-allocation-failure-static-patched: \
++  $(objpfx)tst-tls-allocation-failure-static $(..)scripts/tst-elf-edit.py
++	cp $< $@
++	$(PYTHON) $(..)scripts/tst-elf-edit.py --maximize-tls-size $@
++
++$(objpfx)tst-tls-allocation-failure-static-patched.out: \
++  $(objpfx)tst-tls-allocation-failure-static-patched
++	$< > $@ 2>&1; echo "status: $$?" >> $@
++	grep -q '^Fatal glibc error: Cannot allocate TLS block$$' $@ \
++	  && grep -q '^status: 127$$' $@; \
++	  $(evaluate-test)
 diff --git a/elf/dl-audit.c b/elf/dl-audit.c
 index 794bfd45cd..efc0492474 100644
 --- a/elf/dl-audit.c
@@ -997,6 +1103,42 @@ index c8bab5cad5..cfe7f0743a 100644
        if (__builtin_expect (trace_mode, 0) && runp->map->l_faked)
  	/* This can happen when we trace the loading.  */
  	--map->l_searchlist.r_nlist;
+diff --git a/elf/dl-early_allocate.c b/elf/dl-early_allocate.c
+new file mode 100644
+index 0000000000..61677aaa03
+--- /dev/null
++++ b/elf/dl-early_allocate.c
+@@ -0,0 +1,30 @@
++/* Early memory allocation for the dynamic loader.  Generic version.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <ldsodefs.h>
++#include <stddef.h>
++#include <unistd.h>
++
++void *
++_dl_early_allocate (size_t size)
++{
++  void *result = __sbrk (size);
++  if (result == (void *) -1)
++    result = NULL;
++  return result;
++}
 diff --git a/elf/dl-find_object.c b/elf/dl-find_object.c
 index 2b8df2fd67..4d5831b6f4 100644
 --- a/elf/dl-find_object.c
@@ -1089,6 +1231,504 @@ index 9e9d53ec47..96638d7ed1 100644
      return;
  
    map->l_visited = 1;
+diff --git a/elf/dl-support.c b/elf/dl-support.c
+index fb64765537..09079c124d 100644
+--- a/elf/dl-support.c
++++ b/elf/dl-support.c
+@@ -44,6 +44,7 @@
+ #include <dl-vdso-setup.h>
+ #include <dl-auxv.h>
+ #include <dl-find_object.h>
++#include <array_length.h>
+ 
+ extern char *__progname;
+ char **_dl_argv = &__progname;	/* This is checked for some error messages.  */
+@@ -241,93 +242,25 @@ __rtld_lock_define_initialized_recursive (, _dl_load_tls_lock)
+ 
+ 
+ #ifdef HAVE_AUX_VECTOR
++#include <dl-parse_auxv.h>
++
+ int _dl_clktck;
+ 
+ void
+ _dl_aux_init (ElfW(auxv_t) *av)
+ {
+-  int seen = 0;
+-  uid_t uid = 0;
+-  gid_t gid = 0;
+-
+ #ifdef NEED_DL_SYSINFO
+   /* NB: Avoid RELATIVE relocation in static PIE.  */
+   GL(dl_sysinfo) = DL_SYSINFO_DEFAULT;
+ #endif
+ 
+   _dl_auxv = av;
+-  for (; av->a_type != AT_NULL; ++av)
+-    switch (av->a_type)
+-      {
+-      case AT_PAGESZ:
+-	if (av->a_un.a_val != 0)
+-	  GLRO(dl_pagesize) = av->a_un.a_val;
+-	break;
+-      case AT_CLKTCK:
+-	GLRO(dl_clktck) = av->a_un.a_val;
+-	break;
+-      case AT_PHDR:
+-	GL(dl_phdr) = (const void *) av->a_un.a_val;
+-	break;
+-      case AT_PHNUM:
+-	GL(dl_phnum) = av->a_un.a_val;
+-	break;
+-      case AT_PLATFORM:
+-	GLRO(dl_platform) = (void *) av->a_un.a_val;
+-	break;
+-      case AT_HWCAP:
+-	GLRO(dl_hwcap) = (unsigned long int) av->a_un.a_val;
+-	break;
+-      case AT_HWCAP2:
+-	GLRO(dl_hwcap2) = (unsigned long int) av->a_un.a_val;
+-	break;
+-      case AT_FPUCW:
+-	GLRO(dl_fpu_control) = av->a_un.a_val;
+-	break;
+-#ifdef NEED_DL_SYSINFO
+-      case AT_SYSINFO:
+-	GL(dl_sysinfo) = av->a_un.a_val;
+-	break;
+-#endif
+-#ifdef NEED_DL_SYSINFO_DSO
+-      case AT_SYSINFO_EHDR:
+-	GL(dl_sysinfo_dso) = (void *) av->a_un.a_val;
+-	break;
+-#endif
+-      case AT_UID:
+-	uid ^= av->a_un.a_val;
+-	seen |= 1;
+-	break;
+-      case AT_EUID:
+-	uid ^= av->a_un.a_val;
+-	seen |= 2;
+-	break;
+-      case AT_GID:
+-	gid ^= av->a_un.a_val;
+-	seen |= 4;
+-	break;
+-      case AT_EGID:
+-	gid ^= av->a_un.a_val;
+-	seen |= 8;
+-	break;
+-      case AT_SECURE:
+-	seen = -1;
+-	__libc_enable_secure = av->a_un.a_val;
+-	__libc_enable_secure_decided = 1;
+-	break;
+-      case AT_RANDOM:
+-	_dl_random = (void *) av->a_un.a_val;
+-	break;
+-      case AT_MINSIGSTKSZ:
+-	_dl_minsigstacksize = av->a_un.a_val;
+-	break;
+-      DL_PLATFORM_AUXV
+-      }
+-  if (seen == 0xf)
+-    {
+-      __libc_enable_secure = uid != 0 || gid != 0;
+-      __libc_enable_secure_decided = 1;
+-    }
++  dl_parse_auxv_t auxv_values;
++  /* Use an explicit initialization loop here because memset may not
++     be available yet.  */
++  for (int i = 0; i < array_length (auxv_values); ++i)
++    auxv_values[i] = 0;
++  _dl_parse_auxv (av, auxv_values);
+ }
+ #endif
+ 
+diff --git a/elf/dl-sysdep.c b/elf/dl-sysdep.c
+index f1dba8ef24..7aa90ad6ee 100644
+--- a/elf/dl-sysdep.c
++++ b/elf/dl-sysdep.c
+@@ -1,4 +1,4 @@
+-/* Operating system support for run-time dynamic linker.  Generic Unix version.
++/* Operating system support for run-time dynamic linker.  Stub version.
+    Copyright (C) 1995-2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+@@ -16,352 +16,4 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-/* We conditionalize the whole of this file rather than simply eliding it
+-   from the static build, because other sysdeps/ versions of this file
+-   might define things needed by a static build.  */
+-
+-#ifdef SHARED
+-
+-#include <assert.h>
+-#include <elf.h>
+-#include <errno.h>
+-#include <fcntl.h>
+-#include <libintl.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <unistd.h>
+-#include <sys/types.h>
+-#include <sys/stat.h>
+-#include <sys/mman.h>
+-#include <ldsodefs.h>
+-#include <_itoa.h>
+-#include <fpu_control.h>
+-
+-#include <entry.h>
+-#include <dl-machine.h>
+-#include <dl-procinfo.h>
+-#include <dl-osinfo.h>
+-#include <libc-internal.h>
+-#include <tls.h>
+-
+-#include <dl-tunables.h>
+-#include <dl-auxv.h>
+-#include <dl-hwcap-check.h>
+-
+-extern char **_environ attribute_hidden;
+-extern char _end[] attribute_hidden;
+-
+-/* Protect SUID program against misuse of file descriptors.  */
+-extern void __libc_check_standard_fds (void);
+-
+-int __libc_enable_secure attribute_relro = 0;
+-rtld_hidden_data_def (__libc_enable_secure)
+-/* This variable contains the lowest stack address ever used.  */
+-void *__libc_stack_end attribute_relro = NULL;
+-rtld_hidden_data_def(__libc_stack_end)
+-void *_dl_random attribute_relro = NULL;
+-
+-#ifndef DL_FIND_ARG_COMPONENTS
+-# define DL_FIND_ARG_COMPONENTS(cookie, argc, argv, envp, auxp)	\
+-  do {									      \
+-    void **_tmp;							      \
+-    (argc) = *(long int *) cookie;					      \
+-    (argv) = (char **) ((long int *) cookie + 1);			      \
+-    (envp) = (argv) + (argc) + 1;					      \
+-    for (_tmp = (void **) (envp); *_tmp; ++_tmp)			      \
+-      continue;								      \
+-    (auxp) = (void *) ++_tmp;						      \
+-  } while (0)
+-#endif
+-
+-#ifndef DL_STACK_END
+-# define DL_STACK_END(cookie) ((void *) (cookie))
+-#endif
+-
+-ElfW(Addr)
+-_dl_sysdep_start (void **start_argptr,
+-		  void (*dl_main) (const ElfW(Phdr) *phdr, ElfW(Word) phnum,
+-				   ElfW(Addr) *user_entry, ElfW(auxv_t) *auxv))
+-{
+-  const ElfW(Phdr) *phdr = NULL;
+-  ElfW(Word) phnum = 0;
+-  ElfW(Addr) user_entry;
+-  ElfW(auxv_t) *av;
+-#ifdef HAVE_AUX_SECURE
+-# define set_seen(tag) (tag)	/* Evaluate for the side effects.  */
+-# define set_seen_secure() ((void) 0)
+-#else
+-  uid_t uid = 0;
+-  gid_t gid = 0;
+-  unsigned int seen = 0;
+-# define set_seen_secure() (seen = -1)
+-# ifdef HAVE_AUX_XID
+-#  define set_seen(tag) (tag)	/* Evaluate for the side effects.  */
+-# else
+-#  define M(type) (1 << (type))
+-#  define set_seen(tag) seen |= M ((tag)->a_type)
+-# endif
+-#endif
+-#ifdef NEED_DL_SYSINFO
+-  uintptr_t new_sysinfo = 0;
+-#endif
+-
+-  __libc_stack_end = DL_STACK_END (start_argptr);
+-  DL_FIND_ARG_COMPONENTS (start_argptr, _dl_argc, _dl_argv, _environ,
+-			  GLRO(dl_auxv));
+-
+-  user_entry = (ElfW(Addr)) ENTRY_POINT;
+-  GLRO(dl_platform) = NULL; /* Default to nothing known about the platform.  */
+-
+-  /* NB: Default to a constant CONSTANT_MINSIGSTKSZ.  */
+-  _Static_assert (__builtin_constant_p (CONSTANT_MINSIGSTKSZ),
+-		  "CONSTANT_MINSIGSTKSZ is constant");
+-  GLRO(dl_minsigstacksize) = CONSTANT_MINSIGSTKSZ;
+-
+-  for (av = GLRO(dl_auxv); av->a_type != AT_NULL; set_seen (av++))
+-    switch (av->a_type)
+-      {
+-      case AT_PHDR:
+-	phdr = (void *) av->a_un.a_val;
+-	break;
+-      case AT_PHNUM:
+-	phnum = av->a_un.a_val;
+-	break;
+-      case AT_PAGESZ:
+-	GLRO(dl_pagesize) = av->a_un.a_val;
+-	break;
+-      case AT_ENTRY:
+-	user_entry = av->a_un.a_val;
+-	break;
+-#ifndef HAVE_AUX_SECURE
+-      case AT_UID:
+-      case AT_EUID:
+-	uid ^= av->a_un.a_val;
+-	break;
+-      case AT_GID:
+-      case AT_EGID:
+-	gid ^= av->a_un.a_val;
+-	break;
+-#endif
+-      case AT_SECURE:
+-#ifndef HAVE_AUX_SECURE
+-	seen = -1;
+-#endif
+-	__libc_enable_secure = av->a_un.a_val;
+-	break;
+-      case AT_PLATFORM:
+-	GLRO(dl_platform) = (void *) av->a_un.a_val;
+-	break;
+-      case AT_HWCAP:
+-	GLRO(dl_hwcap) = (unsigned long int) av->a_un.a_val;
+-	break;
+-      case AT_HWCAP2:
+-	GLRO(dl_hwcap2) = (unsigned long int) av->a_un.a_val;
+-	break;
+-      case AT_CLKTCK:
+-	GLRO(dl_clktck) = av->a_un.a_val;
+-	break;
+-      case AT_FPUCW:
+-	GLRO(dl_fpu_control) = av->a_un.a_val;
+-	break;
+-#ifdef NEED_DL_SYSINFO
+-      case AT_SYSINFO:
+-	new_sysinfo = av->a_un.a_val;
+-	break;
+-#endif
+-#ifdef NEED_DL_SYSINFO_DSO
+-      case AT_SYSINFO_EHDR:
+-	GLRO(dl_sysinfo_dso) = (void *) av->a_un.a_val;
+-	break;
+-#endif
+-      case AT_RANDOM:
+-	_dl_random = (void *) av->a_un.a_val;
+-	break;
+-      case AT_MINSIGSTKSZ:
+-	GLRO(dl_minsigstacksize) = av->a_un.a_val;
+-	break;
+-      DL_PLATFORM_AUXV
+-      }
+-
+-  dl_hwcap_check ();
+-
+-#ifndef HAVE_AUX_SECURE
+-  if (seen != -1)
+-    {
+-      /* Fill in the values we have not gotten from the kernel through the
+-	 auxiliary vector.  */
+-# ifndef HAVE_AUX_XID
+-#  define SEE(UID, var, uid) \
+-   if ((seen & M (AT_##UID)) == 0) var ^= __get##uid ()
+-      SEE (UID, uid, uid);
+-      SEE (EUID, uid, euid);
+-      SEE (GID, gid, gid);
+-      SEE (EGID, gid, egid);
+-# endif
+-
+-      /* If one of the two pairs of IDs does not match this is a setuid
+-	 or setgid run.  */
+-      __libc_enable_secure = uid | gid;
+-    }
+-#endif
+-
+-#ifndef HAVE_AUX_PAGESIZE
+-  if (GLRO(dl_pagesize) == 0)
+-    GLRO(dl_pagesize) = __getpagesize ();
+-#endif
+-
+-#ifdef NEED_DL_SYSINFO
+-  if (new_sysinfo != 0)
+-    {
+-# ifdef NEED_DL_SYSINFO_DSO
+-      /* Only set the sysinfo value if we also have the vsyscall DSO.  */
+-      if (GLRO(dl_sysinfo_dso) != 0)
+-# endif
+-        GLRO(dl_sysinfo) = new_sysinfo;
+-    }
+-#endif
+-
+-  __tunables_init (_environ);
+-
+-  /* Initialize DSO sorting algorithm after tunables.  */
+-  _dl_sort_maps_init ();
+-
+-#ifdef DL_SYSDEP_INIT
+-  DL_SYSDEP_INIT;
+-#endif
+-
+-#ifdef DL_PLATFORM_INIT
+-  DL_PLATFORM_INIT;
+-#endif
+-
+-  /* Determine the length of the platform name.  */
+-  if (GLRO(dl_platform) != NULL)
+-    GLRO(dl_platformlen) = strlen (GLRO(dl_platform));
+-
+-  if (__sbrk (0) == _end)
+-    /* The dynamic linker was run as a program, and so the initial break
+-       starts just after our bss, at &_end.  The malloc in dl-minimal.c
+-       will consume the rest of this page, so tell the kernel to move the
+-       break up that far.  When the user program examines its break, it
+-       will see this new value and not clobber our data.  */
+-    __sbrk (GLRO(dl_pagesize)
+-	    - ((_end - (char *) 0) & (GLRO(dl_pagesize) - 1)));
+-
+-  /* If this is a SUID program we make sure that FDs 0, 1, and 2 are
+-     allocated.  If necessary we are doing it ourself.  If it is not
+-     possible we stop the program.  */
+-  if (__builtin_expect (__libc_enable_secure, 0))
+-    __libc_check_standard_fds ();
+-
+-  (*dl_main) (phdr, phnum, &user_entry, GLRO(dl_auxv));
+-  return user_entry;
+-}
+-
+-void
+-_dl_sysdep_start_cleanup (void)
+-{
+-}
+-
+-void
+-_dl_show_auxv (void)
+-{
+-  char buf[64];
+-  ElfW(auxv_t) *av;
+-
+-  /* Terminate string.  */
+-  buf[63] = '\0';
+-
+-  /* The following code assumes that the AT_* values are encoded
+-     starting from 0 with AT_NULL, 1 for AT_IGNORE, and all other values
+-     close by (otherwise the array will be too large).  In case we have
+-     to support a platform where these requirements are not fulfilled
+-     some alternative implementation has to be used.  */
+-  for (av = GLRO(dl_auxv); av->a_type != AT_NULL; ++av)
+-    {
+-      static const struct
+-      {
+-	const char label[22];
+-	enum { unknown = 0, dec, hex, str, ignore } form : 8;
+-      } auxvars[] =
+-	{
+-	  [AT_EXECFD - 2] =		{ "EXECFD:            ", dec },
+-	  [AT_EXECFN - 2] =		{ "EXECFN:            ", str },
+-	  [AT_PHDR - 2] =		{ "PHDR:              0x", hex },
+-	  [AT_PHENT - 2] =		{ "PHENT:             ", dec },
+-	  [AT_PHNUM - 2] =		{ "PHNUM:             ", dec },
+-	  [AT_PAGESZ - 2] =		{ "PAGESZ:            ", dec },
+-	  [AT_BASE - 2] =		{ "BASE:              0x", hex },
+-	  [AT_FLAGS - 2] =		{ "FLAGS:             0x", hex },
+-	  [AT_ENTRY - 2] =		{ "ENTRY:             0x", hex },
+-	  [AT_NOTELF - 2] =		{ "NOTELF:            ", hex },
+-	  [AT_UID - 2] =		{ "UID:               ", dec },
+-	  [AT_EUID - 2] =		{ "EUID:              ", dec },
+-	  [AT_GID - 2] =		{ "GID:               ", dec },
+-	  [AT_EGID - 2] =		{ "EGID:              ", dec },
+-	  [AT_PLATFORM - 2] =		{ "PLATFORM:          ", str },
+-	  [AT_HWCAP - 2] =		{ "HWCAP:             ", hex },
+-	  [AT_CLKTCK - 2] =		{ "CLKTCK:            ", dec },
+-	  [AT_FPUCW - 2] =		{ "FPUCW:             ", hex },
+-	  [AT_DCACHEBSIZE - 2] =	{ "DCACHEBSIZE:       0x", hex },
+-	  [AT_ICACHEBSIZE - 2] =	{ "ICACHEBSIZE:       0x", hex },
+-	  [AT_UCACHEBSIZE - 2] =	{ "UCACHEBSIZE:       0x", hex },
+-	  [AT_IGNOREPPC - 2] =		{ "IGNOREPPC", ignore },
+-	  [AT_SECURE - 2] =		{ "SECURE:            ", dec },
+-	  [AT_BASE_PLATFORM - 2] =	{ "BASE_PLATFORM:     ", str },
+-	  [AT_SYSINFO - 2] =		{ "SYSINFO:           0x", hex },
+-	  [AT_SYSINFO_EHDR - 2] =	{ "SYSINFO_EHDR:      0x", hex },
+-	  [AT_RANDOM - 2] =		{ "RANDOM:            0x", hex },
+-	  [AT_HWCAP2 - 2] =		{ "HWCAP2:            0x", hex },
+-	  [AT_MINSIGSTKSZ - 2] =	{ "MINSIGSTKSZ:       ", dec },
+-	  [AT_L1I_CACHESIZE - 2] =	{ "L1I_CACHESIZE:     ", dec },
+-	  [AT_L1I_CACHEGEOMETRY - 2] =	{ "L1I_CACHEGEOMETRY: 0x", hex },
+-	  [AT_L1D_CACHESIZE - 2] =	{ "L1D_CACHESIZE:     ", dec },
+-	  [AT_L1D_CACHEGEOMETRY - 2] =	{ "L1D_CACHEGEOMETRY: 0x", hex },
+-	  [AT_L2_CACHESIZE - 2] =	{ "L2_CACHESIZE:      ", dec },
+-	  [AT_L2_CACHEGEOMETRY - 2] =	{ "L2_CACHEGEOMETRY:  0x", hex },
+-	  [AT_L3_CACHESIZE - 2] =	{ "L3_CACHESIZE:      ", dec },
+-	  [AT_L3_CACHEGEOMETRY - 2] =	{ "L3_CACHEGEOMETRY:  0x", hex },
+-	};
+-      unsigned int idx = (unsigned int) (av->a_type - 2);
+-
+-      if ((unsigned int) av->a_type < 2u
+-	  || (idx < sizeof (auxvars) / sizeof (auxvars[0])
+-	      && auxvars[idx].form == ignore))
+-	continue;
+-
+-      assert (AT_NULL == 0);
+-      assert (AT_IGNORE == 1);
+-
+-      /* Some entries are handled in a special way per platform.  */
+-      if (_dl_procinfo (av->a_type, av->a_un.a_val) == 0)
+-	continue;
+-
+-      if (idx < sizeof (auxvars) / sizeof (auxvars[0])
+-	  && auxvars[idx].form != unknown)
+-	{
+-	  const char *val = (char *) av->a_un.a_val;
+-
+-	  if (__builtin_expect (auxvars[idx].form, dec) == dec)
+-	    val = _itoa ((unsigned long int) av->a_un.a_val,
+-			 buf + sizeof buf - 1, 10, 0);
+-	  else if (__builtin_expect (auxvars[idx].form, hex) == hex)
+-	    val = _itoa ((unsigned long int) av->a_un.a_val,
+-			 buf + sizeof buf - 1, 16, 0);
+-
+-	  _dl_printf ("AT_%s%s\n", auxvars[idx].label, val);
+-
+-	  continue;
+-	}
+-
+-      /* Unknown value: print a generic line.  */
+-      char buf2[17];
+-      buf2[sizeof (buf2) - 1] = '\0';
+-      const char *val2 = _itoa ((unsigned long int) av->a_un.a_val,
+-				buf2 + sizeof buf2 - 1, 16, 0);
+-      const char *val =  _itoa ((unsigned long int) av->a_type,
+-				buf + sizeof buf - 1, 16, 0);
+-      _dl_printf ("AT_??? (0x%s): 0x%s\n", val, val2);
+-    }
+-}
+-
+-#endif
++#error dl-sysdep support missing.
+diff --git a/elf/enbl-secure.c b/elf/enbl-secure.c
+index aa2a0bd877..4e4d66822b 100644
+--- a/elf/enbl-secure.c
++++ b/elf/enbl-secure.c
+@@ -26,15 +26,5 @@
+ #include <startup.h>
+ #include <libc-internal.h>
+ 
+-/* If nonzero __libc_enable_secure is already set.  */
+-int __libc_enable_secure_decided;
+ /* Safest assumption, if somehow the initializer isn't run.  */
+ int __libc_enable_secure = 1;
+-
+-void
+-__libc_init_secure (void)
+-{
+-  if (__libc_enable_secure_decided == 0)
+-    __libc_enable_secure = (startup_geteuid () != startup_getuid ()
+-			    || startup_getegid () != startup_getgid ());
+-}
 diff --git a/elf/libtracemod1-1.c b/elf/libtracemod1-1.c
 new file mode 100644
 index 0000000000..7c89c9a5a4
@@ -1747,6 +2387,46 @@ index 0000000000..368ea3349f
 +
 +if __name__ == '__main__':
 +    main(sys.argv[1:])
+diff --git a/sysdeps/mach/hurd/enbl-secure.c b/elf/tst-tls-allocation-failure-static.c
+similarity index 57%
+rename from sysdeps/mach/hurd/enbl-secure.c
+rename to elf/tst-tls-allocation-failure-static.c
+index 8c02789ecf..8de831b246 100644
+--- a/sysdeps/mach/hurd/enbl-secure.c
++++ b/elf/tst-tls-allocation-failure-static.c
+@@ -1,5 +1,5 @@
+-/* Define and initialize the `__libc_enable_secure' flag.  Hurd version.
+-   Copyright (C) 1998-2022 Free Software Foundation, Inc.
++/* Base for test program with impossiblyh large PT_TLS segment.
++   Copyright (C) 2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -16,15 +16,16 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-/* There is no need for this file in the Hurd; it is just a placeholder
+-   to prevent inclusion of the sysdeps/generic version.
+-   In the shared library, the `__libc_enable_secure' variable is defined
+-   by the dynamic linker in dl-sysdep.c and set there.
+-   In the static library, it is defined in init-first.c and set there.  */
++/* The test actual binary is patched using scripts/tst-elf-edit.py
++   --maximize-tls-size, and this introduces the expected test
++   allocation failure due to an excessive PT_LS p_memsz value.
+ 
+-#include <libc-internal.h>
++   Patching the binary is required because on some 64-bit targets, TLS
++   relocations can only cover a 32-bit range, and glibc-internal TLS
++   variables such as errno end up outside that range.  */
+ 
+-void
+-__libc_init_secure (void)
++int
++main (void)
+ {
++  return 0;
+ }
 diff --git a/elf/tst-trace1.exp b/elf/tst-trace1.exp
 new file mode 100644
 index 0000000000..4a6f5211a6
@@ -1805,6 +2485,32 @@ index 0000000000..5d7d953726
 +libtracemod3.so 1
 +libtracemod4.so 1
 +libtracemod5.so 1
+diff --git a/include/libc-internal.h b/include/libc-internal.h
+index 15920d2bde..c052bccb27 100644
+--- a/include/libc-internal.h
++++ b/include/libc-internal.h
+@@ -21,9 +21,6 @@
+ 
+ #include <hp-timing.h>
+ 
+-/* Initialize the `__libc_enable_secure' flag.  */
+-extern void __libc_init_secure (void);
+-
+ /* Discover the tick frequency of the machine if something goes wrong,
+    we return 0, an impossible hertz.  */
+ extern int __profile_frequency (void);
+diff --git a/include/unistd.h b/include/unistd.h
+index 7090169601..af795a37c8 100644
+--- a/include/unistd.h
++++ b/include/unistd.h
+@@ -192,7 +192,6 @@ libc_hidden_proto (__tcsetpgrp)
+    and some functions contained in the C library ignore various
+    environment variables that normally affect them.  */
+ extern int __libc_enable_secure attribute_relro;
+-extern int __libc_enable_secure_decided;
+ rtld_hidden_proto (__libc_enable_secure)
+ 
+ 
 diff --git a/io/Makefile b/io/Makefile
 index cf265dc9b9..b1710407d0 100644
 --- a/io/Makefile
@@ -4599,6 +5305,89 @@ index 0000000000..da0d5380f3
 +
 +
 +__all__ = [name for name in dir() if name[0].isupper()]
+diff --git a/scripts/tst-elf-edit.py b/scripts/tst-elf-edit.py
+index a514179bbf..0e19ce1e73 100644
+--- a/scripts/tst-elf-edit.py
++++ b/scripts/tst-elf-edit.py
+@@ -43,9 +43,11 @@ EI_DATA=5
+ ELFDATA2LSB=b'\x01'
+ ELFDATA2MSB=b'\x02'
+ 
++ET_EXEC=2
+ ET_DYN=3
+ 
+ PT_LOAD=1
++PT_TLS=7
+ 
+ def elf_types_fmts(e_ident):
+     endian = '<' if e_ident[EI_DATA] == ELFDATA2LSB else '>'
+@@ -146,8 +148,15 @@ def elf_edit_align(phdr, align):
+     else:
+         phdr.p_align = int(align)
+ 
++def elf_edit_maximize_tls_size(phdr, elfclass):
++    if elfclass == ELFCLASS32:
++        # It is possible that the kernel can allocate half of the
++        # address space, so use something larger.
++        phdr.p_memsz = 0xfff00000
++    else:
++        phdr.p_memsz = 1 << 63
+ 
+-def elf_edit(f, align):
++def elf_edit(f, opts):
+     ei_nident_fmt = 'c' * EI_NIDENT
+     ei_nident_len = struct.calcsize(ei_nident_fmt)
+ 
+@@ -172,24 +181,35 @@ def elf_edit(f, align):
+ 
+     ehdr = Elf_Ehdr(e_ident)
+     ehdr.read(f)
+-    if ehdr.e_type != ET_DYN:
+-       error('{}: not a shared library'.format(f.name))
++    if ehdr.e_type not in (ET_EXEC, ET_DYN):
++       error('{}: not an executable or shared library'.format(f.name))
+ 
+     phdr = Elf_Phdr(e_ident)
++    maximize_tls_size_done = False
+     for i in range(0, ehdr.e_phnum):
+         f.seek(ehdr.e_phoff + i * phdr.len)
+         phdr.read(f)
+-        if phdr.p_type == PT_LOAD:
+-            elf_edit_align(phdr, align)
++        if phdr.p_type == PT_LOAD and opts.align is not None:
++            elf_edit_align(phdr, opts.align)
++            f.seek(ehdr.e_phoff + i * phdr.len)
++            phdr.write(f)
++            break
++        if phdr.p_type == PT_TLS and opts.maximize_tls_size:
++            elf_edit_maximize_tls_size(phdr, e_ident[EI_CLASS])
+             f.seek(ehdr.e_phoff + i * phdr.len)
+             phdr.write(f)
++            maximize_tls_size_done = True
+             break
+ 
++    if opts.maximize_tls_size and not maximize_tls_size_done:
++        error('{}: TLS maximum size was not updated'.format(f.name))
+ 
+ def get_parser():
+     parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument('-a', dest='align', required=True,
++    parser.add_argument('-a', dest='align',
+                         help='How to set the LOAD alignment')
++    parser.add_argument('--maximize-tls-size', action='store_true',
++                        help='Set maximum PT_TLS size')
+     parser.add_argument('output',
+                         help='ELF file to edit')
+     return parser
+@@ -199,7 +219,7 @@ def main(argv):
+     parser = get_parser()
+     opts = parser.parse_args(argv)
+     with open(opts.output, 'r+b') as fout:
+-       elf_edit(fout, opts.align)
++       elf_edit(fout, opts)
+ 
+ 
+ if __name__ == '__main__':
 diff --git a/scripts/tst-ld-trace.py b/scripts/tst-ld-trace.py
 new file mode 100755
 index 0000000000..f5a4028003
@@ -4770,6 +5559,54 @@ index e7d5edea39..358f40eb5f 100644
  
    printf ("%23s", "");
    FOR_EACH_IMPL (impl, 0)
+diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+index 2ebe7901c0..64d7e52a39 100644
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -1254,6 +1254,11 @@ extern struct link_map * _dl_get_dl_main_map (void)
+ # endif
+ #endif
+ 
++/* Perform early memory allocation, avoding a TCB dependency.
++   Terminate the process if allocation fails.  May attempt to use
++   brk.  */
++void *_dl_early_allocate (size_t size) attribute_hidden;
++
+ /* Initialize the DSO sort algorithm to use.  */
+ #if !HAVE_TUNABLES
+ static inline void
+diff --git a/sysdeps/generic/startup.h b/sysdeps/generic/startup.h
+index 99509404eb..45979ab231 100644
+--- a/sysdeps/generic/startup.h
++++ b/sysdeps/generic/startup.h
+@@ -23,27 +23,3 @@
+ 
+ /* Use macro instead of inline function to avoid including <stdio.h>.  */
+ #define _startup_fatal(message) __libc_fatal ((message))
+-
+-static inline uid_t
+-startup_getuid (void)
+-{
+-  return __getuid ();
+-}
+-
+-static inline uid_t
+-startup_geteuid (void)
+-{
+-  return __geteuid ();
+-}
+-
+-static inline gid_t
+-startup_getgid (void)
+-{
+-  return __getgid ();
+-}
+-
+-static inline gid_t
+-startup_getegid (void)
+-{
+-  return __getegid ();
+-}
 diff --git a/sysdeps/hppa/dl-fptr.c b/sysdeps/hppa/dl-fptr.c
 index 2584557c4f..9ed21602d6 100644
 --- a/sysdeps/hppa/dl-fptr.c
@@ -5013,6 +5850,21 @@ index c44ab055aa..bb51b4198c 100644
  	default:
  	  _dl_reloc_bad_type (map, r_type, 0);
  	  break;
+diff --git a/sysdeps/mach/hurd/i386/init-first.c b/sysdeps/mach/hurd/i386/init-first.c
+index 1229b59114..534a796e0d 100644
+--- a/sysdeps/mach/hurd/i386/init-first.c
++++ b/sysdeps/mach/hurd/i386/init-first.c
+@@ -38,10 +38,6 @@ extern void __init_misc (int, char **, char **);
+ unsigned long int __hurd_threadvar_stack_offset;
+ unsigned long int __hurd_threadvar_stack_mask;
+ 
+-#ifndef SHARED
+-int __libc_enable_secure;
+-#endif
+-
+ extern int __libc_argc attribute_hidden;
+ extern char **__libc_argv attribute_hidden;
+ extern char **_dl_argv;
 diff --git a/sysdeps/nptl/dl-tls_init_tp.c b/sysdeps/nptl/dl-tls_init_tp.c
 index 1294c91816..53fba774a5 100644
 --- a/sysdeps/nptl/dl-tls_init_tp.c
@@ -5458,6 +6310,66 @@ index ee8085be69..0cf74c1a96 100644
  #define __NR_set_robust_list 466
  #define __NR_set_tid_address 411
  #define __NR_setdomainname 166
+diff --git a/sysdeps/unix/sysv/linux/alpha/brk_call.h b/sysdeps/unix/sysv/linux/alpha/brk_call.h
+new file mode 100644
+index 0000000000..b8088cf13f
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/alpha/brk_call.h
+@@ -0,0 +1,28 @@
++/* Invoke the brk system call.  Alpha version.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++static inline void *
++__brk_call (void *addr)
++{
++  unsigned long int result = INTERNAL_SYSCALL_CALL (brk, addr);
++  if (result == -ENOMEM)
++    /* Mimic the default error reporting behavior.  */
++    return addr;
++  else
++    return (void *) result;
++}
+diff --git a/sysdeps/unix/sysv/linux/alpha/dl-auxv.h b/sysdeps/unix/sysv/linux/alpha/dl-auxv.h
+index 81d90da095..fcec743239 100644
+--- a/sysdeps/unix/sysv/linux/alpha/dl-auxv.h
++++ b/sysdeps/unix/sysv/linux/alpha/dl-auxv.h
+@@ -20,16 +20,8 @@
+ 
+ extern long __libc_alpha_cache_shape[4];
+ 
+-#define DL_PLATFORM_AUXV				\
+-      case AT_L1I_CACHESHAPE:				\
+-	__libc_alpha_cache_shape[0] = av->a_un.a_val;	\
+-	break;						\
+-      case AT_L1D_CACHESHAPE:				\
+-	__libc_alpha_cache_shape[1] = av->a_un.a_val;	\
+-	break;						\
+-      case AT_L2_CACHESHAPE:				\
+-	__libc_alpha_cache_shape[2] = av->a_un.a_val;	\
+-	break;						\
+-      case AT_L3_CACHESHAPE:				\
+-	__libc_alpha_cache_shape[3] = av->a_un.a_val;	\
+-	break;
++#define DL_PLATFORM_AUXV					\
++  __libc_alpha_cache_shape[0] = auxv_values[AT_L1I_CACHESHAPE]; \
++  __libc_alpha_cache_shape[1] = auxv_values[AT_L1D_CACHESHAPE]; \
++  __libc_alpha_cache_shape[2] = auxv_values[AT_L2_CACHESHAPE];	\
++  __libc_alpha_cache_shape[3] = auxv_values[AT_L3_CACHESHAPE];
 diff --git a/sysdeps/unix/sysv/linux/arc/arch-syscall.h b/sysdeps/unix/sysv/linux/arc/arch-syscall.h
 index 1b626d9770..c1207aaa12 100644
 --- a/sysdeps/unix/sysv/linux/arc/arch-syscall.h
@@ -5495,6 +6407,58 @@ index 79da9e7597..88fce77349 100644
  
  /* Maximum queue length specifiable by listen.  */
  #define SOMAXCONN	4096
+diff --git a/sysdeps/unix/sysv/linux/brk.c b/sysdeps/unix/sysv/linux/brk.c
+index abbabc9e8b..9264a5a4a2 100644
+--- a/sysdeps/unix/sysv/linux/brk.c
++++ b/sysdeps/unix/sysv/linux/brk.c
+@@ -19,6 +19,7 @@
+ #include <errno.h>
+ #include <unistd.h>
+ #include <sysdep.h>
++#include <brk_call.h>
+ 
+ /* This must be initialized data because commons can't have aliases.  */
+ void *__curbrk = 0;
+@@ -33,7 +34,7 @@ weak_alias (__curbrk, ___brk_addr)
+ int
+ __brk (void *addr)
+ {
+-  __curbrk = (void *) INTERNAL_SYSCALL_CALL (brk, addr);
++  __curbrk = __brk_call (addr);
+   if (__curbrk < addr)
+     {
+       __set_errno (ENOMEM);
+diff --git a/sysdeps/unix/sysv/linux/brk_call.h b/sysdeps/unix/sysv/linux/brk_call.h
+new file mode 100644
+index 0000000000..72370c25d7
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/brk_call.h
+@@ -0,0 +1,25 @@
++/* Invoke the brk system call.  Generic Linux version.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++static inline void *
++__brk_call (void *addr)
++{
++  /* The default implementation reports errors through an unchanged
++     break.  */
++  return (void *) INTERNAL_SYSCALL_CALL (brk, addr);
++}
 diff --git a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c b/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
 index 82171bf325..dfc8c2beff 100644
 --- a/sysdeps/unix/sysv/linux/convert_scm_timestamps.c
@@ -5523,6 +6487,435 @@ index 96910154ed..dc9383758e 100644
  #define __NR_set_robust_list 99
  #define __NR_set_thread_area 244
  #define __NR_set_tid_address 96
+diff --git a/sysdeps/unix/sysv/linux/dl-early_allocate.c b/sysdeps/unix/sysv/linux/dl-early_allocate.c
+new file mode 100644
+index 0000000000..52c538e85a
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/dl-early_allocate.c
+@@ -0,0 +1,82 @@
++/* Early memory allocation for the dynamic loader.  Generic version.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* Mark symbols hidden in static PIE for early self relocation to work.  */
++#if BUILD_PIE_DEFAULT
++# pragma GCC visibility push(hidden)
++#endif
++#include <startup.h>
++
++#include <ldsodefs.h>
++#include <stddef.h>
++#include <string.h>
++#include <sysdep.h>
++#include <unistd.h>
++
++#include <brk_call.h>
++#include <mmap_call.h>
++
++/* Defined in brk.c.  */
++extern void *__curbrk;
++
++void *
++_dl_early_allocate (size_t size)
++{
++  void *result;
++
++  if (__curbrk != NULL)
++    /* If the break has been initialized, brk must have run before,
++       so just call it once more.  */
++    {
++      result = __sbrk (size);
++      if (result == (void *) -1)
++        result = NULL;
++    }
++  else
++    {
++      /* If brk has not been invoked, there is no need to update
++         __curbrk.  The first call to brk will take care of that.  */
++      void *previous = __brk_call (0);
++      result = __brk_call (previous + size);
++      if (result == previous)
++        result = NULL;
++      else
++        result = previous;
++    }
++
++  /* If brk fails, fall back to mmap.  This can happen due to
++     unfortunate ASLR layout decisions and kernel bugs, particularly
++     for static PIE.  */
++  if (result == NULL)
++    {
++      long int ret;
++      int prot = PROT_READ | PROT_WRITE;
++      int flags = MAP_PRIVATE | MAP_ANONYMOUS;
++#ifdef __NR_mmap2
++      ret = MMAP_CALL_INTERNAL (mmap2, 0, size, prot, flags, -1, 0);
++#else
++      ret = MMAP_CALL_INTERNAL (mmap, 0, size, prot, flags, -1, 0);
++#endif
++      if (INTERNAL_SYSCALL_ERROR_P (ret))
++        result = NULL;
++      else
++        result = (void *) ret;
++    }
++
++  return result;
++}
+diff --git a/sysdeps/unix/sysv/linux/dl-parse_auxv.h b/sysdeps/unix/sysv/linux/dl-parse_auxv.h
+new file mode 100644
+index 0000000000..bf9374371e
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/dl-parse_auxv.h
+@@ -0,0 +1,61 @@
++/* Parse the Linux auxiliary vector.
++   Copyright (C) 1995-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <elf.h>
++#include <entry.h>
++#include <fpu_control.h>
++#include <ldsodefs.h>
++#include <link.h>
++
++typedef ElfW(Addr) dl_parse_auxv_t[AT_MINSIGSTKSZ + 1];
++
++/* Copy the auxiliary vector into AUXV_VALUES and set up GLRO
++   variables.  */
++static inline
++void _dl_parse_auxv (ElfW(auxv_t) *av, dl_parse_auxv_t auxv_values)
++{
++  auxv_values[AT_ENTRY] = (ElfW(Addr)) ENTRY_POINT;
++  auxv_values[AT_PAGESZ] = EXEC_PAGESIZE;
++  auxv_values[AT_FPUCW] = _FPU_DEFAULT;
++
++  /* NB: Default to a constant CONSTANT_MINSIGSTKSZ.  */
++  _Static_assert (__builtin_constant_p (CONSTANT_MINSIGSTKSZ),
++                  "CONSTANT_MINSIGSTKSZ is constant");
++  auxv_values[AT_MINSIGSTKSZ] = CONSTANT_MINSIGSTKSZ;
++
++  for (; av->a_type != AT_NULL; av++)
++    if (av->a_type <= AT_MINSIGSTKSZ)
++      auxv_values[av->a_type] = av->a_un.a_val;
++
++  GLRO(dl_pagesize) = auxv_values[AT_PAGESZ];
++  __libc_enable_secure = auxv_values[AT_SECURE];
++  GLRO(dl_platform) = (void *) auxv_values[AT_PLATFORM];
++  GLRO(dl_hwcap) = auxv_values[AT_HWCAP];
++  GLRO(dl_hwcap2) = auxv_values[AT_HWCAP2];
++  GLRO(dl_clktck) = auxv_values[AT_CLKTCK];
++  GLRO(dl_fpu_control) = auxv_values[AT_FPUCW];
++  _dl_random = (void *) auxv_values[AT_RANDOM];
++  GLRO(dl_minsigstacksize) = auxv_values[AT_MINSIGSTKSZ];
++  GLRO(dl_sysinfo_dso) = (void *) auxv_values[AT_SYSINFO_EHDR];
++#ifdef NEED_DL_SYSINFO
++  if (GLRO(dl_sysinfo_dso) != NULL)
++    GLRO(dl_sysinfo) = auxv_values[AT_SYSINFO];
++#endif
++
++  DL_PLATFORM_AUXV
++}
+diff --git a/sysdeps/unix/sysv/linux/dl-sysdep.c b/sysdeps/unix/sysv/linux/dl-sysdep.c
+index 66ba489cd3..c90f109b11 100644
+--- a/sysdeps/unix/sysv/linux/dl-sysdep.c
++++ b/sysdeps/unix/sysv/linux/dl-sysdep.c
+@@ -16,35 +16,247 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-/* Linux needs some special initialization, but otherwise uses
+-   the generic dynamic linker system interface code.  */
+-
+-#include <string.h>
++#include <_itoa.h>
++#include <assert.h>
++#include <dl-auxv.h>
++#include <dl-osinfo.h>
++#include <dl-parse_auxv.h>
++#include <dl-procinfo.h>
++#include <dl-tunables.h>
++#include <elf.h>
++#include <errno.h>
+ #include <fcntl.h>
+-#include <unistd.h>
+-#include <sys/param.h>
+-#include <sys/utsname.h>
+ #include <ldsodefs.h>
++#include <libc-internal.h>
++#include <libintl.h>
+ #include <not-cancel.h>
++#include <stdlib.h>
++#include <string.h>
++#include <string.h>
++#include <sys/mman.h>
++#include <sys/param.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/utsname.h>
++#include <tls.h>
++#include <unistd.h>
++
++#include <dl-machine.h>
++#include <dl-hwcap-check.h>
+ 
+ #ifdef SHARED
+-# define DL_SYSDEP_INIT frob_brk ()
++extern char **_environ attribute_hidden;
++extern char _end[] attribute_hidden;
++
++/* Protect SUID program against misuse of file descriptors.  */
++extern void __libc_check_standard_fds (void);
+ 
+-static inline void
+-frob_brk (void)
++int __libc_enable_secure attribute_relro = 0;
++rtld_hidden_data_def (__libc_enable_secure)
++/* This variable contains the lowest stack address ever used.  */
++void *__libc_stack_end attribute_relro = NULL;
++rtld_hidden_data_def(__libc_stack_end)
++void *_dl_random attribute_relro = NULL;
++
++#ifndef DL_STACK_END
++# define DL_STACK_END(cookie) ((void *) (cookie))
++#endif
++
++/* Arguments passed to dl_main.  */
++struct dl_main_arguments
+ {
+-  __brk (0);			/* Initialize the break.  */
++  const ElfW(Phdr) *phdr;
++  ElfW(Word) phnum;
++  ElfW(Addr) user_entry;
++};
++
++/* Separate function, so that dl_main can be called without the large
++   array on the stack.  */
++static void
++_dl_sysdep_parse_arguments (void **start_argptr,
++			    struct dl_main_arguments *args)
++{
++  _dl_argc = (intptr_t) *start_argptr;
++  _dl_argv = (char **) (start_argptr + 1); /* Necessary aliasing violation.  */
++  _environ = _dl_argv + _dl_argc + 1;
++  for (char **tmp = _environ; ; ++tmp)
++    if (*tmp == NULL)
++      {
++	/* Another necessary aliasing violation.  */
++	GLRO(dl_auxv) = (ElfW(auxv_t) *) (tmp + 1);
++	break;
++      }
++
++  dl_parse_auxv_t auxv_values = { 0, };
++  _dl_parse_auxv (GLRO(dl_auxv), auxv_values);
++
++  args->phdr = (const ElfW(Phdr) *) auxv_values[AT_PHDR];
++  args->phnum = auxv_values[AT_PHNUM];
++  args->user_entry = auxv_values[AT_ENTRY];
+ }
+ 
+-# include <elf/dl-sysdep.c>
++ElfW(Addr)
++_dl_sysdep_start (void **start_argptr,
++		  void (*dl_main) (const ElfW(Phdr) *phdr, ElfW(Word) phnum,
++				   ElfW(Addr) *user_entry, ElfW(auxv_t) *auxv))
++{
++  __libc_stack_end = DL_STACK_END (start_argptr);
++
++  struct dl_main_arguments dl_main_args;
++  _dl_sysdep_parse_arguments (start_argptr, &dl_main_args);
++
++  dl_hwcap_check ();
++
++  __tunables_init (_environ);
++
++  /* Initialize DSO sorting algorithm after tunables.  */
++  _dl_sort_maps_init ();
++
++  __brk (0);			/* Initialize the break.  */
++
++#ifdef DL_PLATFORM_INIT
++  DL_PLATFORM_INIT;
+ #endif
+ 
++  /* Determine the length of the platform name.  */
++  if (GLRO(dl_platform) != NULL)
++    GLRO(dl_platformlen) = strlen (GLRO(dl_platform));
++
++  if (__sbrk (0) == _end)
++    /* The dynamic linker was run as a program, and so the initial break
++       starts just after our bss, at &_end.  The malloc in dl-minimal.c
++       will consume the rest of this page, so tell the kernel to move the
++       break up that far.  When the user program examines its break, it
++       will see this new value and not clobber our data.  */
++    __sbrk (GLRO(dl_pagesize)
++	    - ((_end - (char *) 0) & (GLRO(dl_pagesize) - 1)));
++
++  /* If this is a SUID program we make sure that FDs 0, 1, and 2 are
++     allocated.  If necessary we are doing it ourself.  If it is not
++     possible we stop the program.  */
++  if (__builtin_expect (__libc_enable_secure, 0))
++    __libc_check_standard_fds ();
++
++  (*dl_main) (dl_main_args.phdr, dl_main_args.phnum,
++              &dl_main_args.user_entry, GLRO(dl_auxv));
++  return dl_main_args.user_entry;
++}
++
++void
++_dl_sysdep_start_cleanup (void)
++{
++}
++
++void
++_dl_show_auxv (void)
++{
++  char buf[64];
++  ElfW(auxv_t) *av;
++
++  /* Terminate string.  */
++  buf[63] = '\0';
++
++  /* The following code assumes that the AT_* values are encoded
++     starting from 0 with AT_NULL, 1 for AT_IGNORE, and all other values
++     close by (otherwise the array will be too large).  In case we have
++     to support a platform where these requirements are not fulfilled
++     some alternative implementation has to be used.  */
++  for (av = GLRO(dl_auxv); av->a_type != AT_NULL; ++av)
++    {
++      static const struct
++      {
++	const char label[22];
++	enum { unknown = 0, dec, hex, str, ignore } form : 8;
++      } auxvars[] =
++	{
++	  [AT_EXECFD - 2] =		{ "EXECFD:            ", dec },
++	  [AT_EXECFN - 2] =		{ "EXECFN:            ", str },
++	  [AT_PHDR - 2] =		{ "PHDR:              0x", hex },
++	  [AT_PHENT - 2] =		{ "PHENT:             ", dec },
++	  [AT_PHNUM - 2] =		{ "PHNUM:             ", dec },
++	  [AT_PAGESZ - 2] =		{ "PAGESZ:            ", dec },
++	  [AT_BASE - 2] =		{ "BASE:              0x", hex },
++	  [AT_FLAGS - 2] =		{ "FLAGS:             0x", hex },
++	  [AT_ENTRY - 2] =		{ "ENTRY:             0x", hex },
++	  [AT_NOTELF - 2] =		{ "NOTELF:            ", hex },
++	  [AT_UID - 2] =		{ "UID:               ", dec },
++	  [AT_EUID - 2] =		{ "EUID:              ", dec },
++	  [AT_GID - 2] =		{ "GID:               ", dec },
++	  [AT_EGID - 2] =		{ "EGID:              ", dec },
++	  [AT_PLATFORM - 2] =		{ "PLATFORM:          ", str },
++	  [AT_HWCAP - 2] =		{ "HWCAP:             ", hex },
++	  [AT_CLKTCK - 2] =		{ "CLKTCK:            ", dec },
++	  [AT_FPUCW - 2] =		{ "FPUCW:             ", hex },
++	  [AT_DCACHEBSIZE - 2] =	{ "DCACHEBSIZE:       0x", hex },
++	  [AT_ICACHEBSIZE - 2] =	{ "ICACHEBSIZE:       0x", hex },
++	  [AT_UCACHEBSIZE - 2] =	{ "UCACHEBSIZE:       0x", hex },
++	  [AT_IGNOREPPC - 2] =		{ "IGNOREPPC", ignore },
++	  [AT_SECURE - 2] =		{ "SECURE:            ", dec },
++	  [AT_BASE_PLATFORM - 2] =	{ "BASE_PLATFORM:     ", str },
++	  [AT_SYSINFO - 2] =		{ "SYSINFO:           0x", hex },
++	  [AT_SYSINFO_EHDR - 2] =	{ "SYSINFO_EHDR:      0x", hex },
++	  [AT_RANDOM - 2] =		{ "RANDOM:            0x", hex },
++	  [AT_HWCAP2 - 2] =		{ "HWCAP2:            0x", hex },
++	  [AT_MINSIGSTKSZ - 2] =	{ "MINSIGSTKSZ:       ", dec },
++	  [AT_L1I_CACHESIZE - 2] =	{ "L1I_CACHESIZE:     ", dec },
++	  [AT_L1I_CACHEGEOMETRY - 2] =	{ "L1I_CACHEGEOMETRY: 0x", hex },
++	  [AT_L1D_CACHESIZE - 2] =	{ "L1D_CACHESIZE:     ", dec },
++	  [AT_L1D_CACHEGEOMETRY - 2] =	{ "L1D_CACHEGEOMETRY: 0x", hex },
++	  [AT_L2_CACHESIZE - 2] =	{ "L2_CACHESIZE:      ", dec },
++	  [AT_L2_CACHEGEOMETRY - 2] =	{ "L2_CACHEGEOMETRY:  0x", hex },
++	  [AT_L3_CACHESIZE - 2] =	{ "L3_CACHESIZE:      ", dec },
++	  [AT_L3_CACHEGEOMETRY - 2] =	{ "L3_CACHEGEOMETRY:  0x", hex },
++	};
++      unsigned int idx = (unsigned int) (av->a_type - 2);
++
++      if ((unsigned int) av->a_type < 2u
++	  || (idx < sizeof (auxvars) / sizeof (auxvars[0])
++	      && auxvars[idx].form == ignore))
++	continue;
++
++      assert (AT_NULL == 0);
++      assert (AT_IGNORE == 1);
++
++      /* Some entries are handled in a special way per platform.  */
++      if (_dl_procinfo (av->a_type, av->a_un.a_val) == 0)
++	continue;
++
++      if (idx < sizeof (auxvars) / sizeof (auxvars[0])
++	  && auxvars[idx].form != unknown)
++	{
++	  const char *val = (char *) av->a_un.a_val;
++
++	  if (__builtin_expect (auxvars[idx].form, dec) == dec)
++	    val = _itoa ((unsigned long int) av->a_un.a_val,
++			 buf + sizeof buf - 1, 10, 0);
++	  else if (__builtin_expect (auxvars[idx].form, hex) == hex)
++	    val = _itoa ((unsigned long int) av->a_un.a_val,
++			 buf + sizeof buf - 1, 16, 0);
++
++	  _dl_printf ("AT_%s%s\n", auxvars[idx].label, val);
++
++	  continue;
++	}
++
++      /* Unknown value: print a generic line.  */
++      char buf2[17];
++      buf2[sizeof (buf2) - 1] = '\0';
++      const char *val2 = _itoa ((unsigned long int) av->a_un.a_val,
++				buf2 + sizeof buf2 - 1, 16, 0);
++      const char *val =  _itoa ((unsigned long int) av->a_type,
++				buf + sizeof buf - 1, 16, 0);
++      _dl_printf ("AT_??? (0x%s): 0x%s\n", val, val2);
++    }
++}
++
++#endif /* SHARED */
++
+ 
+ int
+ attribute_hidden
+ _dl_discover_osversion (void)
+ {
+-#if defined NEED_DL_SYSINFO_DSO && defined SHARED
++#ifdef SHARED
+   if (GLRO(dl_sysinfo_map) != NULL)
+     {
+       /* If the kernel-supplied DSO contains a note indicating the kernel's
+@@ -75,7 +287,7 @@ _dl_discover_osversion (void)
+ 	      }
+ 	  }
+     }
+-#endif
++#endif /* SHARED */
+ 
+   char bufmem[64];
+   char *buf = bufmem;
 diff --git a/sysdeps/unix/sysv/linux/faccessat.c b/sysdeps/unix/sysv/linux/faccessat.c
 index 59ee4b6f8b..1378bb2db8 100644
 --- a/sysdeps/unix/sysv/linux/faccessat.c
@@ -6011,6 +7404,19 @@ index 5cbe00f1e9..0000000000
 -}
 -
 -weak_alias (__swapcontext, swapcontext)
+diff --git a/sysdeps/unix/sysv/linux/i386/Makefile b/sysdeps/unix/sysv/linux/i386/Makefile
+index abd0009d58..e379a2e767 100644
+--- a/sysdeps/unix/sysv/linux/i386/Makefile
++++ b/sysdeps/unix/sysv/linux/i386/Makefile
+@@ -14,7 +14,7 @@ install-bin += lddlibc4
+ endif
+ 
+ ifeq ($(subdir),io)
+-sysdep_routines += libc-do-syscall
++sysdep_routines += libc-do-syscall libc-do-syscall-int80
+ endif
+ 
+ ifeq ($(subdir),stdlib)
 diff --git a/sysdeps/unix/sysv/linux/i386/arch-syscall.h b/sysdeps/unix/sysv/linux/i386/arch-syscall.h
 index c86ccbda46..1998f0d76a 100644
 --- a/sysdeps/unix/sysv/linux/i386/arch-syscall.h
@@ -6023,6 +7429,154 @@ index c86ccbda46..1998f0d76a 100644
  #define __NR_set_robust_list 311
  #define __NR_set_thread_area 243
  #define __NR_set_tid_address 258
+diff --git a/sysdeps/unix/sysv/linux/i386/libc-do-syscall-int80.S b/sysdeps/unix/sysv/linux/i386/libc-do-syscall-int80.S
+new file mode 100644
+index 0000000000..2c472f2557
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/i386/libc-do-syscall-int80.S
+@@ -0,0 +1,25 @@
++/* Out-of-line syscall stub for six-argument syscalls from C.  For static PIE.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#ifndef SHARED
++# define I386_USE_SYSENTER 0
++# include <sysdep.h>
++
++# define __libc_do_syscall __libc_do_syscall_int80
++# include "libc-do-syscall.S"
++#endif
+diff --git a/sysdeps/unix/sysv/linux/i386/libc-do-syscall.S b/sysdeps/unix/sysv/linux/i386/libc-do-syscall.S
+index 04154f43e0..3eea5f3a5d 100644
+--- a/sysdeps/unix/sysv/linux/i386/libc-do-syscall.S
++++ b/sysdeps/unix/sysv/linux/i386/libc-do-syscall.S
+@@ -18,8 +18,6 @@
+ 
+ #include <sysdep.h>
+ 
+-#ifndef OPTIMIZE_FOR_GCC_5
+-
+ /* %eax, %ecx, %edx and %esi contain the values expected by the kernel.
+    %edi points to a structure with the values of %ebx, %edi and %ebp.  */
+ 
+@@ -50,4 +48,3 @@ ENTRY (__libc_do_syscall)
+ 	cfi_restore (ebx)
+ 	ret
+ END (__libc_do_syscall)
+-#endif
+diff --git a/sysdeps/unix/sysv/linux/i386/startup.h b/sysdeps/unix/sysv/linux/i386/startup.h
+index aab8e26ca7..213805d7d2 100644
+--- a/sysdeps/unix/sysv/linux/i386/startup.h
++++ b/sysdeps/unix/sysv/linux/i386/startup.h
+@@ -1,5 +1,5 @@
+ /* Linux/i386 definitions of functions used by static libc main startup.
+-   Copyright (C) 2017-2022 Free Software Foundation, Inc.
++   Copyright (C) 2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -16,46 +16,7 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#if BUILD_PIE_DEFAULT
+-/* Can't use "call *%gs:SYSINFO_OFFSET" during statup in static PIE.  */
+-# define I386_USE_SYSENTER 0
++/* Can't use "call *%gs:SYSINFO_OFFSET" during startup.  */
++#define I386_USE_SYSENTER 0
+ 
+-# include <sysdep.h>
+-# include <abort-instr.h>
+-
+-__attribute__ ((__noreturn__))
+-static inline void
+-_startup_fatal (const char *message __attribute__ ((unused)))
+-{
+-  /* This is only called very early during startup in static PIE.
+-     FIXME: How can it be improved?  */
+-  ABORT_INSTRUCTION;
+-  __builtin_unreachable ();
+-}
+-
+-static inline uid_t
+-startup_getuid (void)
+-{
+-  return (uid_t) INTERNAL_SYSCALL_CALL (getuid32);
+-}
+-
+-static inline uid_t
+-startup_geteuid (void)
+-{
+-  return (uid_t) INTERNAL_SYSCALL_CALL (geteuid32);
+-}
+-
+-static inline gid_t
+-startup_getgid (void)
+-{
+-  return (gid_t) INTERNAL_SYSCALL_CALL (getgid32);
+-}
+-
+-static inline gid_t
+-startup_getegid (void)
+-{
+-  return (gid_t) INTERNAL_SYSCALL_CALL (getegid32);
+-}
+-#else
+-# include_next <startup.h>
+-#endif
++#include_next <startup.h>
+diff --git a/sysdeps/unix/sysv/linux/i386/sysdep.h b/sysdeps/unix/sysv/linux/i386/sysdep.h
+index 4558ab66cb..7085f7e19a 100644
+--- a/sysdeps/unix/sysv/linux/i386/sysdep.h
++++ b/sysdeps/unix/sysv/linux/i386/sysdep.h
+@@ -42,6 +42,15 @@
+ # endif
+ #endif
+ 
++#if !I386_USE_SYSENTER && IS_IN (libc) && !defined SHARED
++/* Inside static libc, we have two versions.  For compilation units
++   with !I386_USE_SYSENTER, the vDSO entry mechanism cannot be
++   used. */
++# define I386_DO_SYSCALL_STRING "__libc_do_syscall_int80"
++#else
++# define I386_DO_SYSCALL_STRING "__libc_do_syscall"
++#endif
++
+ #ifdef __ASSEMBLER__
+ 
+ /* Linux uses a negative return value to indicate syscall errors,
+@@ -301,7 +310,7 @@ struct libc_do_syscall_args
+     };									\
+     asm volatile (							\
+     "movl %1, %%eax\n\t"						\
+-    "call __libc_do_syscall"						\
++    "call " I386_DO_SYSCALL_STRING					\
+     : "=a" (resultvar)							\
+     : "i" (__NR_##name), "c" (arg2), "d" (arg3), "S" (arg4), "D" (&_xv) \
+     : "memory", "cc")
+@@ -315,7 +324,7 @@ struct libc_do_syscall_args
+     };									\
+     asm volatile (							\
+     "movl %1, %%eax\n\t"						\
+-    "call __libc_do_syscall"						\
++    "call " I386_DO_SYSCALL_STRING					\
+     : "=a" (resultvar)							\
+     : "a" (name), "c" (arg2), "d" (arg3), "S" (arg4), "D" (&_xv)	\
+     : "memory", "cc")
 diff --git a/sysdeps/unix/sysv/linux/ia64/Makefile b/sysdeps/unix/sysv/linux/ia64/Makefile
 index da85ba43e2..c5cc41b367 100644
 --- a/sysdeps/unix/sysv/linux/ia64/Makefile
@@ -6049,6 +7603,131 @@ index d898bce404..b2eab1b93d 100644
  #define __NR_set_robust_list 1298
  #define __NR_set_tid_address 1233
  #define __NR_setdomainname 1129
+diff --git a/sysdeps/unix/sysv/linux/ia64/brk.c b/sysdeps/unix/sysv/linux/ia64/brk.c
+index 65142aeae9..d2135b74fc 100644
+--- a/sysdeps/unix/sysv/linux/ia64/brk.c
++++ b/sysdeps/unix/sysv/linux/ia64/brk.c
+@@ -16,7 +16,6 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <dl-sysdep.h>
+-/* brk is used by statup before TCB is properly set.  */
+-#undef USE_DL_SYSINFO
++/* brk is used by startup before TCB is properly set up.  */
++#define IA64_USE_NEW_STUB 0
+ #include <sysdeps/unix/sysv/linux/brk.c>
+diff --git a/sysdeps/unix/sysv/linux/ia64/startup.h b/sysdeps/unix/sysv/linux/ia64/startup.h
+new file mode 100644
+index 0000000000..77f29f15a2
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/ia64/startup.h
+@@ -0,0 +1,22 @@
++/* Linux/ia64 definitions of functions used by static libc main startup.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* This code is used before the TCB is set up.  */
++#define IA64_USE_NEW_STUB 0
++
++#include_next <startup.h>
+diff --git a/sysdeps/unix/sysv/linux/ia64/sysdep.h b/sysdeps/unix/sysv/linux/ia64/sysdep.h
+index 193ecee023..14adbdf4ff 100644
+--- a/sysdeps/unix/sysv/linux/ia64/sysdep.h
++++ b/sysdeps/unix/sysv/linux/ia64/sysdep.h
+@@ -44,12 +44,15 @@
+ #undef SYS_ify
+ #define SYS_ify(syscall_name)	__NR_##syscall_name
+ 
+-#if defined USE_DL_SYSINFO \
+-	&& (IS_IN (libc) \
+-	    || IS_IN (libpthread) || IS_IN (librt))
+-# define IA64_USE_NEW_STUB
+-#else
+-# undef IA64_USE_NEW_STUB
++#ifndef IA64_USE_NEW_STUB
++# if defined USE_DL_SYSINFO && IS_IN (libc)
++#  define IA64_USE_NEW_STUB 1
++# else
++#  define IA64_USE_NEW_STUB 0
++# endif
++#endif
++#if IA64_USE_NEW_STUB && !USE_DL_SYSINFO
++# error IA64_USE_NEW_STUB needs USE_DL_SYSINFO
+ #endif
+ 
+ #ifdef __ASSEMBLER__
+@@ -101,7 +104,7 @@
+ 	mov r15=num;				\
+ 	break __IA64_BREAK_SYSCALL
+ 
+-#ifdef IA64_USE_NEW_STUB
++#if IA64_USE_NEW_STUB
+ # ifdef SHARED
+ #  define DO_CALL(num)				\
+ 	.prologue;				\
+@@ -185,7 +188,7 @@
+    (non-negative) errno on error or the return value on success.
+  */
+ 
+-#ifdef IA64_USE_NEW_STUB
++#if IA64_USE_NEW_STUB
+ 
+ # define INTERNAL_SYSCALL_NCS(name, nr, args...)			      \
+ ({									      \
+@@ -277,7 +280,7 @@
+ #define ASM_OUTARGS_5	ASM_OUTARGS_4, "=r" (_out4)
+ #define ASM_OUTARGS_6	ASM_OUTARGS_5, "=r" (_out5)
+ 
+-#ifdef IA64_USE_NEW_STUB
++#if IA64_USE_NEW_STUB
+ #define ASM_ARGS_0
+ #define ASM_ARGS_1	ASM_ARGS_0, "4" (_out0)
+ #define ASM_ARGS_2	ASM_ARGS_1, "5" (_out1)
+@@ -313,7 +316,7 @@
+   /* Branch registers.  */						\
+   "b6"
+ 
+-#ifdef IA64_USE_NEW_STUB
++#if IA64_USE_NEW_STUB
+ # define ASM_CLOBBERS_6	ASM_CLOBBERS_6_COMMON
+ #else
+ # define ASM_CLOBBERS_6	ASM_CLOBBERS_6_COMMON , "b7"
+diff --git a/sysdeps/unix/sysv/linux/ldsodefs.h b/sysdeps/unix/sysv/linux/ldsodefs.h
+index 011756ddc1..af108991f0 100644
+--- a/sysdeps/unix/sysv/linux/ldsodefs.h
++++ b/sysdeps/unix/sysv/linux/ldsodefs.h
+@@ -24,16 +24,4 @@
+ /* Get the real definitions.  */
+ #include_next <ldsodefs.h>
+ 
+-/* We can assume that the kernel always provides the AT_UID, AT_EUID,
+-   AT_GID, and AT_EGID values in the auxiliary vector from 2.4.0 or so on.  */
+-#define HAVE_AUX_XID
+-
+-/* We can assume that the kernel always provides the AT_SECURE value
+-   in the auxiliary vector from 2.5.74 or so on.  */
+-#define HAVE_AUX_SECURE
+-
+-/* Starting with one of the 2.4.0 pre-releases the Linux kernel passes
+-   up the page size information.  */
+-#define HAVE_AUX_PAGESIZE
+-
+ #endif /* ldsodefs.h */
 diff --git a/sysdeps/unix/sysv/linux/m68k/arch-syscall.h b/sysdeps/unix/sysv/linux/m68k/arch-syscall.h
 index fe721b8090..5fc3723772 100644
 --- a/sysdeps/unix/sysv/linux/m68k/arch-syscall.h
@@ -6061,6 +7740,20 @@ index fe721b8090..5fc3723772 100644
  #define __NR_set_robust_list 304
  #define __NR_set_thread_area 334
  #define __NR_set_tid_address 253
+diff --git a/sysdeps/unix/sysv/linux/m68k/sysdep.h b/sysdeps/unix/sysv/linux/m68k/sysdep.h
+index 628e1be835..d87892a377 100644
+--- a/sysdeps/unix/sysv/linux/m68k/sysdep.h
++++ b/sysdeps/unix/sysv/linux/m68k/sysdep.h
+@@ -299,8 +299,6 @@ SYSCALL_ERROR_LABEL:							      \
+ #define PTR_MANGLE(var) (void) (var)
+ #define PTR_DEMANGLE(var) (void) (var)
+ 
+-#if defined NEED_DL_SYSINFO || defined NEED_DL_SYSINFO_DSO
+ /* M68K needs system-supplied DSO to access TLS helpers
+    even when statically linked.  */
+-# define NEED_STATIC_SYSINFO_DSO 1
+-#endif
++#define NEED_STATIC_SYSINFO_DSO 1
 diff --git a/sysdeps/unix/sysv/linux/microblaze/arch-syscall.h b/sysdeps/unix/sysv/linux/microblaze/arch-syscall.h
 index 6e10c3661d..b6e9b007e4 100644
 --- a/sysdeps/unix/sysv/linux/microblaze/arch-syscall.h
@@ -6202,6 +7895,50 @@ index d6747c542f..a9d6b94572 100644
  #define __NR_set_robust_list 5268
  #define __NR_set_thread_area 5242
  #define __NR_set_tid_address 5212
+diff --git a/sysdeps/unix/sysv/linux/mmap_call.h b/sysdeps/unix/sysv/linux/mmap_call.h
+new file mode 100644
+index 0000000000..3547c99e14
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/mmap_call.h
+@@ -0,0 +1,22 @@
++/* Generic definition of MMAP_CALL and MMAP_CALL_INTERNAL.
++   Copyright (C) 2017-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define MMAP_CALL(__nr, __addr, __len, __prot, __flags, __fd, __offset) \
++  INLINE_SYSCALL_CALL (__nr, __addr, __len, __prot, __flags, __fd, __offset)
++#define MMAP_CALL_INTERNAL(__nr, __addr, __len, __prot, __flags, __fd, __offset) \
++  INTERNAL_SYSCALL_CALL (__nr, __addr, __len, __prot, __flags, __fd, __offset)
+diff --git a/sysdeps/unix/sysv/linux/mmap_internal.h b/sysdeps/unix/sysv/linux/mmap_internal.h
+index 841b731391..aebf97d064 100644
+--- a/sysdeps/unix/sysv/linux/mmap_internal.h
++++ b/sysdeps/unix/sysv/linux/mmap_internal.h
+@@ -42,10 +42,6 @@ static uint64_t page_unit;
+ /* Do not accept offset not multiple of page size.  */
+ #define MMAP_OFF_LOW_MASK  (MMAP2_PAGE_UNIT - 1)
+ 
+-/* An architecture may override this.  */
+-#ifndef MMAP_CALL
+-# define MMAP_CALL(__nr, __addr, __len, __prot, __flags, __fd, __offset) \
+-  INLINE_SYSCALL_CALL (__nr, __addr, __len, __prot, __flags, __fd, __offset)
+-#endif
++#include <mmap_call.h>
+ 
+ #endif /* MMAP_INTERNAL_LINUX_H  */
 diff --git a/sysdeps/unix/sysv/linux/nios2/arch-syscall.h b/sysdeps/unix/sysv/linux/nios2/arch-syscall.h
 index 4ee209bc44..809a219ef3 100644
 --- a/sysdeps/unix/sysv/linux/nios2/arch-syscall.h
@@ -6241,6 +7978,38 @@ index 107cf98784..dc68648525 100644
  	      && st.st_dev == fsst.st_dev)
  	    {
  	      if (strcmp (mntbuf.mnt_type, "ext4") == 0)
+diff --git a/sysdeps/unix/sysv/linux/powerpc/dl-auxv.h b/sysdeps/unix/sysv/linux/powerpc/dl-auxv.h
+index 594371940a..ce2281cf11 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/dl-auxv.h
++++ b/sysdeps/unix/sysv/linux/powerpc/dl-auxv.h
+@@ -16,15 +16,5 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <ldsodefs.h>
+-
+-#if IS_IN (libc) && !defined SHARED
+-int GLRO(dl_cache_line_size);
+-#endif
+-
+-/* Scan the Aux Vector for the "Data Cache Block Size" entry and assign it
+-   to dl_cache_line_size.  */
+-#define DL_PLATFORM_AUXV						      \
+-      case AT_DCACHEBSIZE:						      \
+-	GLRO(dl_cache_line_size) = av->a_un.a_val;			      \
+-	break;
++#define DL_PLATFORM_AUXV \
++  GLRO(dl_cache_line_size) = auxv_values[AT_DCACHEBSIZE];
+diff --git a/sysdeps/unix/sysv/linux/powerpc/dl-support.c b/sysdeps/unix/sysv/linux/powerpc/dl-support.c
+new file mode 100644
+index 0000000000..abe68a7049
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/powerpc/dl-support.c
+@@ -0,0 +1,4 @@
++#include <elf/dl-support.c>
++
++/* Populated from the auxiliary vector.  */
++int _dl_cache_line_size;
 diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc32/arch-syscall.h b/sysdeps/unix/sysv/linux/powerpc/powerpc32/arch-syscall.h
 index 497299fbc4..627831ebae 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/powerpc32/arch-syscall.h
@@ -6289,6 +8058,38 @@ index 919a79ee91..d656aedcc2 100644
  #define __NR_set_robust_list 99
  #define __NR_set_tid_address 96
  #define __NR_setdomainname 162
+diff --git a/sysdeps/unix/sysv/linux/s390/mmap_internal.h b/sysdeps/unix/sysv/linux/s390/mmap_call.h
+similarity index 78%
+rename from sysdeps/unix/sysv/linux/s390/mmap_internal.h
+rename to sysdeps/unix/sysv/linux/s390/mmap_call.h
+index cc76ac9735..f169b8bab9 100644
+--- a/sysdeps/unix/sysv/linux/s390/mmap_internal.h
++++ b/sysdeps/unix/sysv/linux/s390/mmap_call.h
+@@ -16,9 +16,6 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#ifndef MMAP_S390_INTERNAL_H
+-# define MMAP_S390_INTERNAL_H
+-
+ #define MMAP_CALL(__nr, __addr, __len, __prot, __flags, __fd, __offset)	\
+   ({									\
+     long int __args[6] = { (long int) (__addr), (long int) (__len),	\
+@@ -26,7 +23,10 @@
+ 			   (long int) (__fd), (long int) (__offset) };	\
+     INLINE_SYSCALL_CALL (__nr, __args);					\
+   })
+-
+-#include_next <mmap_internal.h>
+-
+-#endif
++#define MMAP_CALL_INTERNAL(__nr, __addr, __len, __prot, __flags, __fd, __offset)	\
++  ({									\
++    long int __args[6] = { (long int) (__addr), (long int) (__len),	\
++			   (long int) (__prot), (long int) (__flags),	\
++			   (long int) (__fd), (long int) (__offset) };	\
++    INTERNAL_SYSCALL_CALL (__nr, __args);				\
++  })
 diff --git a/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h b/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h
 index 005c0ada7a..57025107e8 100644
 --- a/sysdeps/unix/sysv/linux/s390/s390-32/arch-syscall.h
@@ -6325,6 +8126,123 @@ index d8fb041568..d52b522d9c 100644
  #define __NR_set_robust_list 311
  #define __NR_set_tid_address 258
  #define __NR_setdomainname 121
+diff --git a/sysdeps/unix/sysv/linux/sparc/brk.c b/sysdeps/unix/sysv/linux/sparc/brk.c
+deleted file mode 100644
+index c5c1ee0282..0000000000
+--- a/sysdeps/unix/sysv/linux/sparc/brk.c
++++ /dev/null
+@@ -1,58 +0,0 @@
+-/* Change data segment.  Linux SPARC version.
+-   Copyright (C) 2021-2022 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library.  If not, see
+-   <https://www.gnu.org/licenses/>.  */
+-
+-#include <errno.h>
+-#include <unistd.h>
+-#include <sysdep.h>
+-
+-/* This must be initialized data because commons can't have aliases.  */
+-void *__curbrk = 0;
+-
+-#if HAVE_INTERNAL_BRK_ADDR_SYMBOL
+-/* Old braindamage in GCC's crtstuff.c requires this symbol in an attempt
+-   to work around different old braindamage in the old Linux ELF dynamic
+-   linker.  */
+-weak_alias (__curbrk, ___brk_addr)
+-#endif
+-
+-#ifdef __arch64__
+-# define SYSCALL_NUM "0x6d"
+-#else
+-# define SYSCALL_NUM "0x10"
+-#endif
+-
+-int
+-__brk (void *addr)
+-{
+-  register long int g1 asm ("g1") = __NR_brk;
+-  register long int o0 asm ("o0") = (long int) addr;
+-  asm volatile ("ta " SYSCALL_NUM
+-		: "=r"(o0)
+-		: "r"(g1), "0"(o0)
+-		: "cc");
+-  __curbrk = (void *) o0;
+-
+-  if (__curbrk < addr)
+-    {
+-      __set_errno (ENOMEM);
+-      return -1;
+-    }
+-
+-  return 0;
+-}
+-weak_alias (__brk, brk)
+diff --git a/sysdeps/unix/sysv/linux/alpha/brk.c b/sysdeps/unix/sysv/linux/sparc/brk_call.h
+similarity index 61%
+rename from sysdeps/unix/sysv/linux/alpha/brk.c
+rename to sysdeps/unix/sysv/linux/sparc/brk_call.h
+index 32082a4fae..59ce521660 100644
+--- a/sysdeps/unix/sysv/linux/alpha/brk.c
++++ b/sysdeps/unix/sysv/linux/sparc/brk_call.h
+@@ -1,5 +1,5 @@
+-/* Change data segment size.  Linux/Alpha.
+-   Copyright (C) 2020-2022 Free Software Foundation, Inc.
++/* Invoke the brk system call.  Sparc version.
++   Copyright (C) 2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -16,23 +16,20 @@
+    License along with the GNU C Library.  If not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <errno.h>
+-#include <unistd.h>
+-#include <sysdep.h>
++#ifdef __arch64__
++# define SYSCALL_NUM "0x6d"
++#else
++# define SYSCALL_NUM "0x10"
++#endif
+ 
+-void *__curbrk = 0;
+-
+-int
+-__brk (void *addr)
++static inline void *
++__brk_call (void *addr)
+ {
+-  /* Alpha brk returns -ENOMEM in case of failure.  */
+-  __curbrk = (void *) INTERNAL_SYSCALL_CALL (brk, addr);
+-  if ((unsigned long) __curbrk == -ENOMEM)
+-    {
+-      __set_errno (ENOMEM);
+-      return -1;
+-    }
+-
+-  return 0;
++  register long int g1 asm ("g1") = __NR_brk;
++  register long int o0 asm ("o0") = (long int) addr;
++  asm volatile ("ta " SYSCALL_NUM
++		: "=r"(o0)
++		: "r"(g1), "0"(o0)
++		: "cc");
++  return (void *) o0;
+ }
+-weak_alias (__brk, brk)
 diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h b/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h
 index 2bc014fe6a..d3f4d8aa3e 100644
 --- a/sysdeps/unix/sysv/linux/sparc/sparc32/arch-syscall.h
@@ -6362,6 +8280,51 @@ index d703485e3f..d6f5ca89cd 100644
  
    __munmap (stack, stack_size);
  
+diff --git a/sysdeps/unix/sysv/linux/startup.h b/sysdeps/unix/sysv/linux/startup.h
+new file mode 100644
+index 0000000000..39859b404a
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/startup.h
+@@ -0,0 +1,39 @@
++/* Linux definitions of functions used by static libc main startup.
++   Copyright (C) 2017-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#ifdef SHARED
++# include_next <startup.h>
++#else
++# include <sysdep.h>
++
++/* Avoid a run-time invocation of strlen.  */
++#define _startup_fatal(message)                                         \
++  do                                                                    \
++    {                                                                   \
++      size_t __message_length = __builtin_strlen (message);             \
++      if (! __builtin_constant_p (__message_length))                    \
++        {                                                               \
++          extern void _startup_fatal_not_constant (void);               \
++          _startup_fatal_not_constant ();                               \
++        }                                                               \
++      INTERNAL_SYSCALL_CALL (write, STDERR_FILENO, (message),           \
++                             __message_length);                         \
++      INTERNAL_SYSCALL_CALL (exit_group, 127);                          \
++    }                                                                   \
++  while (0)
++#endif  /* !SHARED */
 diff --git a/sysdeps/unix/sysv/linux/syscall-names.list b/sysdeps/unix/sysv/linux/syscall-names.list
 index 6421806110..b8c0b0c586 100644
 --- a/sysdeps/unix/sysv/linux/syscall-names.list
