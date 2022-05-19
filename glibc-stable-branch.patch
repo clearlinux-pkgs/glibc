@@ -145,8 +145,13 @@ Siddhesh Poyarekar (2):
 Stafford Horne (1):
       resolv: Fix tst-resolv tests for 2.35 ABIs and later
 
-Stefan Liebler (1):
+Stefan Liebler (2):
       S390: Add new s390 platform z16.
+      S390: Enable static PIE
+
+Szabolcs Nagy (2):
+      rtld: Use generic argv adjustment in ld.so [BZ #23293]
+      linux: Add a getauxval test [BZ #23293]
 
 diff --git a/INSTALL b/INSTALL
 index 63c022d6b9..237a2f9482 100644
@@ -1764,6 +1769,193 @@ index 0000000000..7c89c9a5a4
 +++ b/elf/libtracemod5-1.c
 @@ -0,0 +1 @@
 +/* Empty  */
+diff --git a/elf/rtld.c b/elf/rtld.c
+index 8dafaf61f4..9cc9e5fd4c 100644
+--- a/elf/rtld.c
++++ b/elf/rtld.c
+@@ -1312,6 +1312,62 @@ rtld_setup_main_map (struct link_map *main_map)
+   return has_interp;
+ }
+ 
++/* Adjusts the contents of the stack and related globals for the user
++   entry point.  The ld.so processed skip_args arguments and bumped
++   _dl_argv and _dl_argc accordingly.  Those arguments are removed from
++   argv here.  */
++static void
++_dl_start_args_adjust (int skip_args)
++{
++  void **sp = (void **) (_dl_argv - skip_args - 1);
++  void **p = sp + skip_args;
++
++  if (skip_args == 0)
++    return;
++
++  /* Sanity check.  */
++  intptr_t argc = (intptr_t) sp[0] - skip_args;
++  assert (argc == _dl_argc);
++
++  /* Adjust argc on stack.  */
++  sp[0] = (void *) (intptr_t) _dl_argc;
++
++  /* Update globals in rtld.  */
++  _dl_argv -= skip_args;
++  _environ -= skip_args;
++
++  /* Shuffle argv down.  */
++  do
++    *++sp = *++p;
++  while (*p != NULL);
++
++  assert (_environ == (char **) (sp + 1));
++
++  /* Shuffle envp down.  */
++  do
++    *++sp = *++p;
++  while (*p != NULL);
++
++#ifdef HAVE_AUX_VECTOR
++  void **auxv = (void **) GLRO(dl_auxv) - skip_args;
++  GLRO(dl_auxv) = (ElfW(auxv_t) *) auxv; /* Aliasing violation.  */
++  assert (auxv == sp + 1);
++
++  /* Shuffle auxv down. */
++  ElfW(auxv_t) ax;
++  char *oldp = (char *) (p + 1);
++  char *newp = (char *) (sp + 1);
++  do
++    {
++      memcpy (&ax, oldp, sizeof (ax));
++      memcpy (newp, &ax, sizeof (ax));
++      oldp += sizeof (ax);
++      newp += sizeof (ax);
++    }
++  while (ax.a_type != AT_NULL);
++#endif
++}
++
+ static void
+ dl_main (const ElfW(Phdr) *phdr,
+ 	 ElfW(Word) phnum,
+@@ -1366,6 +1422,7 @@ dl_main (const ElfW(Phdr) *phdr,
+       rtld_is_main = true;
+ 
+       char *argv0 = NULL;
++      char **orig_argv = _dl_argv;
+ 
+       /* Note the place where the dynamic linker actually came from.  */
+       GL(dl_rtld_map).l_name = rtld_progname;
+@@ -1380,7 +1437,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 		GLRO(dl_lazy) = -1;
+ 	      }
+ 
+-	    ++_dl_skip_args;
+ 	    --_dl_argc;
+ 	    ++_dl_argv;
+ 	  }
+@@ -1389,14 +1445,12 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	    if (state.mode != rtld_mode_help)
+ 	      state.mode = rtld_mode_verify;
+ 
+-	    ++_dl_skip_args;
+ 	    --_dl_argc;
+ 	    ++_dl_argv;
+ 	  }
+ 	else if (! strcmp (_dl_argv[1], "--inhibit-cache"))
+ 	  {
+ 	    GLRO(dl_inhibit_cache) = 1;
+-	    ++_dl_skip_args;
+ 	    --_dl_argc;
+ 	    ++_dl_argv;
+ 	  }
+@@ -1406,7 +1460,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	    state.library_path = _dl_argv[2];
+ 	    state.library_path_source = "--library-path";
+ 
+-	    _dl_skip_args += 2;
+ 	    _dl_argc -= 2;
+ 	    _dl_argv += 2;
+ 	  }
+@@ -1415,7 +1468,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	  {
+ 	    GLRO(dl_inhibit_rpath) = _dl_argv[2];
+ 
+-	    _dl_skip_args += 2;
+ 	    _dl_argc -= 2;
+ 	    _dl_argv += 2;
+ 	  }
+@@ -1423,14 +1475,12 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	  {
+ 	    audit_list_add_string (&state.audit_list, _dl_argv[2]);
+ 
+-	    _dl_skip_args += 2;
+ 	    _dl_argc -= 2;
+ 	    _dl_argv += 2;
+ 	  }
+ 	else if (! strcmp (_dl_argv[1], "--preload") && _dl_argc > 2)
+ 	  {
+ 	    state.preloadarg = _dl_argv[2];
+-	    _dl_skip_args += 2;
+ 	    _dl_argc -= 2;
+ 	    _dl_argv += 2;
+ 	  }
+@@ -1438,7 +1488,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	  {
+ 	    argv0 = _dl_argv[2];
+ 
+-	    _dl_skip_args += 2;
+ 	    _dl_argc -= 2;
+ 	    _dl_argv += 2;
+ 	  }
+@@ -1446,7 +1495,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 		 && _dl_argc > 2)
+ 	  {
+ 	    state.glibc_hwcaps_prepend = _dl_argv[2];
+-	    _dl_skip_args += 2;
+ 	    _dl_argc -= 2;
+ 	    _dl_argv += 2;
+ 	  }
+@@ -1454,7 +1502,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 		 && _dl_argc > 2)
+ 	  {
+ 	    state.glibc_hwcaps_mask = _dl_argv[2];
+-	    _dl_skip_args += 2;
+ 	    _dl_argc -= 2;
+ 	    _dl_argv += 2;
+ 	  }
+@@ -1463,7 +1510,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	  {
+ 	    state.mode = rtld_mode_list_tunables;
+ 
+-	    ++_dl_skip_args;
+ 	    --_dl_argc;
+ 	    ++_dl_argv;
+ 	  }
+@@ -1472,7 +1518,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	  {
+ 	    state.mode = rtld_mode_list_diagnostics;
+ 
+-	    ++_dl_skip_args;
+ 	    --_dl_argc;
+ 	    ++_dl_argv;
+ 	  }
+@@ -1518,7 +1563,6 @@ dl_main (const ElfW(Phdr) *phdr,
+ 	    _dl_usage (ld_so_name, NULL);
+ 	}
+ 
+-      ++_dl_skip_args;
+       --_dl_argc;
+       ++_dl_argv;
+ 
+@@ -1617,6 +1661,9 @@ dl_main (const ElfW(Phdr) *phdr,
+       /* Set the argv[0] string now that we've processed the executable.  */
+       if (argv0 != NULL)
+         _dl_argv[0] = argv0;
++
++      /* Adjust arguments for the application entry point.  */
++      _dl_start_args_adjust (_dl_argv - orig_argv);
+     }
+   else
+     {
 diff --git a/elf/tst-audit26.c b/elf/tst-audit26.c
 new file mode 100644
 index 0000000000..3f920e83ba
@@ -5850,6 +6042,68 @@ index c44ab055aa..bb51b4198c 100644
  	default:
  	  _dl_reloc_bad_type (map, r_type, 0);
  	  break;
+diff --git a/sysdeps/mach/hurd/dl-sysdep.c b/sysdeps/mach/hurd/dl-sysdep.c
+index 3cbe075615..8373962e62 100644
+--- a/sysdeps/mach/hurd/dl-sysdep.c
++++ b/sysdeps/mach/hurd/dl-sysdep.c
+@@ -76,6 +76,7 @@ _dl_sysdep_start (void **start_argptr,
+ {
+   void go (intptr_t *argdata)
+     {
++      char *orig_argv0;
+       char **p;
+ 
+       /* Cache the information in various global variables.  */
+@@ -84,6 +85,8 @@ _dl_sysdep_start (void **start_argptr,
+       _environ = &_dl_argv[_dl_argc + 1];
+       for (p = _environ; *p++;); /* Skip environ pointers and terminator.  */
+ 
++      orig_argv0 = _dl_argv[0];
++
+       if ((void *) p == _dl_argv[0])
+ 	{
+ 	  static struct hurd_startup_data nodata;
+@@ -173,30 +176,23 @@ _dl_sysdep_start (void **start_argptr,
+ 
+       /* The call above might screw a few things up.
+ 
+-	 First of all, if _dl_skip_args is nonzero, we are ignoring
+-	 the first few arguments.  However, if we have no Hurd startup
+-	 data, it is the magical convention that ARGV[0] == P.  The
++	 P is the location after the terminating NULL of the list of
++	 environment variables.  It has to point to the Hurd startup
++	 data or if that's missing then P == ARGV[0] must hold. The
+ 	 startup code in init-first.c will get confused if this is not
+ 	 the case, so we must rearrange things to make it so.  We'll
+-	 overwrite the origional ARGV[0] at P with ARGV[_dl_skip_args].
++	 recompute P and move the Hurd data or the new ARGV[0] there.
+ 
+-	 Secondly, if we need to be secure, it removes some dangerous
+-	 environment variables.  If we have no Hurd startup date this
+-	 changes P (since that's the location after the terminating
+-	 NULL in the list of environment variables).  We do the same
+-	 thing as in the first case but make sure we recalculate P.
+-	 If we do have Hurd startup data, we have to move the data
+-	 such that it starts just after the terminating NULL in the
+-	 environment list.
++	 Note: directly invoked ld.so can move arguments and env vars.
+ 
+ 	 We use memmove, since the locations might overlap.  */
+-      if (__libc_enable_secure || _dl_skip_args)
+-	{
+-	  char **newp;
+ 
+-	  for (newp = _environ; *newp++;);
++      char **newp;
++      for (newp = _environ; *newp++;);
+ 
+-	  if (_dl_argv[-_dl_skip_args] == (char *) p)
++      if (newp != p || _dl_argv[0] != orig_argv0)
++	{
++	  if (orig_argv0 == (char *) p)
+ 	    {
+ 	      if ((char *) newp != _dl_argv[0])
+ 		{
 diff --git a/sysdeps/mach/hurd/i386/init-first.c b/sysdeps/mach/hurd/i386/init-first.c
 index 1229b59114..534a796e0d 100644
 --- a/sysdeps/mach/hurd/i386/init-first.c
@@ -6197,6 +6451,232 @@ index e5da26871c..66ed844e68 100644
  
  ifeq (no,$(build-hardcoded-path-in-tests))
  # This is an ld.so.cache test, and RPATH/RUNPATH in the executable
+diff --git a/sysdeps/s390/s390-64/configure b/sysdeps/s390/s390-64/configure
+new file mode 100644
+index 0000000000..101c570d2e
+--- /dev/null
++++ b/sysdeps/s390/s390-64/configure
+@@ -0,0 +1,122 @@
++# This file is generated from configure.ac by Autoconf.  DO NOT EDIT!
++ # Local configure fragment for sysdeps/s390/s390-64.
++
++# Minimal checking for static PIE support in ld.
++# Compare to ld testcase/bugzilla:
++# <binutils-source>/ld/testsuite/ld-elf/pr22263-1.rd
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for s390-specific static PIE requirements" >&5
++$as_echo_n "checking for s390-specific static PIE requirements... " >&6; }
++if { as_var=\
++libc_cv_s390x_staticpie_req; eval \${$as_var+:} false; }; then :
++  $as_echo_n "(cached) " >&6
++else
++    cat > conftest1.c <<EOF
++__thread int * foo;
++
++void
++bar (void)
++{
++  *foo = 1;
++}
++EOF
++  cat > conftest2.c <<EOF
++extern __thread int *foo;
++extern void bar (void);
++static int x;
++
++int
++main ()
++{
++  foo = &x;
++  return 0;
++}
++EOF
++  libc_cv_s390x_staticpie_req=no
++  if { ac_try='${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS -fPIE -c conftest1.c -o conftest1.o'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; } \
++     && { ac_try='${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS -fPIE -c conftest2.c -o conftest2.o'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; } \
++     && { ac_try='${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS -pie -o conftest conftest1.o conftest2.o'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; } \
++     && { ac_try='! readelf -Wr conftest | grep R_390_TLS_TPOFF'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; }
++  then
++    libc_cv_s390x_staticpie_req=yes
++  fi
++  rm -rf conftest.*
++fi
++eval ac_res=\$\
++libc_cv_s390x_staticpie_req
++	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
++$as_echo "$ac_res" >&6; }
++if test $libc_cv_s390x_staticpie_req = yes; then
++   # Static PIE is supported only on 64bit.
++   # Ensure you also have those patches for:
++   # - binutils (ld)
++   #   - "[PR ld/22263] s390: Avoid dynamic TLS relocs in PIE"
++   #     https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=26b1426577b5dcb32d149c64cca3e603b81948a9
++   #     (Tested by configure check above)
++   #     Otherwise there will be a R_390_TLS_TPOFF relocation, which fails to
++   #     be processed in _dl_relocate_static_pie() as static TLS map is not setup.
++   #   - "s390: Add DT_JMPREL pointing to .rela.[i]plt with static-pie"
++   #     https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=d942d8db12adf4c9e5c7d9ed6496a779ece7149e
++   #     (We can't test it in configure as we are not able to link a static PIE
++   #     executable if the system glibc lacks static PIE support)
++   #     Otherwise there won't be DT_JMPREL, DT_PLTRELA, DT_PLTRELASZ entries
++   #     and the IFUNC symbols are not processed, which leads to crashes.
++   #
++   # - kernel (the mentioned links to the commits belong to 5.19 merge window):
++   #   - "s390/mmap: increase stack/mmap gap to 128MB"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=f2f47d0ef72c30622e62471903ea19446ea79ee2
++   #   - "s390/vdso: move vdso mapping to its own function"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=57761da4dc5cd60bed2c81ba0edb7495c3c740b8
++   #   - "s390/vdso: map vdso above stack"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=9e37a2e8546f9e48ea76c839116fa5174d14e033
++   #   - "s390/vdso: add vdso randomization"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=41cd81abafdc4e58a93fcb677712a76885e3ca25
++   #   (We can't test the kernel of the target system)
++   #   Otherwise if /proc/sys/kernel/randomize_va_space is turned off (0),
++   #   static PIE executables like ldconfig will crash.  While startup sbrk is
++   #   used to enlarge the HEAP.  Unfortunately the underlying brk syscall fails
++   #   as there is not enough space after the HEAP.  Then the address of the TLS
++   #   image is invalid and the following memcpy in __libc_setup_tls() leads
++   #   to a segfault.
++   #   If /proc/sys/kernel/randomize_va_space is activated (default: 2), there
++   #   is enough space after HEAP.
++   #
++   # - glibc
++   #   - "Linux: Define MMAP_CALL_INTERNAL"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=c1b68685d438373efe64e5f076f4215723004dfb
++   #   - "i386: Remove OPTIMIZE_FOR_GCC_5 from Linux libc-do-syscall.S"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=6e5c7a1e262961adb52443ab91bd2c9b72316402
++   #   - "i386: Honor I386_USE_SYSENTER for 6-argument Linux system calls"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=60f0f2130d30cfd008ca39743027f1e200592dff
++   #   - "ia64: Always define IA64_USE_NEW_STUB as a flag macro"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=18bd9c3d3b1b6a9182698c85354578d1d58e9d64
++   #   - "Linux: Implement a useful version of _startup_fatal"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=a2a6bce7d7e52c1c34369a7da62c501cc350bc31
++   #   - "Linux: Introduce __brk_call for invoking the brk system call"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=b57ab258c1140bc45464b4b9908713e3e0ee35aa
++   #   - "csu: Implement and use _dl_early_allocate during static startup"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=f787e138aa0bf677bf74fa2a08595c446292f3d7
++   #   The mentioned patch series by Florian Weimer avoids the mentioned failing
++   #   sbrk syscall by falling back to mmap.
++   $as_echo "#define SUPPORT_STATIC_PIE 1" >>confdefs.h
++
++fi
+diff --git a/sysdeps/s390/s390-64/configure.ac b/sysdeps/s390/s390-64/configure.ac
+new file mode 100644
+index 0000000000..2583a4a335
+--- /dev/null
++++ b/sysdeps/s390/s390-64/configure.ac
+@@ -0,0 +1,92 @@
++GLIBC_PROVIDES dnl See aclocal.m4 in the top level source directory.
++# Local configure fragment for sysdeps/s390/s390-64.
++
++# Minimal checking for static PIE support in ld.
++# Compare to ld testcase/bugzilla:
++# <binutils-source>/ld/testsuite/ld-elf/pr22263-1.rd
++AC_CACHE_CHECK([for s390-specific static PIE requirements], \
++[libc_cv_s390x_staticpie_req], [dnl
++  cat > conftest1.c <<EOF
++__thread int * foo;
++
++void
++bar (void)
++{
++  *foo = 1;
++}
++EOF
++  cat > conftest2.c <<EOF
++extern __thread int *foo;
++extern void bar (void);
++static int x;
++
++int
++main ()
++{
++  foo = &x;
++  return 0;
++}
++EOF
++  libc_cv_s390x_staticpie_req=no
++  if AC_TRY_COMMAND([${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS -fPIE -c conftest1.c -o conftest1.o]) \
++     && AC_TRY_COMMAND([${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS -fPIE -c conftest2.c -o conftest2.o]) \
++     && AC_TRY_COMMAND([${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS -pie -o conftest conftest1.o conftest2.o]) \
++     && AC_TRY_COMMAND([! readelf -Wr conftest | grep R_390_TLS_TPOFF])
++  then
++    libc_cv_s390x_staticpie_req=yes
++  fi
++  rm -rf conftest.*])
++if test $libc_cv_s390x_staticpie_req = yes; then
++   # Static PIE is supported only on 64bit.
++   # Ensure you also have those patches for:
++   # - binutils (ld)
++   #   - "[PR ld/22263] s390: Avoid dynamic TLS relocs in PIE"
++   #     https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=26b1426577b5dcb32d149c64cca3e603b81948a9
++   #     (Tested by configure check above)
++   #     Otherwise there will be a R_390_TLS_TPOFF relocation, which fails to
++   #     be processed in _dl_relocate_static_pie() as static TLS map is not setup.
++   #   - "s390: Add DT_JMPREL pointing to .rela.[i]plt with static-pie"
++   #     https://sourceware.org/git/?p=binutils-gdb.git;a=commit;h=d942d8db12adf4c9e5c7d9ed6496a779ece7149e
++   #     (We can't test it in configure as we are not able to link a static PIE
++   #     executable if the system glibc lacks static PIE support)
++   #     Otherwise there won't be DT_JMPREL, DT_PLTRELA, DT_PLTRELASZ entries
++   #     and the IFUNC symbols are not processed, which leads to crashes.
++   #
++   # - kernel (the mentioned links to the commits belong to 5.19 merge window):
++   #   - "s390/mmap: increase stack/mmap gap to 128MB"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=f2f47d0ef72c30622e62471903ea19446ea79ee2
++   #   - "s390/vdso: move vdso mapping to its own function"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=57761da4dc5cd60bed2c81ba0edb7495c3c740b8
++   #   - "s390/vdso: map vdso above stack"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=9e37a2e8546f9e48ea76c839116fa5174d14e033
++   #   - "s390/vdso: add vdso randomization"
++   #     https://git.kernel.org/pub/scm/linux/kernel/git/s390/linux.git/commit/?h=features&id=41cd81abafdc4e58a93fcb677712a76885e3ca25
++   #   (We can't test the kernel of the target system)
++   #   Otherwise if /proc/sys/kernel/randomize_va_space is turned off (0),
++   #   static PIE executables like ldconfig will crash.  While startup sbrk is
++   #   used to enlarge the HEAP.  Unfortunately the underlying brk syscall fails
++   #   as there is not enough space after the HEAP.  Then the address of the TLS
++   #   image is invalid and the following memcpy in __libc_setup_tls() leads
++   #   to a segfault.
++   #   If /proc/sys/kernel/randomize_va_space is activated (default: 2), there
++   #   is enough space after HEAP.
++   #
++   # - glibc
++   #   - "Linux: Define MMAP_CALL_INTERNAL"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=c1b68685d438373efe64e5f076f4215723004dfb
++   #   - "i386: Remove OPTIMIZE_FOR_GCC_5 from Linux libc-do-syscall.S"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=6e5c7a1e262961adb52443ab91bd2c9b72316402
++   #   - "i386: Honor I386_USE_SYSENTER for 6-argument Linux system calls"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=60f0f2130d30cfd008ca39743027f1e200592dff
++   #   - "ia64: Always define IA64_USE_NEW_STUB as a flag macro"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=18bd9c3d3b1b6a9182698c85354578d1d58e9d64
++   #   - "Linux: Implement a useful version of _startup_fatal"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=a2a6bce7d7e52c1c34369a7da62c501cc350bc31
++   #   - "Linux: Introduce __brk_call for invoking the brk system call"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=b57ab258c1140bc45464b4b9908713e3e0ee35aa
++   #   - "csu: Implement and use _dl_early_allocate during static startup"
++   #     https://sourceware.org/git/?p=glibc.git;a=commit;h=f787e138aa0bf677bf74fa2a08595c446292f3d7
++   #   The mentioned patch series by Florian Weimer avoids the mentioned failing
++   #   sbrk syscall by falling back to mmap.
++   AC_DEFINE(SUPPORT_STATIC_PIE)
++fi
 diff --git a/sysdeps/s390/s390-64/dl-hwcap-check.h b/sysdeps/s390/s390-64/dl-hwcap-check.h
 index f769932325..efe204a3f3 100644
 --- a/sysdeps/s390/s390-64/dl-hwcap-check.h
@@ -6242,6 +6722,56 @@ index 9447a6cf4e..39f4948152 100644
 +
    return _dl_hwcaps_subdirs_build_bitmask (subdirs_count, active);
  }
+diff --git a/sysdeps/s390/s390-64/start.S b/sysdeps/s390/s390-64/start.S
+index 33c1302049..f4c3f51315 100644
+--- a/sysdeps/s390/s390-64/start.S
++++ b/sysdeps/s390/s390-64/start.S
+@@ -84,10 +84,25 @@ _start:
+ 
+ 	/* Ok, now branch to the libc main routine.  */
+ #ifdef PIC
++# ifdef SHARED
++	/* Used for dynamic linked position independent executable.
++	   => Scrt1.o  */
+ 	larl	%r2,main@GOTENT		# load pointer to main
+ 	lg	%r2,0(%r2)
++# else
++	/* Used for dynamic linked position dependent executable.
++	   => crt1.o (glibc configured without --disable-default-pie:
++	   PIC is defined)
++	   Or for static linked position independent executable.
++	   => rcrt1.o (only available if glibc configured without
++	   --disable-default-pie: PIC is defined) */
++	larl	%r2,__wrap_main
++# endif
+ 	brasl	%r14,__libc_start_main@plt
+ #else
++	/* Used for dynamic/static linked position dependent executable.
++	   => crt1.o (glibc configured with --disable-default-pie:
++	   PIC and SHARED are not defined)  */
+ 	larl	%r2,main		# load pointer to main
+ 	brasl	%r14,__libc_start_main
+ #endif
+@@ -97,6 +112,19 @@ _start:
+ 
+ 	cfi_endproc
+ 
++#if defined PIC && !defined SHARED
++	/* When main is not defined in the executable but in a shared library
++	   then a wrapper is needed in crt1.o of the static-pie enabled libc,
++	   because crt1.o and rcrt1.o share code and the later must avoid the
++	   use of GOT relocations before __libc_start_main is called.  */
++__wrap_main:
++	cfi_startproc
++	larl	%r1,main@GOTENT		# load pointer to main
++	lg	%r1,0(%r1)
++	br	%r1
++	cfi_endproc
++#endif
++
+ 	/* Define a symbol for the first piece of initialized data.  */
+ 	.data
+ 	.globl __data_start
 diff --git a/sysdeps/s390/s390-64/tst-glibc-hwcaps.c b/sysdeps/s390/s390-64/tst-glibc-hwcaps.c
 index cf3b765b5d..a29891bdc1 100644
 --- a/sysdeps/s390/s390-64/tst-glibc-hwcaps.c
@@ -6276,6 +6806,18 @@ index cf3b765b5d..a29891bdc1 100644
    return 0;
  }
  
+diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
+index 7122f55975..e897f55f3a 100644
+--- a/sysdeps/unix/sysv/linux/Makefile
++++ b/sysdeps/unix/sysv/linux/Makefile
+@@ -126,6 +126,7 @@ tests += tst-clone tst-clone2 tst-clone3 tst-fanotify tst-personality \
+   tst-prctl \
+   tst-scm_rights \
+   tst-epoll \
++  tst-getauxval \
+   # tests
+ 
+ # Test for the symbol version of fcntl that was replaced in glibc 2.28.
 diff --git a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h b/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
 index 9905ebedf2..4fcb6da80a 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/arch-syscall.h
@@ -8348,6 +8890,86 @@ index 6421806110..b8c0b0c586 100644
  set_robust_list
  set_thread_area
  set_tid_address
+diff --git a/sysdeps/unix/sysv/linux/tst-getauxval.c b/sysdeps/unix/sysv/linux/tst-getauxval.c
+new file mode 100644
+index 0000000000..c4b6195743
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/tst-getauxval.c
+@@ -0,0 +1,74 @@
++/* Basic test for getauxval.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <unistd.h>
++#include <stdio.h>
++#include <support/check.h>
++#include <sys/auxv.h>
++
++static int missing;
++static int mismatch;
++
++static void
++check_nonzero (unsigned long t, const char *s)
++{
++  unsigned long v = getauxval (t);
++  printf ("%s: %lu (0x%lx)\n", s, v, v);
++  if (v == 0)
++    missing++;
++}
++
++static void
++check_eq (unsigned long t, const char *s, unsigned long want)
++{
++  unsigned long v = getauxval (t);
++  printf ("%s: %lu want: %lu\n", s, v, want);
++  if (v != want)
++    mismatch++;
++}
++
++#define NZ(x) check_nonzero (x, #x)
++#define EQ(x, want) check_eq (x, #x, want)
++
++static int
++do_test (void)
++{
++  /* These auxv entries should be non-zero on Linux.  */
++  NZ (AT_PHDR);
++  NZ (AT_PHENT);
++  NZ (AT_PHNUM);
++  NZ (AT_PAGESZ);
++  NZ (AT_ENTRY);
++  NZ (AT_CLKTCK);
++  NZ (AT_RANDOM);
++  NZ (AT_EXECFN);
++  if (missing)
++    FAIL_EXIT1 ("Found %d missing auxv entries.\n", missing);
++
++  /* Check against syscalls.  */
++  EQ (AT_UID, getuid ());
++  EQ (AT_EUID, geteuid ());
++  EQ (AT_GID, getgid ());
++  EQ (AT_EGID, getegid ());
++  if (mismatch)
++    FAIL_EXIT1 ("Found %d mismatching auxv entries.\n", mismatch);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/sysdeps/unix/sysv/linux/tst-mman-consts.py b/sysdeps/unix/sysv/linux/tst-mman-consts.py
 index fc0a8ff4a7..fdc5b2bc07 100644
 --- a/sysdeps/unix/sysv/linux/tst-mman-consts.py
