@@ -28,6 +28,7 @@ Patch18:	madvise-bss.patch
 Patch20:	tzselect-proper-zone-file.patch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
+Patch25:        calloc.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch28:	stateless.patch
 #Patch29:	nsswitch-altfiles-bugfix.patch
@@ -217,6 +218,7 @@ GNU C library extra components.
 #%patch18 -p1
 %patch20 -p1
 %patch24 -p1
+%patch25 -p1
 %patch26 -p1
 %patch28 -p1
 %patch32 -p1
