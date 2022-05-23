@@ -138,6 +138,9 @@ Noah Goldstein (30):
 Samuel Thibault (1):
       hurd: Fix arbitrary error code
 
+Sergei Trofimovich (1):
+      string.h: fix __fortified_attr_access macro call [BZ #29162]
+
 Siddhesh Poyarekar (2):
       manual: Clarify that abbreviations of long options are allowed
       fortify: Ensure that __glibc_fortify condition is a constant [BZ #29141]
@@ -5710,6 +5713,19 @@ index df6603e699..b87ab50c59 100644
  # Version for libnsl with YP and NIS+ functions.
  libnsl=1
  
+diff --git a/string/bits/string_fortified.h b/string/bits/string_fortified.h
+index f4a5dfc2e5..149ebbb08b 100644
+--- a/string/bits/string_fortified.h
++++ b/string/bits/string_fortified.h
+@@ -107,7 +107,7 @@ __NTH (stpncpy (char *__dest, const char *__src, size_t __n))
+ # else
+ extern char *__stpncpy_chk (char *__dest, const char *__src, size_t __n,
+ 			    size_t __destlen) __THROW
+-  __fortified_attr_access ((__write_only__, 1, 3))
++  __fortified_attr_access (__write_only__, 1, 3)
+   __attr_access ((__read_only__, 2));
+ extern char *__REDIRECT_NTH (__stpncpy_alias, (char *__dest, const char *__src,
+ 					       size_t __n), stpncpy);
 diff --git a/string/test-strncmp.c b/string/test-strncmp.c
 index e7d5edea39..358f40eb5f 100644
 --- a/string/test-strncmp.c
