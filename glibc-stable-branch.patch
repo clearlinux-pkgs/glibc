@@ -103,7 +103,7 @@ Joseph Myers (5):
       Add SOL_MPTCP, SOL_MCTP from Linux 5.16 to bits/socket.h
       Add HWCAP2_AFP, HWCAP2_RPRES from Linux 5.17 to AArch64 bits/hwcap.h
 
-Noah Goldstein (30):
+Noah Goldstein (31):
       x86: Fallback {str|wcs}cmp RTM in the ncmp overflow case [BZ #28896]
       x86: Test wcscmp RTM in the wcsncmp overflow case [BZ #28896]
       x86: Fix TEST_NAME to make it a string in tst-strncmp-rtm.c
@@ -134,6 +134,7 @@ Noah Goldstein (30):
       x86: Optimize {str|wcs}rchr-sse2
       x86: Optimize {str|wcs}rchr-avx2
       x86: Optimize {str|wcs}rchr-evex
+      x86: Fallback {str|wcs}cmp RTM in the ncmp overflow case [BZ #29127]
 
 Samuel Thibault (1):
       hurd: Fix arbitrary error code
@@ -13197,7 +13198,7 @@ index f62cd9d144..ec739fb8f9 100644
 -# endif
 +#endif
 diff --git a/sysdeps/x86_64/multiarch/strcmp-avx2.S b/sysdeps/x86_64/multiarch/strcmp-avx2.S
-index 9c73b5899d..3366d0b083 100644
+index 9c73b5899d..8da09bd86d 100644
 --- a/sysdeps/x86_64/multiarch/strcmp-avx2.S
 +++ b/sysdeps/x86_64/multiarch/strcmp-avx2.S
 @@ -20,45 +20,146 @@
@@ -13359,7 +13360,7 @@ index 9c73b5899d..3366d0b083 100644
  /* Warning!
             wcscmp/wcsncmp have to use SIGNED comparison for elements.
             strcmp/strncmp have to use UNSIGNED comparison for elements.
-@@ -79,783 +180,1146 @@
+@@ -79,783 +180,1142 @@
     the maximum offset is reached before a difference is found, zero is
     returned.  */
  
@@ -13589,10 +13590,10 @@ index 9c73b5899d..3366d0b083 100644
  #  endif
 -# else
 +	jb	L(ret_zero)
- #  ifdef USE_AS_WCSCMP
 +	/* 'nbe' covers the case where length is negative (large
 +	   unsigned).  */
-+	jnbe	__wcscmp_avx2
++	jnbe	OVERFLOW_STRCMP
+ #  ifdef USE_AS_WCSCMP
 +	movl	(%rdi), %edx
  	xorl	%eax, %eax
 -	movl	VEC_SIZE(%rdi, %rdx), %ecx
@@ -13607,10 +13608,6 @@ index 9c73b5899d..3366d0b083 100644
 -	movzbl	VEC_SIZE(%rdi, %rdx), %eax
 -	movzbl	VEC_SIZE(%rsi, %rdx), %edx
 -	subl	%edx, %eax
-+	/* 'nbe' covers the case where length is negative (large
-+	   unsigned).  */
-+
-+	jnbe	__strcmp_avx2
 +	movzbl	(%rdi), %eax
 +	movzbl	(%rsi), %ecx
 +	TOLOWER_gpr (%rax, %eax)
@@ -13867,11 +13864,11 @@ index 9c73b5899d..3366d0b083 100644
 +	subq	%rdi, %rsi
 +	andq	$-(VEC_SIZE * 4), %rdi
 +	addq	%rdi, %rsi
- 
++
 +# ifdef USE_AS_STRNCMP
 +	subq	%rdi, %rdx
 +# endif
-+
+ 
 +L(prepare_loop_aligned):
 +	/* eax stores distance from rsi to next page cross. These cases
 +	   need to be handled specially as the 4x loop could potentially
@@ -14699,7 +14696,7 @@ index 9c73b5899d..3366d0b083 100644
 +	VPCMPEQ	%ymm0, %ymmZERO, %ymm2
 +	vpandn	%ymm1, %ymm2, %ymm1
 +	vpmovmskb %ymm1, %ecx
- 
++
 +# ifdef USE_AS_STRNCMP
 +	leal	VEC_SIZE(%OFFSET_REG64), %eax
 +	cmpq	%rax, %rdx
@@ -14708,7 +14705,7 @@ index 9c73b5899d..3366d0b083 100644
 +# endif
 +	incl	%ecx
 +	jz	L(prepare_loop_no_len)
-+
+ 
 +	.p2align 4,, 4
 +L(ret_vec_page_cross):
 +# ifndef USE_AS_STRNCMP
