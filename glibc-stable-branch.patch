@@ -1,7 +1,7 @@
 =Joshua Kinard (1):
       mips: Fix mips64n32 64 bit time_t stat support (BZ#29069)
 
-Adhemerval Zanella (13):
+Adhemerval Zanella (21):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
@@ -15,6 +15,14 @@ Adhemerval Zanella (13):
       linux: Fix posix_spawn return code if clone fails (BZ#29109)
       NEWS: Add a bug fix entry for BZ #29109
       x86_64: Remove bcopy optimizations
+      misc: Use 64 bit stat for daemon (BZ# 29203)
+      misc: Use 64 bit stat for getusershell (BZ# 29204)
+      posix: Use 64 bit stat for posix_fallocate fallback (BZ# 29207)
+      posix: Use 64 bit stat for fpathconf (_PC_ASYNC_IO) (BZ# 29208)
+      socket: Use 64 bit stat for isfdtype (BZ# 29209)
+      inet: Use 64 bit stat for ruserpass (BZ# 29210)
+      catgets: Use 64 bit stat for __open_catalog (BZ# 29211)
+      iconv: Use 64 bit stat for gconv_parseconfdir (BZ# 29213)
 
 Andreas Schwab (1):
       Regenerate configure
@@ -176,10 +184,10 @@ index 63c022d6b9..237a2f9482 100644
       Use additional compiler flags CFLAGS to build the parts of the
       library which are always statically linked into applications and
 diff --git a/NEWS b/NEWS
-index faa7ec1871..6c6dc03c6e 100644
+index faa7ec1871..8cea3b52d3 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,35 @@ See the end for copying conditions.
+@@ -4,6 +4,43 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -211,11 +219,19 @@ index faa7ec1871..6c6dc03c6e 100644
 +    AT_SYMLINK_NOFOLLOW
 +  [29109] libc: posix_spawn() always returns 1 (EPERM) on clone()
 +    failure
++  [29203] libc: daemon is not y2038 aware
++  [29204] libc: getusershell is not 2038 aware
++  [29207] libc: posix_fallocate fallback implementation is not y2038
++  [29208] libc: fpathconf(_PC_ASYNC_IO) is not y2038 aware
++  [29209] libc: isfdtype is not y2038 aware
++  [29210] network: ruserpass is not y2038 aware
++  [29211] libc: __open_catalog is not y2038 aware
++  [29213] libc: gconv_parseconfdir is not y2038 aware
 +
  
  Version 2.35
  
-@@ -139,6 +168,9 @@ Major new features:
+@@ -139,6 +176,9 @@ Major new features:
    fortification balanced against additional runtime cost (checking non-constant
    bounds).
  
@@ -225,7 +241,7 @@ index faa7ec1871..6c6dc03c6e 100644
  Deprecated and removed features, and other changes affecting compatibility:
  
  * On x86-64, the LD_PREFER_MAP_32BIT_EXEC environment variable support
-@@ -335,6 +367,8 @@ The following bugs are resolved with this release:
+@@ -335,6 +375,8 @@ The following bugs are resolved with this release:
    [28837] libc: FAIL: socket/tst-socket-timestamp-compat
    [28847] locale: Empty mon_decimal_point in LC_MONETARY results in non-
      empty mon_decimal_point_wc
@@ -234,7 +250,7 @@ index faa7ec1871..6c6dc03c6e 100644
  
  
  Version 2.34
-@@ -431,9 +465,6 @@ Major new features:
+@@ -431,9 +473,6 @@ Major new features:
    execute programs that do not have any dynamic dependency (that is,
    they are statically linked).  This feature is Linux-specific.
  
@@ -244,6 +260,28 @@ index faa7ec1871..6c6dc03c6e 100644
  Deprecated and removed features, and other changes affecting compatibility:
  
  * The function pthread_mutex_consistent_np has been deprecated; programs
+diff --git a/catgets/open_catalog.c b/catgets/open_catalog.c
+index 48c2a4b983..cb1d123cdb 100644
+--- a/catgets/open_catalog.c
++++ b/catgets/open_catalog.c
+@@ -39,7 +39,7 @@ __open_catalog (const char *cat_name, const char *nlspath, const char *env_var,
+ 		__nl_catd catalog)
+ {
+   int fd = -1;
+-  struct stat64 st;
++  struct __stat64_t64 st;
+   int swapping;
+   size_t cnt;
+   size_t max_offset;
+@@ -193,7 +193,7 @@ __open_catalog (const char *cat_name, const char *nlspath, const char *env_var,
+       return -1;
+     }
+ 
+-  if (__builtin_expect (__fstat64 (fd, &st), 0) < 0)
++  if (__glibc_unlikely (__fstat64_time64 (fd, &st) < 0))
+     goto close_unlock_return;
+ 
+   if (__builtin_expect (!S_ISREG (st.st_mode), 0)
 diff --git a/configure b/configure
 index 00dc638388..443cf6ef94 100755
 --- a/configure
@@ -2682,6 +2720,38 @@ index 0000000000..5d7d953726
 +libtracemod3.so 1
 +libtracemod4.so 1
 +libtracemod5.so 1
+diff --git a/iconv/gconv_parseconfdir.h b/iconv/gconv_parseconfdir.h
+index c0de548833..debb96b322 100644
+--- a/iconv/gconv_parseconfdir.h
++++ b/iconv/gconv_parseconfdir.h
+@@ -32,8 +32,11 @@
+ # define readdir __readdir
+ # define closedir __closedir
+ # define mempcpy __mempcpy
+-# define lstat64 __lstat64
++# define struct_stat struct __stat64_t64
++# define lstat __lstat64_time64
+ # define feof_unlocked __feof_unlocked
++#else
++# define struct_stat struct stat
+ #endif
+ 
+ /* Name of the file containing the module information in the directories
+@@ -158,12 +161,12 @@ gconv_parseconfdir (const char *prefix, const char *dir, size_t dir_len)
+ 	      && strcmp (ent->d_name + len - strlen (suffix), suffix) == 0)
+ 	    {
+ 	      char *conf;
+-	      struct stat64 st;
++	      struct_stat st;
+ 	      if (asprintf (&conf, "%s/%s", buf, ent->d_name) < 0)
+ 		continue;
+ 
+ 	      if (ent->d_type != DT_UNKNOWN
+-		  || (lstat64 (conf, &st) != -1 && S_ISREG (st.st_mode)))
++		  || (lstat (conf, &st) != -1 && S_ISREG (st.st_mode)))
+ 		found |= read_conf_file (conf, dir, dir_len);
+ 
+ 	      free (conf);
 diff --git a/include/libc-internal.h b/include/libc-internal.h
 index 15920d2bde..c052bccb27 100644
 --- a/include/libc-internal.h
@@ -2752,6 +2822,28 @@ index 7090169601..af795a37c8 100644
  rtld_hidden_proto (__libc_enable_secure)
  
  
+diff --git a/inet/ruserpass.c b/inet/ruserpass.c
+index d61a72877d..75e2a06552 100644
+--- a/inet/ruserpass.c
++++ b/inet/ruserpass.c
+@@ -95,7 +95,7 @@ ruserpass (const char *host, const char **aname, const char **apass)
+ 	char *hdir, *buf, *tmp;
+ 	char myname[1024], *mydomain;
+ 	int t, usedefault = 0;
+-	struct stat64 stb;
++	struct __stat64_t64 stb;
+ 
+ 	hdir = __libc_secure_getenv("HOME");
+ 	if (hdir == NULL) {
+@@ -174,7 +174,7 @@ next:
+ 			break;
+ 		case PASSWD:
+ 			if (strcmp(*aname, "anonymous") &&
+-			    __fstat64(fileno(cfile), &stb) >= 0 &&
++			    __fstat64_time64(fileno(cfile), &stb) >= 0 &&
+ 			    (stb.st_mode & 077) != 0) {
+ 	warnx(_("Error: .netrc file is readable by others."));
+ 	warnx(_("Remove 'password' line or make file unreadable by others."));
 diff --git a/io/Makefile b/io/Makefile
 index cf265dc9b9..b1710407d0 100644
 --- a/io/Makefile
@@ -3305,6 +3397,46 @@ index 28c9531f42..9307379194 100644
  @c       do_cancel @ascuplugin @ascuheap @acsmem
  @c    cancel_handler ok
  @c     kill syscall ok
+diff --git a/misc/daemon.c b/misc/daemon.c
+index 0e688f4d74..3c73ac2ab8 100644
+--- a/misc/daemon.c
++++ b/misc/daemon.c
+@@ -61,11 +61,10 @@ daemon (int nochdir, int noclose)
+ 		(void)__chdir("/");
+ 
+ 	if (!noclose) {
+-		struct stat64 st;
++		struct __stat64_t64 st;
+ 
+ 		if ((fd = __open_nocancel(_PATH_DEVNULL, O_RDWR, 0)) != -1
+-		    && (__builtin_expect (__fstat64 (fd, &st), 0)
+-			== 0)) {
++		    && __glibc_likely (__fstat64_time64 (fd, &st) == 0)) {
+ 			if (__builtin_expect (S_ISCHR (st.st_mode), 1) != 0
+ #if defined DEV_NULL_MAJOR && defined DEV_NULL_MINOR
+ 			    && (st.st_rdev
+diff --git a/misc/getusershell.c b/misc/getusershell.c
+index 11f5aa83f8..4221095dca 100644
+--- a/misc/getusershell.c
++++ b/misc/getusershell.c
+@@ -97,7 +97,7 @@ initshells (void)
+ {
+ 	char **sp, *cp;
+ 	FILE *fp;
+-	struct stat64 statb;
++	struct __stat64_t64 statb;
+ 	size_t flen;
+ 
+ 	free(shells);
+@@ -106,7 +106,7 @@ initshells (void)
+ 	strings = NULL;
+ 	if ((fp = fopen(_PATH_SHELLS, "rce")) == NULL)
+ 		goto init_okshells_noclose;
+-	if (__fstat64(fileno(fp), &statb) == -1) {
++	if (__fstat64_time64(fileno(fp), &statb) == -1) {
+ 	init_okshells:
+ 		(void)fclose(fp);
+ 	init_okshells_noclose:
 diff --git a/misc/sys/cdefs.h b/misc/sys/cdefs.h
 index 44d3826bca..1c2b044a0d 100644
 --- a/misc/sys/cdefs.h
@@ -6425,6 +6557,85 @@ index 708bd92469..601db4ff2b 100644
  
    __pthread_unwind ((__pthread_unwind_buf_t *)
  		    THREAD_GETMEM (self, cleanup_jmp_buf));
+diff --git a/sysdeps/posix/fpathconf.c b/sysdeps/posix/fpathconf.c
+index 216f2a9c8d..4b215e0600 100644
+--- a/sysdeps/posix/fpathconf.c
++++ b/sysdeps/posix/fpathconf.c
+@@ -131,9 +131,9 @@ __fpathconf (int fd, int name)
+ #ifdef	_POSIX_ASYNC_IO
+       {
+ 	/* AIO is only allowed on regular files and block devices.  */
+-	struct stat64 st;
++	struct __stat64_t64 st;
+ 
+-	if (__fstat64 (fd, &st) < 0
++	if (__fstat64_time64 (fd, &st) < 0
+ 	    || (! S_ISREG (st.st_mode) && ! S_ISBLK (st.st_mode)))
+ 	  return -1;
+ 	else
+diff --git a/sysdeps/posix/isfdtype.c b/sysdeps/posix/isfdtype.c
+index 192c7f9be6..d26c14259e 100644
+--- a/sysdeps/posix/isfdtype.c
++++ b/sysdeps/posix/isfdtype.c
+@@ -24,12 +24,12 @@
+ int
+ isfdtype (int fildes, int fdtype)
+ {
+-  struct stat64 st;
++  struct __stat64_t64 st;
+   int result;
+ 
+   {
+     int save_error = errno;
+-    result = __fstat64 (fildes, &st);
++    result = __fstat64_time64 (fildes, &st);
+     __set_errno (save_error);
+   }
+ 
+diff --git a/sysdeps/posix/posix_fallocate.c b/sysdeps/posix/posix_fallocate.c
+index 037d328647..9720e71cc6 100644
+--- a/sysdeps/posix/posix_fallocate.c
++++ b/sysdeps/posix/posix_fallocate.c
+@@ -30,7 +30,7 @@
+ int
+ posix_fallocate (int fd, __off_t offset, __off_t len)
+ {
+-  struct stat64 st;
++  struct __stat64_t64 st;
+ 
+   if (offset < 0 || len < 0)
+     return EINVAL;
+@@ -48,7 +48,7 @@ posix_fallocate (int fd, __off_t offset, __off_t len)
+   }
+ 
+   /* We have to make sure that this is really a regular file.  */
+-  if (__fstat64 (fd, &st) != 0)
++  if (__fstat64_time64 (fd, &st) != 0)
+     return EBADF;
+   if (S_ISFIFO (st.st_mode))
+     return ESPIPE;
+diff --git a/sysdeps/posix/posix_fallocate64.c b/sysdeps/posix/posix_fallocate64.c
+index a670ee0a39..bf984f7f91 100644
+--- a/sysdeps/posix/posix_fallocate64.c
++++ b/sysdeps/posix/posix_fallocate64.c
+@@ -30,7 +30,7 @@
+ int
+ __posix_fallocate64_l64 (int fd, __off64_t offset, __off64_t len)
+ {
+-  struct stat64 st;
++  struct __stat64_t64 st;
+ 
+   if (offset < 0 || len < 0)
+     return EINVAL;
+@@ -48,7 +48,7 @@ __posix_fallocate64_l64 (int fd, __off64_t offset, __off64_t len)
+   }
+ 
+   /* We have to make sure that this is really a regular file.  */
+-  if (__fstat64 (fd, &st) != 0)
++  if (__fstat64_time64 (fd, &st) != 0)
+     return EBADF;
+   if (S_ISFIFO (st.st_mode))
+     return ESPIPE;
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
 index c972bd819a..c725586308 100644
 --- a/sysdeps/pthread/Makefile
