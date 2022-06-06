@@ -40,6 +40,9 @@ Carlos O'Donell (4):
 DJ Delorie (1):
       posix/glob.c: update from gnulib
 
+Dmitriy Fedchenko (1):
+      socket: Fix mistyped define statement in socket/sys/socket.h (BZ #29225)
+
 Dmitry V. Levin (1):
       linux: fix accuracy of get_nprocs and get_nprocs_conf [BZ #28865]
 
@@ -6109,6 +6112,19 @@ index df6603e699..b87ab50c59 100644
 -
  # Version for libnsl with YP and NIS+ functions.
  libnsl=1
+ 
+diff --git a/socket/sys/socket.h b/socket/sys/socket.h
+index 7d5b21a2c4..0abfb5dd03 100644
+--- a/socket/sys/socket.h
++++ b/socket/sys/socket.h
+@@ -181,7 +181,7 @@ extern ssize_t __REDIRECT (sendmsg, (int __fd, const struct msghdr *__message,
+ # else
+ extern ssize_t __sendmsg64 (int __fd, const struct msghdr *__message,
+ 			    int __flags);
+-#  defien sendmsg __sendmsg64
++#  define sendmsg __sendmsg64
+ # endif
+ #endif
  
 diff --git a/string/bits/string_fortified.h b/string/bits/string_fortified.h
 index f4a5dfc2e5..149ebbb08b 100644
