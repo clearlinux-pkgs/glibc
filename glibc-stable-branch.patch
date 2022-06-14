@@ -155,6 +155,10 @@ Noah Goldstein (31):
       x86: Optimize {str|wcs}rchr-evex
       x86: Fallback {str|wcs}cmp RTM in the ncmp overflow case [BZ #29127]
 
+Sam James (2):
+      nss: add assert to DB_LOOKUP_FCT (BZ #28752)
+      nss: handle stat failure in check_reload_and_get (BZ #28752)
+
 Samuel Thibault (1):
       hurd: Fix arbitrary error code
 
@@ -4084,6 +4088,81 @@ index 552e5d03e1..de439d4911 100644
  LDFLAGS-tst-nss-test4 = -Wl,--disable-new-dtags
  LDFLAGS-tst-nss-test5 = -Wl,--disable-new-dtags
 +LDFLAGS-tst-nss-test_errno = -Wl,--disable-new-dtags
+diff --git a/nss/XXX-lookup.c b/nss/XXX-lookup.c
+index db95937674..bfc57b8e64 100644
+--- a/nss/XXX-lookup.c
++++ b/nss/XXX-lookup.c
+@@ -15,6 +15,7 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
++#include <assert.h>
+ #include "nsswitch.h"
+ 
+ /*******************************************************************\
+@@ -54,6 +55,10 @@ DB_LOOKUP_FCT (nss_action_list *ni, const char *fct_name, const char *fct2_name,
+ 
+   *ni = DATABASE_NAME_SYMBOL;
+ 
++  /* We want to know about it if we've somehow got a NULL action list;
++   in the past, we had bad state if seccomp interfered with setup. */
++  assert(*ni != NULL);
++
+   return __nss_lookup (ni, fct_name, fct2_name, fctp);
+ }
+ libc_hidden_def (DB_LOOKUP_FCT)
+diff --git a/nss/nss_database.c b/nss/nss_database.c
+index d56c5b798d..f2ed2f2c25 100644
+--- a/nss/nss_database.c
++++ b/nss/nss_database.c
+@@ -420,23 +420,32 @@ nss_database_check_reload_and_get (struct nss_database_state *local,
+       return true;
+     }
+ 
+-  /* Before we reload, verify that "/" hasn't changed.  We assume that
+-     errors here are very unlikely, but the chance that we're entering
+-     a container is also very unlikely, so we err on the side of both
+-     very unlikely things not happening at the same time.  */
+-  if (__stat64_time64 ("/", &str) != 0
+-      || (local->root_ino != 0
+-	  && (str.st_ino != local->root_ino
+-	      ||  str.st_dev != local->root_dev)))
++  int stat_rv = __stat64_time64 ("/", &str);
++
++  if (local->data.services[database_index] != NULL)
+     {
+-      /* Change detected; disable reloading and return current state.  */
+-      atomic_store_release (&local->data.reload_disabled, 1);
+-      *result = local->data.services[database_index];
+-      __libc_lock_unlock (local->lock);
+-      return true;
++      /* Before we reload, verify that "/" hasn't changed.  We assume that
++        errors here are very unlikely, but the chance that we're entering
++        a container is also very unlikely, so we err on the side of both
++        very unlikely things not happening at the same time.  */
++      if (stat_rv != 0
++	  || (local->root_ino != 0
++	      && (str.st_ino != local->root_ino
++		  ||  str.st_dev != local->root_dev)))
++	{
++        /* Change detected; disable reloading and return current state.  */
++        atomic_store_release (&local->data.reload_disabled, 1);
++        *result = local->data.services[database_index];
++        __libc_lock_unlock (local->lock);
++        return true;
++      }
++    }
++  if (stat_rv == 0)
++    {
++      local->root_ino = str.st_ino;
++      local->root_dev = str.st_dev;
+     }
+-  local->root_ino = str.st_ino;
+-  local->root_dev = str.st_dev;
++
+   __libc_lock_unlock (local->lock);
+ 
+   /* Avoid overwriting the global configuration until we have loaded
 diff --git a/nss/nss_module.c b/nss/nss_module.c
 index f9a1263e5a..f00bbd9e1a 100644
 --- a/nss/nss_module.c
