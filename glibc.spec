@@ -273,7 +273,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=3.10 \
+    --enable-kernel=4.18 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
@@ -285,10 +285,9 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --build=%{glibc_target} \
     --host=%{glibc_target} \
     --with-pkgversion='Clear Linux Software for Intel Architecture' \
-    --enable-lock-elision=yes \
+    --enable-lock-elision=no \
     --enable-bind-now  \
     --enable-tunables \
-    --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
     --enable-static-pie \
@@ -303,7 +302,7 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC "
+export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -324,7 +323,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=3.10 \
+    --enable-kernel=4.18 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
@@ -336,10 +335,9 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --build=%{glibc_target} \
     --host=%{glibc_target} \
     --with-pkgversion='Clear Linux Software for Intel Architecture' \
-    --enable-lock-elision=yes \
+    --enable-lock-elision=no \
     --enable-bind-now  \
     --enable-tunables \
-    --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
     --enable-static-pie \
@@ -352,7 +350,7 @@ popd
 mkdir ../glibc-buildroot-avx512
 pushd ../glibc-buildroot-avx512
 
-export CFLAGS="-O3 -march=skylake-avx512 -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wa,-mbranches-within-32B-boundaries "
+export CFLAGS="-O3 -march=x86-64-v4 -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wa,-mbranches-within-32B-boundaries  -Wl,-z,x86-64-v4 "
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -D__AVX512__=1 -msse2avx -D__FMA__=1 -Wa,-mbranches-within-32B-boundaries"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -373,7 +371,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=3.10 \
+    --enable-kernel=4.18 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
@@ -385,10 +383,9 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --build=%{glibc_target} \
     --host=%{glibc_target} \
     --with-pkgversion='Clear Linux Software for Intel Architecture' \
-    --enable-lock-elision=yes \
+    --enable-lock-elision=no \
     --enable-bind-now  \
     --enable-tunables \
-    --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
     --enable-static-pie \
@@ -422,7 +419,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=3.10 \
+    --enable-kernel=4.18 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
@@ -435,10 +432,9 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --host=i686-linux-gnu \
     --target=i686-generic-linux \
     --with-pkgversion='Clear Linux Software for Intel Architecture' \
-    --enable-lock-elision=yes \
+    --enable-lock-elision=no \
     --enable-bind-now  \
     --enable-tunables \
-    --enable-stack-protector=strong \
     --enable-obsolete-nsl \
     --enable-cet \
     --enable-static-pie \
