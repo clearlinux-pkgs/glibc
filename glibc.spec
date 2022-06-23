@@ -273,7 +273,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=4.18 \
+    --enable-kernel=3.10 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
@@ -323,7 +323,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=4.18 \
+    --enable-kernel=3.10 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
@@ -371,7 +371,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=4.18 \
+    --enable-kernel=3.10 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
@@ -419,7 +419,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --mandir=/usr/share/man \
     --disable-silent-rules \
     --disable-dependency-tracking \
-    --enable-kernel=4.18 \
+    --enable-kernel=3.10 \
     --without-cvs \
     --disable-profile \
     --disable-debug \
