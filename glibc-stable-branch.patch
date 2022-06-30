@@ -1,7 +1,7 @@
 =Joshua Kinard (1):
       mips: Fix mips64n32 64 bit time_t stat support (BZ#29069)
 
-Adhemerval Zanella (25):
+Adhemerval Zanella (26):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
@@ -27,6 +27,7 @@ Adhemerval Zanella (25):
       NEWS: Add a bug fix entry for BZ #29225
       hppa: Remove _dl_skip_args usage (BZ# 29165)
       nios2: Remove _dl_skip_args usage (BZ# 29187)
+      linux: Fix mq_timereceive check for 32 bit fallback code (BZ 29304)
 
 Andreas Schwab (1):
       Regenerate configure
@@ -9743,6 +9744,19 @@ index 841b731391..aebf97d064 100644
 +#include <mmap_call.h>
  
  #endif /* MMAP_INTERNAL_LINUX_H  */
+diff --git a/sysdeps/unix/sysv/linux/mq_timedreceive.c b/sysdeps/unix/sysv/linux/mq_timedreceive.c
+index 834cd7a484..5bf1e0a83b 100644
+--- a/sysdeps/unix/sysv/linux/mq_timedreceive.c
++++ b/sysdeps/unix/sysv/linux/mq_timedreceive.c
+@@ -41,7 +41,7 @@ ___mq_timedreceive_time64 (mqd_t mqdes, char *__restrict msg_ptr, size_t msg_len
+     {
+       int r = SYSCALL_CANCEL (mq_timedreceive_time64, mqdes, msg_ptr, msg_len,
+ 			      msg_prio, abs_timeout);
+-      if (r == 0 || errno != ENOSYS)
++      if (r >= 0 || errno != ENOSYS)
+ 	return r;
+       __set_errno (EOVERFLOW);
+       return -1;
 diff --git a/sysdeps/unix/sysv/linux/nios2/arch-syscall.h b/sysdeps/unix/sysv/linux/nios2/arch-syscall.h
 index 4ee209bc44..809a219ef3 100644
 --- a/sysdeps/unix/sysv/linux/nios2/arch-syscall.h
