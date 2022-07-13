@@ -1,7 +1,7 @@
 =Joshua Kinard (1):
       mips: Fix mips64n32 64 bit time_t stat support (BZ#29069)
 
-Adhemerval Zanella (26):
+Adhemerval Zanella (27):
       posix: Fix tst-spawn6 terminal handling (BZ #28853)
       linux: Fix missing __convert_scm_timestamps (BZ #28860)
       Add BZ#28860 reference on NEWS
@@ -28,6 +28,7 @@ Adhemerval Zanella (26):
       hppa: Remove _dl_skip_args usage (BZ# 29165)
       nios2: Remove _dl_skip_args usage (BZ# 29187)
       linux: Fix mq_timereceive check for 32 bit fallback code (BZ 29304)
+      nptl: Fix ___pthread_unregister_cancel_restore asynchronous restore
 
 Andreas Schwab (1):
       Regenerate configure
@@ -3568,7 +3569,7 @@ index 8d54a6add1..f4b08902b2 100644
  }
  libc_hidden_def (__pthread_disable_asynccancel)
 diff --git a/nptl/cleanup_defer.c b/nptl/cleanup_defer.c
-index f8181a40e8..eb0bc77740 100644
+index f8181a40e8..4e864ead32 100644
 --- a/nptl/cleanup_defer.c
 +++ b/nptl/cleanup_defer.c
 @@ -30,9 +30,22 @@ ___pthread_register_cancel_defer (__pthread_unwind_buf_t *buf)
@@ -3608,7 +3609,7 @@ index f8181a40e8..eb0bc77740 100644
 +    return;
 +
 +  int cancelhandling = atomic_load_relaxed (&self->cancelhandling);
-+  if (cancelhandling & CANCELTYPE_BITMASK)
++  if ((cancelhandling & CANCELTYPE_BITMASK) == 0)
 +    {
 +      int newval;
 +      do
