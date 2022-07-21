@@ -57,7 +57,7 @@ Fangrui Song (2):
       m68k: Handle fewer relocations for RTLD_BOOTSTRAP (#BZ29071)
       elf: Remove __libc_init_secure
 
-Florian Weimer (26):
+Florian Weimer (27):
       io: Add fsync call in tst-stat
       nss: Do not mention NSS test modules in <gnu/lib-names.h>
       nss: Protect against errno changes in function lookup (bug 28953)
@@ -84,6 +84,7 @@ Florian Weimer (26):
       Linux: Implement a useful version of _startup_fatal
       Linux: Introduce __brk_call for invoking the brk system call
       csu: Implement and use _dl_early_allocate during static startup
+      malloc: Simplify implementation of __malloc_assert
 
 Gleb Fotengauer-Malinovskiy (1):
       linux: __get_nprocs_sched: do not feed CPU_COUNT_S with garbage [BZ #28850]
@@ -116,12 +117,13 @@ John David Anglin (7):
       hppa: Implement swapcontext in assembler (bug 28960)
       hppa: Use END instead of PSEUDO_END in swapcontext.S
 
-Joseph Myers (5):
+Joseph Myers (6):
       Update syscall lists for Linux 5.17
       Update kernel version to 5.16 in tst-mman-consts.py
       Update kernel version to 5.17 in tst-mman-consts.py
       Add SOL_MPTCP, SOL_MCTP from Linux 5.16 to bits/socket.h
       Add HWCAP2_AFP, HWCAP2_RPRES from Linux 5.17 to AArch64 bits/hwcap.h
+      Update syscall-names.list for Linux 5.18
 
 Matheus Castanho (1):
       powerpc: Fix VSX register number on __strncpy_power9 [BZ #29197]
@@ -3616,6 +3618,35 @@ index 7fce35f212..8053c816a6 100644
  
  # For SJIS the charmap is SHIFT_JIS. We just want the locale to have
  # a slightly nicer name instead of using "*.SHIFT_SJIS", but that
+diff --git a/malloc/malloc.c b/malloc/malloc.c
+index 1a1ac1d8f0..fe9cb9b800 100644
+--- a/malloc/malloc.c
++++ b/malloc/malloc.c
+@@ -292,19 +292,14 @@
+ # define __assert_fail(assertion, file, line, function)			\
+ 	 __malloc_assert(assertion, file, line, function)
+ 
+-extern const char *__progname;
+-
+-static void
++_Noreturn static void
+ __malloc_assert (const char *assertion, const char *file, unsigned int line,
+ 		 const char *function)
+ {
+-  (void) __fxprintf (NULL, "%s%s%s:%u: %s%sAssertion `%s' failed.\n",
+-		     __progname, __progname[0] ? ": " : "",
+-		     file, line,
+-		     function ? function : "", function ? ": " : "",
+-		     assertion);
+-  fflush (stderr);
+-  abort ();
++  __libc_message (do_abort, "\
++Fatal glibc error: malloc assertion failure in %s: %s\n",
++		  function, assertion);
++  __builtin_unreachable ();
+ }
+ #endif
+ #endif
 diff --git a/manual/dynlink.texi b/manual/dynlink.texi
 index 54091be18e..6a4a50d3f0 100644
 --- a/manual/dynlink.texi
@@ -10609,7 +10640,7 @@ index 0000000000..39859b404a
 +  while (0)
 +#endif  /* !SHARED */
 diff --git a/sysdeps/unix/sysv/linux/syscall-names.list b/sysdeps/unix/sysv/linux/syscall-names.list
-index 6421806110..b8c0b0c586 100644
+index 6421806110..6c7b2f7011 100644
 --- a/sysdeps/unix/sysv/linux/syscall-names.list
 +++ b/sysdeps/unix/sysv/linux/syscall-names.list
 @@ -21,8 +21,8 @@
@@ -10618,8 +10649,8 @@ index 6421806110..b8c0b0c586 100644
  
 -# The list of system calls is current as of Linux 5.16.
 -kernel 5.16
-+# The list of system calls is current as of Linux 5.17.
-+kernel 5.17
++# The list of system calls is current as of Linux 5.18.
++kernel 5.18
  
  FAST_atomic_update
  FAST_cmpxchg
