@@ -38,7 +38,6 @@ Patch35:	vzeroupper-2.27.patch
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
 Patch50:	pause.patch
 Patch51:        gcc-8-fix.patch
-Patch52:	spin-smarter.patch
 Patch53: 	nostackshrink.patch
 Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
 Patch55: 	disable-vectorization-even-more.patch
@@ -225,7 +224,6 @@ GNU C library extra components.
 %patch35 -p1
 %patch50 -p1
 #%patch51 -p1
-%patch52 -p1
 %patch53 -p1
 %patch54 -p1
 %patch55 -p1
