@@ -4,6 +4,9 @@ Florian Weimer (1):
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
 
+Joseph Myers (1):
+      Update syscall lists for Linux 5.19
+
 Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
@@ -38,6 +41,45 @@ index 2696dde4b1..9b07b4e132 100644
  }
  
  void *
+diff --git a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
+index bf4be80f8d..202520ee25 100644
+--- a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
++++ b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
+@@ -122,6 +122,7 @@
+ #define __NR_mbind 235
+ #define __NR_membarrier 283
+ #define __NR_memfd_create 279
++#define __NR_memfd_secret 447
+ #define __NR_migrate_pages 238
+ #define __NR_mincore 232
+ #define __NR_mkdirat 34
+diff --git a/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h
+index d656aedcc2..4e65f337d4 100644
+--- a/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h
++++ b/sysdeps/unix/sysv/linux/riscv/rv64/arch-syscall.h
+@@ -127,6 +127,7 @@
+ #define __NR_mbind 235
+ #define __NR_membarrier 283
+ #define __NR_memfd_create 279
++#define __NR_memfd_secret 447
+ #define __NR_migrate_pages 238
+ #define __NR_mincore 232
+ #define __NR_mkdirat 34
+diff --git a/sysdeps/unix/sysv/linux/syscall-names.list b/sysdeps/unix/sysv/linux/syscall-names.list
+index 6c7b2f7011..028ad3107a 100644
+--- a/sysdeps/unix/sysv/linux/syscall-names.list
++++ b/sysdeps/unix/sysv/linux/syscall-names.list
+@@ -21,8 +21,8 @@
+ # This file can list all potential system calls.  The names are only
+ # used if the installed kernel headers also provide them.
+ 
+-# The list of system calls is current as of Linux 5.18.
+-kernel 5.18
++# The list of system calls is current as of Linux 5.19.
++kernel 5.19
+ 
+ FAST_atomic_update
+ FAST_cmpxchg
 diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
 index e6b9e8743a..3d19d5556f 100644
 --- a/wcsmbs/Makefile
