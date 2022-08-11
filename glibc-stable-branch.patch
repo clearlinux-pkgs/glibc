@@ -7,6 +7,9 @@ H.J. Lu (1):
 Joseph Myers (1):
       Update syscall lists for Linux 5.19
 
+Noah Goldstein (1):
+      elf: Replace `strcpy` call with `memcpy` [BZ #29454]
+
 Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
@@ -41,6 +44,22 @@ index 2696dde4b1..9b07b4e132 100644
  }
  
  void *
+diff --git a/elf/dl-cache.c b/elf/dl-cache.c
+index 8bbf110d02..b97c17b3a9 100644
+--- a/elf/dl-cache.c
++++ b/elf/dl-cache.c
+@@ -509,8 +509,9 @@ _dl_load_cache_lookup (const char *name)
+      we are accessing. Therefore we must make the copy of the
+      mapping data without using malloc.  */
+   char *temp;
+-  temp = alloca (strlen (best) + 1);
+-  strcpy (temp, best);
++  size_t best_len = strlen (best) + 1;
++  temp = alloca (best_len);
++  memcpy (temp, best, best_len);
+   return __strdup (temp);
+ }
+ 
 diff --git a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
 index bf4be80f8d..202520ee25 100644
 --- a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
