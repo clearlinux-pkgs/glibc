@@ -47,7 +47,8 @@ Patch57:	glibc-backport.patch
 Patch63:	utf8-locale-naming.patch
 Patch64:	noclone3yet.patch
 Patch65:	seccomp_workaround.patch
-
+# work around buggy games
+Patch66:	reenable_DT_HASH.patch
 
 # cves: patches 101 through 200
 
@@ -232,6 +233,7 @@ GNU C library extra components.
 %patch63 -p1
 %patch64 -p1
 %patch65 -p1
+%patch66 -p1
 
 
 %patch9 -p1
