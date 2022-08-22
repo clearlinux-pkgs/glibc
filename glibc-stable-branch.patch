@@ -1,5 +1,6 @@
-Arjun Shankar (1):
+Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
+      NEWS: Add entry for bug 28846
 
 Florian Weimer (3):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
@@ -19,10 +20,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..becab3ade9 100644
+index f61e521fc8..ae30900bbc 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,15 @@ See the end for copying conditions.
+@@ -4,6 +4,16 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -31,6 +32,7 @@ index f61e521fc8..becab3ade9 100644
 +
 +The following bugs are resolved with this release:
 +
++  [28846] CMSG_NXTHDR may trigger -Wstrict-overflow warning
 +  [29446] _dlopen now ignores dl_caller argument in static mode
 +  [29485] Linux: Terminate subprocess on late failure in tst-pidfd
 +  [29490] alpha: New __brk_call implementation is broken
