@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.36
-Release:        510
+Release:        511
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -24,7 +24,6 @@ Patch12:	mkdir-ldconfig.patch
 Patch13:	locale-var-cache.patch
 Patch14:	nonscd.patch
 Patch17:	alternate_trim.patch
-Patch18:	madvise-bss.patch
 Patch20:	tzselect-proper-zone-file.patch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
@@ -215,7 +214,6 @@ GNU C library extra components.
 %patch13 -p1
 %patch14 -p1
 %patch17 -p1
-#%patch18 -p1
 %patch20 -p1
 %patch24 -p1
 #%patch25 -p1
