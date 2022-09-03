@@ -191,6 +191,7 @@ GNU C library.
 License:        GPL-2.0
 Summary:        GNU C library
 Group:          devel
+Requires:	gcc-staticdev
 
 %description staticdev
 GNU C library.
