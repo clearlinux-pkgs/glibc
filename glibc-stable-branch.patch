@@ -1,4 +1,4 @@
-Adhemerval Zanella (7):
+Adhemerval Zanella (8):
       glibcextract.py: Add compile_c_snippet
       linux: Use compile_c_snippet to check linux/pidfd.h availability
       linux: Mimic kernel defition for BLOCK_SIZE
@@ -6,6 +6,7 @@ Adhemerval Zanella (7):
       linux: Fix sys/mount.h usage with kernel headers
       syslog: Fix large messages (BZ#29536)
       elf: Restore how vDSO dependency is printed with LD_TRACE_LOADED_OBJECTS (BZ #29539)
+      syslog: Remove extra whitespace between timestamp and message (BZ#29544)
 
 Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
@@ -382,9 +383,18 @@ index 0000000000..00b1b93342
 @@ -0,0 +1 @@
 +#include <wcsmbs/bits/wchar2-decl.h>
 diff --git a/misc/syslog.c b/misc/syslog.c
-index 554089bfc4..b88f66c835 100644
+index 554089bfc4..f67d4b58a4 100644
 --- a/misc/syslog.c
 +++ b/misc/syslog.c
+@@ -167,7 +167,7 @@ __vsyslog_internal (int pri, const char *fmt, va_list ap,
+ 		  _nl_C_locobj_ptr);
+ 
+ #define SYSLOG_HEADER(__pri, __timestamp, __msgoff, pid) \
+-  "<%d>%s %n%s%s%.0d%s: ",                               \
++  "<%d>%s%n%s%s%.0d%s: ",                                \
+   __pri, __timestamp, __msgoff,                          \
+   LogTag == NULL ? __progname : LogTag,                  \
+   "[" + (pid == 0), pid, "]" + (pid == 0)
 @@ -193,28 +193,32 @@ __vsyslog_internal (int pri, const char *fmt, va_list ap,
        int vl = __vsnprintf_internal (bufs + l, sizeof bufs - l, fmt, apc,
                                       mode_flags);
@@ -426,7 +436,7 @@ index 554089bfc4..b88f66c835 100644
        else
          {
 diff --git a/misc/tst-syslog.c b/misc/tst-syslog.c
-index e550d15796..1d332ece53 100644
+index e550d15796..3560b518a2 100644
 --- a/misc/tst-syslog.c
 +++ b/misc/tst-syslog.c
 @@ -68,21 +68,19 @@ static const int priorities[] =
@@ -521,7 +531,7 @@ index e550d15796..1d332ece53 100644
    snprintf (expected_ident, sizeof (expected_ident), "%s%s%.0d%s:",
              OPENLOG_IDENT,
              options & LOG_PID ? "[" : "",
-@@ -211,15 +251,38 @@ check_openlog_message (const struct msg_t *msg, int msgnum,
+@@ -211,17 +251,43 @@ check_openlog_message (const struct msg_t *msg, int msgnum,
    return true;
  }
  
@@ -549,20 +559,26 @@ index e550d15796..1d332ece53 100644
  {
    struct msg_t r = { .pid = -1 };
    int number;
- 
++  int wsb, wsa;
++
 +#define STRINPUT(size)  XSTRINPUT(size)
 +#define XSTRINPUT(size) "%" # size "s"
-+
+ 
    /* The message in the form:
 -     <179>Apr  8 14:51:19 tst-syslog: syslog message 176 3  */
 -  int n = sscanf (msg, "<%3d>%*s %*d %*d:%*d:%*d %32s %64s %*d %*d",
-+     <179>Apr  8 14:51:19  tst-syslog: message 176 3  */
-+  int n = sscanf (msg, "<%3d>%*s %*d %*d:%*d:%*d " STRINPUT(IDENT_LENGTH)
+-                  &number, r.ident, r.msg);
++     <179>Apr  8 14:51:19 tst-syslog: message 176 3  */
++  int n = sscanf (msg, "<%3d>%*s %*d %*d:%*d:%*d%n %n" STRINPUT(IDENT_LENGTH)
 +		       " " STRINPUT(MSG_LENGTH) " %*d %*d",
-                   &number, r.ident, r.msg);
++                  &number, &wsb, &wsa, r.ident, r.msg);
    TEST_COMPARE (n, 3);
++  /* It should only one space between timestamp and message.  */
++  TEST_COMPARE (wsa - wsb, 1);
  
-@@ -246,7 +309,7 @@ parse_syslog_console (const char *msg)
+   r.facility = number & LOG_FACMASK;
+   r.priority = number & LOG_PRIMASK;
+@@ -246,7 +312,7 @@ parse_syslog_console (const char *msg)
  
    /* The message in the form:
       openlog_ident: syslog_message 128 0  */
@@ -571,7 +587,7 @@ index e550d15796..1d332ece53 100644
        r.ident, r.msg, &facility, &priority);
    TEST_COMPARE (n, 4);
  
-@@ -281,7 +344,7 @@ check_syslog_udp (void (*syslog_send)(int), int options,
+@@ -281,7 +347,7 @@ check_syslog_udp (void (*syslog_send)(int), int options,
    int msgnum = 0;
    while (1)
      {
@@ -580,7 +596,7 @@ index e550d15796..1d332ece53 100644
        size_t l = xrecvfrom (server_udp, buf, sizeof (buf), 0,
                              (struct sockaddr *) &addr, &addrlen);
        buf[l] = '\0';
-@@ -325,7 +388,7 @@ check_syslog_tcp (void (*syslog_send)(int), int options,
+@@ -325,7 +391,7 @@ check_syslog_tcp (void (*syslog_send)(int), int options,
  
    int client_tcp = xaccept (server_tcp, NULL, NULL);
  
@@ -589,7 +605,7 @@ index e550d15796..1d332ece53 100644
    size_t rbl = sizeof (buf);
    size_t prl = 0;  /* Track the size of the partial record.  */
    int msgnum = 0;
-@@ -393,20 +456,34 @@ check_syslog_console_read (FILE *fp)
+@@ -393,20 +459,34 @@ check_syslog_console_read (FILE *fp)
  }
  
  static void
@@ -627,7 +643,7 @@ index e550d15796..1d332ece53 100644
      xfclose (fp);
    }
  
-@@ -425,16 +502,28 @@ send_openlog_callback (void *clousure)
+@@ -425,16 +505,28 @@ send_openlog_callback (void *clousure)
  }
  
  static void
@@ -659,7 +675,7 @@ index e550d15796..1d332ece53 100644
    xfclose (mfp);
  
    support_capture_subprocess_check (&result, "tst-openlog-child", 0,
-@@ -462,10 +551,31 @@ do_test (void)
+@@ -462,10 +554,31 @@ do_test (void)
    check_syslog_tcp (send_openlog, LOG_PID, check_openlog_message);
  
    /* Check the LOG_CONS option.  */
