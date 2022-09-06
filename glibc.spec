@@ -461,17 +461,17 @@ make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 popd
 
 pushd ../glibc-buildroot-avx2
-mkdir -p %{buildroot}/usr/lib64/haswell
-cp math/libm.so %{buildroot}/usr/lib64/haswell/libm.so.6
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/libmvec.so.1
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/haswell/libcrypt.so.1
-cp libc.so  %{buildroot}/usr/lib64/haswell/libc.so.6
+mkdir -p %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3
+cp math/libm.so %{buildroot}//usr/lib64/glibc-hwcaps/x86-64-v3/libm.so.6
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libmvec.so.1
+cp crypt/libcrypt.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libcrypt.so.1
+cp libc.so  %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
-mkdir -p %{buildroot}/usr/lib64/haswell/avx512_1
-cp math/libm.so %{buildroot}/usr/lib64/haswell/avx512_1/libm.so.6
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/haswell/avx512_1/libmvec.so.1
+mkdir -p %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v4
+cp math/libm.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v4/libm.so.6
+cp mathvec/libmvec.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v4/libmvec.so.1
 popd
 
 
@@ -741,15 +741,13 @@ popd
 /usr/lib64/libmvec.so.1
 %{_datadir}/defaults/etc/rpc
 
-/usr/lib64/haswell/libm.so.6
+/usr/lib64/libm.so.6
 
 /usr/bin/ldconfig
 %exclude /var/cache/ldconfig
 
 %files lib-avx2
-/usr/lib64/haswell/libmvec*
-/usr/lib64/haswell/libc*
-/usr/lib64/haswell/avx512_1/*
+/usr/lib64/glibc-hwcaps/*
 
 # TODO: SPLIT!
 %files locale
