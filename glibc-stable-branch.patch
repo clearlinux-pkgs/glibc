@@ -31,18 +31,28 @@ Noah Goldstein (1):
 Raphael Moreira Zinsly (1):
       Apply asm redirections in wchar.h before first use
 
+Siddhesh Poyarekar (1):
+      Add NEWS entry for CVE-2022-39046
+
 Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..757ded85e0 100644
+index f61e521fc8..10a7613f09 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,17 @@ See the end for copying conditions.
+@@ -5,6 +5,24 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
 +Version 2.36.1
++
++Security related changes:
++
++  CVE-2022-39046: When the syslog function is passed a crafted input
++  string larger than 1024 bytes, it reads uninitialized memory from the
++  heap and prints it to the target log file, potentially revealing a
++  portion of the contents of the heap.
 +
 +The following bugs are resolved with this release:
 +
