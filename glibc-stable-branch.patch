@@ -12,6 +12,9 @@ Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
       NEWS: Add entry for bug 28846
 
+Fabian Vogt (1):
+      nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
+
 Florian Weimer (5):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
@@ -38,10 +41,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..10a7613f09 100644
+index f61e521fc8..9360596fcc 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,24 @@ See the end for copying conditions.
+@@ -5,6 +5,25 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -57,6 +60,7 @@ index f61e521fc8..10a7613f09 100644
 +The following bugs are resolved with this release:
 +
 +  [28846] CMSG_NXTHDR may trigger -Wstrict-overflow warning
++  [29415] nscd: Fix netlink cache invalidation if epoll is used
 +  [29446] _dlopen now ignores dl_caller argument in static mode
 +  [29485] Linux: Terminate subprocess on late failure in tst-pidfd
 +  [29490] alpha: New __brk_call implementation is broken
@@ -719,6 +723,20 @@ index e550d15796..3560b518a2 100644
  
    return 0;
  }
+diff --git a/nscd/connections.c b/nscd/connections.c
+index 61d1674eb4..531d2e83df 100644
+--- a/nscd/connections.c
++++ b/nscd/connections.c
+@@ -2284,7 +2284,8 @@ main_loop_epoll (int efd)
+ 					     sizeof (buf))) != -1)
+ 	      ;
+ 
+-	    __bump_nl_timestamp ();
++	    dbs[hstdb].head->extra_data[NSCD_HST_IDX_CONF_TIMESTAMP]
++	      = __bump_nl_timestamp ();
+ 	  }
+ # endif
+ 	else
 diff --git a/scripts/glibcextract.py b/scripts/glibcextract.py
 index 43ab58ffe2..36d204c9b0 100644
 --- a/scripts/glibcextract.py
