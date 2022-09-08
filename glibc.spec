@@ -288,7 +288,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-bind-now  \
     --enable-tunables \
     --enable-obsolete-nsl \
-    --enable-cet \
+    --disable-cet \
     --enable-static-pie \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
@@ -338,7 +338,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-bind-now  \
     --enable-tunables \
     --enable-obsolete-nsl \
-    --enable-cet \
+    --disable-cet \
     --enable-static-pie \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
@@ -386,7 +386,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     --enable-bind-now  \
     --enable-tunables \
     --enable-obsolete-nsl \
-    --enable-cet \
+    --disable-cet \
     --enable-static-pie \
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
@@ -435,7 +435,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --enable-bind-now  \
     --enable-tunables \
     --enable-obsolete-nsl \
-    --enable-cet \
+    --disable-cet \
     --enable-static-pie \
     libc_cv_slibdir=/usr/lib32 \
     libc_cv_complocaledir=/usr/share/locale \
