@@ -15,12 +15,27 @@ Arjun Shankar (2):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (5):
+Florian Weimer (20):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
       Linux: Fix enum fsconfig_command detection in <sys/mount.h>
       elf: Call __libc_early_init for reused namespaces (bug 29528)
+      resolv: Add tst-resolv-byaddr for testing reverse lookup
+      resolv: Add tst-resolv-aliases
+      resolv: Add internal __res_binary_hnok function
+      resolv: Add the __ns_samebinaryname function
+      resolv: Add internal __ns_name_length_uncompressed function
+      resolv: Add DNS packet parsing helpers geared towards wire format
+      nss_dns: Split getanswer_ptr from getanswer_r
+      nss_dns: Rewrite _nss_dns_gethostbyaddr2_r and getanswer_ptr
+      nss_dns: Remove remnants of IPv6 address mapping
+      nss_dns: Rewrite getanswer_r to match getanswer_ptr (bug 12154, bug 29305)
+      nss_dns: In gaih_getanswer_slice, skip strange aliases (bug 12154)
+      resolv: Add new tst-resolv-invalid-cname
+      nss_dns: Rewrite _nss_dns_gethostbyname4_r using current interfaces
+      resolv: Fix building tst-resolv-invalid-cname for earlier C standards
+      NEWS: Note bug 12154 and bug 29305 as fixed
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -41,10 +56,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..9360596fcc 100644
+index f61e521fc8..03281e3ab4 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,25 @@ See the end for copying conditions.
+@@ -5,6 +5,27 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -59,7 +74,9 @@ index f61e521fc8..9360596fcc 100644
 +
 +The following bugs are resolved with this release:
 +
++  [12154] Do not fail DNS resolution for CNAMEs which are not host names
 +  [28846] CMSG_NXTHDR may trigger -Wstrict-overflow warning
++  [29305] Conserve NSS buffer space during DNS packet parsing
 +  [29415] nscd: Fix netlink cache invalidation if epoll is used
 +  [29446] _dlopen now ignores dl_caller argument in static mode
 +  [29485] Linux: Terminate subprocess on late failure in tst-pidfd
@@ -389,6 +406,129 @@ index 0000000000..449f3c8fa9
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/include/arpa/nameser.h b/include/arpa/nameser.h
+index 53f1dbc7c3..c27e7886b7 100644
+--- a/include/arpa/nameser.h
++++ b/include/arpa/nameser.h
+@@ -55,6 +55,12 @@ int __ns_name_ntop (const unsigned char *, char *, size_t) __THROW;
+ int __ns_name_unpack (const unsigned char *, const unsigned char *,
+ 		      const unsigned char *, unsigned char *, size_t) __THROW;
+ 
++/* Like ns_samename, but for uncompressed binary names.  Return true
++   if the two arguments compare are equal as case-insensitive domain
++   names.  */
++_Bool __ns_samebinaryname (const unsigned char *, const unsigned char *)
++  attribute_hidden;
++
+ #define ns_msg_getflag(handle, flag) \
+   (((handle)._flags & _ns_flagdata[flag].mask) >> _ns_flagdata[flag].shift)
+ 
+@@ -89,5 +95,105 @@ libc_hidden_proto (__ns_name_unpack)
+ extern __typeof (ns_samename) __libc_ns_samename;
+ libc_hidden_proto (__libc_ns_samename)
+ 
++/* Packet parser helper functions.  */
++
++/* Verify that P points to an uncompressed domain name in wire format.
++   On success, return the length of the encoded name, including the
++   terminating null byte.  On failure, return -1 and set errno.  EOM
++   must point one past the last byte in the packet.  */
++int __ns_name_length_uncompressed (const unsigned char *p,
++				   const unsigned char *eom) attribute_hidden;
++
++/* Iterator over the resource records in a DNS packet.  */
++struct ns_rr_cursor
++{
++  /* These members are not changed after initialization.  */
++  const unsigned char *begin;	/* First byte of packet.  */
++  const unsigned char *end;	/* One past the last byte of the packet.  */
++  const unsigned char *first_rr; /* First resource record (or packet end).  */
++
++  /* Advanced towards the end while reading the packet.  */
++  const unsigned char *current;
++};
++
++/* Returns the RCODE field from the DNS header.  */
++static inline int
++ns_rr_cursor_rcode (const struct ns_rr_cursor *c)
++{
++  return c->begin[3] & 0x0f;	/* Lower 4 bits at offset 3.  */
++}
++
++/* Returns the length of the answer section according to the DNS header.  */
++static inline int
++ns_rr_cursor_ancount (const struct ns_rr_cursor *c)
++{
++  return c->begin[6] * 256 + c->begin[7]; /* 16 bits at offset 6.  */
++}
++
++/* Returns the length of the authority (name server) section according
++   to the DNS header.  */
++static inline int
++ns_rr_cursor_nscount (const struct ns_rr_cursor *c)
++{
++  return c->begin[8] * 256 + c->begin[9]; /* 16 bits at offset 8.  */
++}
++
++/* Returns the length of the additional data section according to the
++   DNS header.  */
++static inline int
++ns_rr_cursor_adcount (const struct ns_rr_cursor *c)
++{
++  return c->begin[10] * 256 + c->begin[11]; /* 16 bits at offset 10.  */
++}
++
++/* Returns a pointer to the uncompressed question name in wire
++   format.  */
++static inline const unsigned char *
++ns_rr_cursor_qname (const struct ns_rr_cursor *c)
++{
++  return c->begin + 12;		/* QNAME starts right after the header.  */
++}
++
++/* Returns the question type of the first and only question.  */
++static inline const int
++ns_rr_cursor_qtype (const struct ns_rr_cursor *c)
++{
++  /* 16 bits 4 bytes back from the first RR header start.  */
++  return c->first_rr[-4] * 256 + c->first_rr[-3];
++}
++
++/* Returns the clss of the first and only question (usally C_IN).  */
++static inline const int
++ns_rr_cursor_qclass (const struct ns_rr_cursor *c)
++{
++  /* 16 bits 2 bytes back from the first RR header start.  */
++  return c->first_rr[-2] * 256 + c->first_rr[-1];
++}
++
++/* Initializes *C to cover the packet [BUF, BUF+LEN).  Returns false
++   if LEN is less than sizeof (*HD), if the packet does not contain a
++   full (uncompressed) question, or if the question count is not 1.  */
++_Bool __ns_rr_cursor_init (struct ns_rr_cursor *c,
++			   const unsigned char *buf, size_t len)
++  attribute_hidden;
++
++/* Like ns_rr, but the record owner name is not decoded into text format.  */
++struct ns_rr_wire
++{
++  unsigned char rname[NS_MAXCDNAME]; /* Owner name of the record.  */
++  uint16_t rtype;		/* Resource record type (T_*).  */
++  uint16_t rclass;		/* Resource record class (C_*).  */
++  uint32_t ttl;			/* Time-to-live field.  */
++  const unsigned char *rdata;	/* Start of resource record data.  */
++  uint16_t rdlength;		/* Length of the data at rdata, in bytes.  */
++};
++
++/* Attempts to parse the record at C into *RR.  On success, return
++   true, and C is advanced past the record, and RR->rdata points to
++   the record data.  On failure, errno is set to EMSGSIZE, and false
++   is returned.  */
++_Bool __ns_rr_cursor_next (struct ns_rr_cursor *c, struct ns_rr_wire *rr)
++  attribute_hidden;
++
+ # endif /* !_ISOMAC */
+ #endif
 diff --git a/include/bits/wchar2-decl.h b/include/bits/wchar2-decl.h
 new file mode 100644
 index 0000000000..00b1b93342
@@ -396,6 +536,19 @@ index 0000000000..00b1b93342
 +++ b/include/bits/wchar2-decl.h
 @@ -0,0 +1 @@
 +#include <wcsmbs/bits/wchar2-decl.h>
+diff --git a/include/resolv.h b/include/resolv.h
+index 3590b6f496..4dbbac3800 100644
+--- a/include/resolv.h
++++ b/include/resolv.h
+@@ -70,5 +70,8 @@ libc_hidden_proto (__libc_res_nameinquery)
+ extern __typeof (__res_queriesmatch) __libc_res_queriesmatch;
+ libc_hidden_proto (__libc_res_queriesmatch)
+ 
++/* Variant of res_hnok which operates on binary (but uncompressed) names.  */
++bool __res_binary_hnok (const unsigned char *dn) attribute_hidden;
++
+ # endif /* _RESOLV_H_ && !_ISOMAC */
+ #endif
 diff --git a/misc/syslog.c b/misc/syslog.c
 index 554089bfc4..f67d4b58a4 100644
 --- a/misc/syslog.c
@@ -737,6 +890,3506 @@ index 61d1674eb4..531d2e83df 100644
  	  }
  # endif
  	else
+diff --git a/resolv/Makefile b/resolv/Makefile
+index 5b15321f9b..f8a92c6cff 100644
+--- a/resolv/Makefile
++++ b/resolv/Makefile
+@@ -40,12 +40,16 @@ routines := \
+   inet_pton \
+   ns_makecanon \
+   ns_name_compress \
++  ns_name_length_uncompressed \
+   ns_name_ntop \
+   ns_name_pack \
+   ns_name_pton \
+   ns_name_skip \
+   ns_name_uncompress \
+   ns_name_unpack \
++  ns_rr_cursor_init \
++  ns_rr_cursor_next \
++  ns_samebinaryname \
+   ns_samename \
+   nsap_addr \
+   nss_dns_functions \
+@@ -89,9 +93,12 @@ tests += \
+   tst-ns_name_pton \
+   tst-res_hconf_reorder \
+   tst-res_hnok \
++  tst-resolv-aliases \
+   tst-resolv-basic \
+   tst-resolv-binary \
++  tst-resolv-byaddr \
+   tst-resolv-edns \
++  tst-resolv-invalid-cname \
+   tst-resolv-network \
+   tst-resolv-noaaaa \
+   tst-resolv-nondecimal \
+@@ -104,6 +111,18 @@ tests += \
+ tests-internal += tst-resolv-txnid-collision
+ tests-static += tst-resolv-txnid-collision
+ 
++# Likewise for __ns_samebinaryname.
++tests-internal += tst-ns_samebinaryname
++tests-static += tst-ns_samebinaryname
++
++# Likewise for __ns_name_length_uncompressed.
++tests-internal += tst-ns_name_length_uncompressed
++tests-static += tst-ns_name_length_uncompressed
++
++# Likewise for struct ns_rr_cursor and its functions.
++tests-internal += tst-ns_rr_cursor
++tests-static += tst-ns_rr_cursor
++
+ # These tests need libdl.
+ ifeq (yes,$(build-shared))
+ tests += \
+@@ -258,8 +277,10 @@ $(objpfx)tst-resolv-ai_idn.out: $(gen-locales)
+ $(objpfx)tst-resolv-ai_idn-latin1.out: $(gen-locales)
+ $(objpfx)tst-resolv-ai_idn-nolibidn2.out: \
+   $(gen-locales) $(objpfx)tst-no-libidn2.so
++$(objpfx)tst-resolv-aliases: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-basic: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-binary: $(objpfx)libresolv.so $(shared-thread-library)
++$(objpfx)tst-resolv-byaddr: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-edns: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-network: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-res_init: $(objpfx)libresolv.so
+@@ -267,6 +288,8 @@ $(objpfx)tst-resolv-res_init-multi: $(objpfx)libresolv.so \
+   $(shared-thread-library)
+ $(objpfx)tst-resolv-res_init-thread: $(objpfx)libresolv.so \
+   $(shared-thread-library)
++$(objpfx)tst-resolv-invalid-cname: $(objpfx)libresolv.so \
++  $(shared-thread-library)
+ $(objpfx)tst-resolv-noaaaa: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-nondecimal: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-qtypes: $(objpfx)libresolv.so $(shared-thread-library)
+diff --git a/resolv/README b/resolv/README
+index 514e9bb617..2146bc3b27 100644
+--- a/resolv/README
++++ b/resolv/README
+@@ -146,6 +146,3 @@ res_libc.c is home-brewn, although parts of it are taken from res_data.c.
+ 
+ res_hconf.c and res_hconf.h were contributed by David Mosberger, and
+ do not come from BIND.
+-
+-The files gethnamaddr.c, mapv4v6addr.h and mapv4v6hostent.h are
+-leftovers from BIND 4.9.7.
+diff --git a/resolv/mapv4v6addr.h b/resolv/mapv4v6addr.h
+deleted file mode 100644
+index 7f85f7d5e3..0000000000
+--- a/resolv/mapv4v6addr.h
++++ /dev/null
+@@ -1,69 +0,0 @@
+-/*
+- * ++Copyright++ 1985, 1988, 1993
+- * -
+- * Copyright (c) 1985, 1988, 1993
+- *    The Regents of the University of California.  All rights reserved.
+- *
+- * Redistribution and use in source and binary forms, with or without
+- * modification, are permitted provided that the following conditions
+- * are met:
+- * 1. Redistributions of source code must retain the above copyright
+- *    notice, this list of conditions and the following disclaimer.
+- * 2. Redistributions in binary form must reproduce the above copyright
+- *    notice, this list of conditions and the following disclaimer in the
+- *    documentation and/or other materials provided with the distribution.
+- * 4. Neither the name of the University nor the names of its contributors
+- *    may be used to endorse or promote products derived from this software
+- *    without specific prior written permission.
+- *
+- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+- * SUCH DAMAGE.
+- * -
+- * Portions Copyright (c) 1993 by Digital Equipment Corporation.
+- *
+- * Permission to use, copy, modify, and distribute this software for any
+- * purpose with or without fee is hereby granted, provided that the above
+- * copyright notice and this permission notice appear in all copies, and that
+- * the name of Digital Equipment Corporation not be used in advertising or
+- * publicity pertaining to distribution of the document or software without
+- * specific, written prior permission.
+- *
+- * THE SOFTWARE IS PROVIDED "AS IS" AND DIGITAL EQUIPMENT CORP. DISCLAIMS ALL
+- * WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES
+- * OF MERCHANTABILITY AND FITNESS.   IN NO EVENT SHALL DIGITAL EQUIPMENT
+- * CORPORATION BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+- * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
+- * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
+- * ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
+- * SOFTWARE.
+- * -
+- * --Copyright--
+- */
+-
+-#include <string.h>
+-#include <arpa/nameser.h>
+-
+-static void
+-map_v4v6_address (const char *src, char *dst)
+-{
+-  u_char *p = (u_char *) dst;
+-  int i;
+-
+-  /* Move the IPv4 part to the right position.  */
+-  memcpy (dst + 12, src, INADDRSZ);
+-
+-  /* Mark this ipv6 addr as a mapped ipv4. */
+-  for (i = 0; i < 10; i++)
+-    *p++ = 0x00;
+-  *p++ = 0xff;
+-  *p = 0xff;
+-}
+diff --git a/resolv/mapv4v6hostent.h b/resolv/mapv4v6hostent.h
+deleted file mode 100644
+index c11038adf3..0000000000
+--- a/resolv/mapv4v6hostent.h
++++ /dev/null
+@@ -1,84 +0,0 @@
+-/*
+- * ++Copyright++ 1985, 1988, 1993
+- * -
+- * Copyright (c) 1985, 1988, 1993
+- *    The Regents of the University of California.  All rights reserved.
+- *
+- * Redistribution and use in source and binary forms, with or without
+- * modification, are permitted provided that the following conditions
+- * are met:
+- * 1. Redistributions of source code must retain the above copyright
+- *    notice, this list of conditions and the following disclaimer.
+- * 2. Redistributions in binary form must reproduce the above copyright
+- *    notice, this list of conditions and the following disclaimer in the
+- *    documentation and/or other materials provided with the distribution.
+- * 4. Neither the name of the University nor the names of its contributors
+- *    may be used to endorse or promote products derived from this software
+- *    without specific prior written permission.
+- *
+- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+- * SUCH DAMAGE.
+- * -
+- * Portions Copyright (c) 1993 by Digital Equipment Corporation.
+- *
+- * Permission to use, copy, modify, and distribute this software for any
+- * purpose with or without fee is hereby granted, provided that the above
+- * copyright notice and this permission notice appear in all copies, and that
+- * the name of Digital Equipment Corporation not be used in advertising or
+- * publicity pertaining to distribution of the document or software without
+- * specific, written prior permission.
+- *
+- * THE SOFTWARE IS PROVIDED "AS IS" AND DIGITAL EQUIPMENT CORP. DISCLAIMS ALL
+- * WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES
+- * OF MERCHANTABILITY AND FITNESS.   IN NO EVENT SHALL DIGITAL EQUIPMENT
+- * CORPORATION BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+- * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
+- * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
+- * ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
+- * SOFTWARE.
+- * -
+- * --Copyright--
+- */
+-
+-#include <arpa/nameser.h>
+-#include <sys/socket.h>
+-
+-typedef union {
+-    int32_t al;
+-    char ac;
+-} align;
+-
+-static int
+-map_v4v6_hostent (struct hostent *hp, char **bpp, int *lenp)
+-{
+-  char **ap;
+-
+-  if (hp->h_addrtype != AF_INET || hp->h_length != INADDRSZ)
+-    return 0;
+-  hp->h_addrtype = AF_INET6;
+-  hp->h_length = IN6ADDRSZ;
+-  for (ap = hp->h_addr_list; *ap; ap++)
+-    {
+-      int i = sizeof (align) - ((u_long) *bpp % sizeof (align));
+-
+-      if (*lenp < (i + IN6ADDRSZ))
+-	/* Out of memory.  */
+-	return 1;
+-      *bpp += i;
+-      *lenp -= i;
+-      map_v4v6_address (*ap, *bpp);
+-      *ap = *bpp;
+-      *bpp += IN6ADDRSZ;
+-      *lenp -= IN6ADDRSZ;
+-    }
+-  return 0;
+-}
+diff --git a/resolv/ns_name_length_uncompressed.c b/resolv/ns_name_length_uncompressed.c
+new file mode 100644
+index 0000000000..51296b47ef
+--- /dev/null
++++ b/resolv/ns_name_length_uncompressed.c
+@@ -0,0 +1,72 @@
++/* Skip over an uncompressed name in wire format.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/nameser.h>
++#include <errno.h>
++#include <stdbool.h>
++
++int
++__ns_name_length_uncompressed (const unsigned char *p,
++                                const unsigned char *eom)
++{
++  const unsigned char *start = p;
++
++  while (true)
++    {
++      if (p == eom)
++        {
++          /* Truncated packet: no room for label length.  */
++          __set_errno (EMSGSIZE);
++          return -1;
++        }
++
++      unsigned char b = *p;
++      ++p;
++      if (b == 0)
++        {
++          /* Root label.  */
++          size_t length = p - start;
++          if (length > NS_MAXCDNAME)
++            {
++              /* Domain name too long.  */
++              __set_errno (EMSGSIZE);
++              return -1;
++            }
++          return length;
++        }
++
++      if (b <= 63)
++        {
++          /* Regular label.  */
++          if (b <= eom - p)
++            p += b;
++          else
++            {
++              /* Truncated packet: label incomplete.  */
++              __set_errno (EMSGSIZE);
++              return -1;
++            }
++        }
++      else
++        {
++          /* Compression reference or corrupted label length.  */
++          __set_errno (EMSGSIZE);
++          return -1;
++        }
++    }
++}
+diff --git a/resolv/ns_rr_cursor_init.c b/resolv/ns_rr_cursor_init.c
+new file mode 100644
+index 0000000000..6ee80b30e9
+--- /dev/null
++++ b/resolv/ns_rr_cursor_init.c
+@@ -0,0 +1,62 @@
++/* Initialize a simple DNS packet parser.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/nameser.h>
++#include <errno.h>
++#include <stdbool.h>
++#include <string.h>
++
++bool
++__ns_rr_cursor_init (struct ns_rr_cursor *c,
++                     const unsigned char *buf, size_t len)
++{
++  c->begin = buf;
++  c->end = buf + len;
++
++  /* Check for header size and 16-bit question count value (it must be 1).  */
++  if (len < 12 || buf[4] != 0 || buf[5] != 1)
++    {
++      __set_errno (EMSGSIZE);
++      c->current = c->end;
++      return false;
++    }
++  c->current = buf + 12;
++
++  int consumed = __ns_name_length_uncompressed (c->current, c->end);
++  if (consumed < 0)
++    {
++      __set_errno (EMSGSIZE);
++      c->current = c->end;
++      c->first_rr = NULL;
++      return false;
++    }
++  c->current += consumed;
++
++  /* Ensure there is room for question type and class.  */
++  if (c->end - c->current < 4)
++    {
++      __set_errno (EMSGSIZE);
++      c->current = c->end;
++      c->first_rr = NULL;
++      return false;
++    }
++  c->current += 4;
++  c->first_rr = c->current;
++
++  return true;
++}
+diff --git a/resolv/ns_rr_cursor_next.c b/resolv/ns_rr_cursor_next.c
+new file mode 100644
+index 0000000000..33652fc5da
+--- /dev/null
++++ b/resolv/ns_rr_cursor_next.c
+@@ -0,0 +1,74 @@
++/* Simple DNS record parser without textual name decoding.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/nameser.h>
++#include <errno.h>
++#include <stdbool.h>
++#include <string.h>
++
++bool
++__ns_rr_cursor_next (struct ns_rr_cursor *c, struct ns_rr_wire *rr)
++{
++  rr->rdata = NULL;
++
++  /* Extract the record owner name.  */
++  int consumed = __ns_name_unpack (c->begin, c->end, c->current,
++                                   rr->rname, sizeof (rr->rname));
++  if (consumed < 0)
++    {
++      memset (rr, 0, sizeof (*rr));
++      __set_errno (EMSGSIZE);
++      return false;
++    }
++  c->current += consumed;
++
++  /* Extract the metadata.  */
++  struct
++  {
++    uint16_t rtype;
++    uint16_t rclass;
++    uint32_t ttl;
++    uint16_t rdlength;
++  } __attribute__ ((packed)) metadata;
++  _Static_assert (sizeof (metadata) == 10, "sizeof metadata");
++  if (c->end - c->current < sizeof (metadata))
++    {
++      memset (rr, 0, sizeof (*rr));
++      __set_errno (EMSGSIZE);
++      return false;
++    }
++  memcpy (&metadata, c->current, sizeof (metadata));
++  c->current += sizeof (metadata);
++  /* Endianess conversion.  */
++  rr->rtype = ntohs (metadata.rtype);
++  rr->rclass = ntohs (metadata.rclass);
++  rr->ttl = ntohl (metadata.ttl);
++  rr->rdlength = ntohs (metadata.rdlength);
++
++  /* Extract record data.  */
++  if (c->end - c->current < rr->rdlength)
++    {
++      memset (rr, 0, sizeof (*rr));
++      __set_errno (EMSGSIZE);
++      return false;
++    }
++  rr->rdata = c->current;
++  c->current += rr->rdlength;
++
++  return true;
++}
+diff --git a/resolv/ns_samebinaryname.c b/resolv/ns_samebinaryname.c
+new file mode 100644
+index 0000000000..9a47d8e97a
+--- /dev/null
++++ b/resolv/ns_samebinaryname.c
+@@ -0,0 +1,55 @@
++/* Compare two binary domain names for quality.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/nameser.h>
++#include <stdbool.h>
++
++/* Convert ASCII letters to upper case.  */
++static inline int
++ascii_toupper (unsigned char ch)
++{
++  if (ch >= 'a' && ch <= 'z')
++    return ch - 'a' + 'A';
++  else
++    return ch;
++}
++
++bool
++__ns_samebinaryname (const unsigned char *a, const unsigned char *b)
++{
++  while (*a != 0 && *b != 0)
++    {
++      if (*a != *b)
++        /* Different label length.  */
++        return false;
++      int labellen = *a;
++      ++a;
++      ++b;
++      for (int i = 0; i < labellen; ++i)
++        {
++          if (*a != *b && ascii_toupper (*a) != ascii_toupper (*b))
++            /* Different character in label.  */
++            return false;
++          ++a;
++          ++b;
++        }
++    }
++
++  /* Match if both names are at the root label.  */
++  return *a == 0 && *b == 0;
++}
+diff --git a/resolv/nss_dns/dns-host.c b/resolv/nss_dns/dns-host.c
+index 544cffbecd..9fa81f23c8 100644
+--- a/resolv/nss_dns/dns-host.c
++++ b/resolv/nss_dns/dns-host.c
+@@ -69,6 +69,7 @@
+  * --Copyright--
+  */
+ 
++#include <alloc_buffer.h>
+ #include <assert.h>
+ #include <ctype.h>
+ #include <errno.h>
+@@ -86,10 +87,6 @@
+ #include <resolv/resolv-internal.h>
+ #include <resolv/resolv_context.h>
+ 
+-/* Get implementations of some internal functions.  */
+-#include <resolv/mapv4v6addr.h>
+-#include <resolv/mapv4v6hostent.h>
+-
+ #define RESOLVSORT
+ 
+ #if PACKETSZ > 65536
+@@ -103,32 +100,36 @@
+ #endif
+ #define MAXHOSTNAMELEN 256
+ 
+-/* We need this time later.  */
+-typedef union querybuf
+-{
+-  HEADER hdr;
+-  u_char buf[MAXPACKET];
+-} querybuf;
+-
+-static enum nss_status getanswer_r (struct resolv_context *ctx,
+-				    const querybuf *answer, int anslen,
+-				    const char *qname, int qtype,
+-				    struct hostent *result, char *buffer,
+-				    size_t buflen, int *errnop, int *h_errnop,
+-				    int map, int32_t *ttlp, char **canonp);
+-
+-static enum nss_status gaih_getanswer (const querybuf *answer1, int anslen1,
+-				       const querybuf *answer2, int anslen2,
+-				       const char *qname,
++/* For historic reasons, pointers to IP addresses are char *, so use a
++   single list type for addresses and host names.  */
++#define DYNARRAY_STRUCT ptrlist
++#define DYNARRAY_ELEMENT char *
++#define DYNARRAY_PREFIX ptrlist_
++#include <malloc/dynarray-skeleton.c>
++
++static enum nss_status getanswer_r (unsigned char *packet, size_t packetlen,
++				    uint16_t qtype, struct alloc_buffer *abuf,
++				    struct ptrlist *addresses,
++				    struct ptrlist *aliases,
++				    int *errnop, int *h_errnop, int32_t *ttlp);
++static void addrsort (struct resolv_context *ctx, char **ap, int num);
++static enum nss_status getanswer_ptr (unsigned char *packet, size_t packetlen,
++				      struct alloc_buffer *abuf,
++				      char **hnamep, int *errnop,
++				      int *h_errnop, int32_t *ttlp);
++
++static enum nss_status gaih_getanswer (unsigned char *packet1,
++				       size_t packet1len,
++				       unsigned char *packet2,
++				       size_t packet2len,
++				       struct alloc_buffer *abuf,
+ 				       struct gaih_addrtuple **pat,
+-				       char *buffer, size_t buflen,
+ 				       int *errnop, int *h_errnop,
+ 				       int32_t *ttlp);
+-static enum nss_status gaih_getanswer_noaaaa (const querybuf *answer1,
+-					      int anslen1,
+-					      const char *qname,
++static enum nss_status gaih_getanswer_noaaaa (unsigned char *packet,
++					      size_t packetlen,
++					      struct alloc_buffer *abuf,
+ 					      struct gaih_addrtuple **pat,
+-					      char *buffer, size_t buflen,
+ 					      int *errnop, int *h_errnop,
+ 					      int32_t *ttlp);
+ 
+@@ -183,16 +184,9 @@ gethostbyname3_context (struct resolv_context *ctx,
+ 			char *buffer, size_t buflen, int *errnop,
+ 			int *h_errnop, int32_t *ttlp, char **canonp)
+ {
+-  union
+-  {
+-    querybuf *buf;
+-    u_char *ptr;
+-  } host_buffer;
+-  querybuf *orig_host_buffer;
+   char tmp[NS_MAXDNAME];
+   int size, type, n;
+   const char *cp;
+-  int map = 0;
+   int olderr = errno;
+   enum nss_status status;
+ 
+@@ -223,10 +217,12 @@ gethostbyname3_context (struct resolv_context *ctx,
+       && (cp = __res_context_hostalias (ctx, name, tmp, sizeof (tmp))) != NULL)
+     name = cp;
+ 
+-  host_buffer.buf = orig_host_buffer = (querybuf *) alloca (1024);
++  unsigned char dns_packet_buffer[1024];
++  unsigned char *alt_dns_packet_buffer = dns_packet_buffer;
+ 
+-  n = __res_context_search (ctx, name, C_IN, type, host_buffer.buf->buf,
+-			    1024, &host_buffer.ptr, NULL, NULL, NULL, NULL);
++  n = __res_context_search (ctx, name, C_IN, type,
++			    dns_packet_buffer, sizeof (dns_packet_buffer),
++			    &alt_dns_packet_buffer, NULL, NULL, NULL, NULL);
+   if (n < 0)
+     {
+       switch (errno)
+@@ -253,34 +249,79 @@ gethostbyname3_context (struct resolv_context *ctx,
+ 	*errnop = EAGAIN;
+       else
+ 	__set_errno (olderr);
++    }
++  else
++    {
++      struct alloc_buffer abuf = alloc_buffer_create (buffer, buflen);
+ 
+-      /* If we are looking for an IPv6 address and mapping is enabled
+-	 by having the RES_USE_INET6 bit in _res.options set, we try
+-	 another lookup.  */
+-      if (af == AF_INET6 && res_use_inet6 ())
+-	n = __res_context_search (ctx, name, C_IN, T_A, host_buffer.buf->buf,
+-				  host_buffer.buf != orig_host_buffer
+-				  ? MAXPACKET : 1024, &host_buffer.ptr,
+-				  NULL, NULL, NULL, NULL);
++      struct ptrlist addresses;
++      ptrlist_init (&addresses);
++      struct ptrlist aliases;
++      ptrlist_init (&aliases);
+ 
+-      if (n < 0)
++      status = getanswer_r (alt_dns_packet_buffer, n, type,
++			    &abuf, &addresses, &aliases,
++			    errnop, h_errnop, ttlp);
++      if (status == NSS_STATUS_SUCCESS)
+ 	{
+-	  if (host_buffer.buf != orig_host_buffer)
+-	    free (host_buffer.buf);
+-	  return status;
+-	}
++	  if (ptrlist_has_failed (&addresses)
++	      || ptrlist_has_failed (&aliases))
++	    {
++	      /* malloc failure.  Do not retry using the ERANGE protocol.  */
++	      *errnop = ENOMEM;
++	      *h_errnop = NETDB_INTERNAL;
++	      status = NSS_STATUS_UNAVAIL;
++	    }
+ 
+-      map = 1;
++	  /* Reserve the address and alias arrays in the result
++	     buffer.  Both are NULL-terminated, but the first element
++	     of the alias array is stored in h_name, so no extra space
++	     for the NULL terminator is needed there.  */
++	  result->h_addr_list
++	    = alloc_buffer_alloc_array (&abuf, char *,
++					ptrlist_size (&addresses) + 1);
++	  result->h_aliases
++	    = alloc_buffer_alloc_array (&abuf, char *,
++					ptrlist_size (&aliases));
++	  if (alloc_buffer_has_failed (&abuf))
++	    {
++	      /* Retry using the ERANGE protocol.  */
++	      *errnop = ERANGE;
++	      *h_errnop = NETDB_INTERNAL;
++	      status = NSS_STATUS_TRYAGAIN;
++	    }
++	  else
++	    {
++	      /* Copy the address list and NULL-terminate it.  */
++	      memcpy (result->h_addr_list, ptrlist_begin (&addresses),
++		      ptrlist_size (&addresses) * sizeof (char *));
++	      result->h_addr_list[ptrlist_size (&addresses)] = NULL;
++
++	      /* Sort the address list if requested.  */
++	      if (type == T_A && __resolv_context_sort_count (ctx) > 0)
++		addrsort (ctx, result->h_addr_list, ptrlist_size (&addresses));
+ 
+-      result->h_addrtype = AF_INET;
+-      result->h_length = INADDRSZ;
++	      /* Copy the aliases,  excluding the last one. */
++	      memcpy (result->h_aliases, ptrlist_begin (&aliases),
++		      (ptrlist_size (&aliases) - 1) * sizeof (char *));
++	      result->h_aliases[ptrlist_size (&aliases) - 1] = NULL;
++
++	      /* The last alias goes into h_name.  */
++	      assert (ptrlist_size (&aliases) >= 1);
++	      result->h_name = ptrlist_end (&aliases)[-1];
++
++	      /* This is also the canonical name.  */
++	      if (canonp != NULL)
++		*canonp = result->h_name;
++	    }
++	}
++
++      ptrlist_free (&aliases);
++      ptrlist_free (&addresses);
+     }
+ 
+-  status = getanswer_r
+-    (ctx, host_buffer.buf, n, name, type, result, buffer, buflen,
+-     errnop, h_errnop, map, ttlp, canonp);
+-  if (host_buffer.buf != orig_host_buffer)
+-    free (host_buffer.buf);
++  if (alt_dns_packet_buffer != dns_packet_buffer)
++    free (alt_dns_packet_buffer);
+   return status;
+ }
+ 
+@@ -324,13 +365,8 @@ _nss_dns_gethostbyname_r (const char *name, struct hostent *result,
+       *h_errnop = NETDB_INTERNAL;
+       return NSS_STATUS_UNAVAIL;
+     }
+-  status = NSS_STATUS_NOTFOUND;
+-  if (res_use_inet6 ())
+-    status = gethostbyname3_context (ctx, name, AF_INET6, result, buffer,
+-				     buflen, errnop, h_errnop, NULL, NULL);
+-  if (status == NSS_STATUS_NOTFOUND)
+-    status = gethostbyname3_context (ctx, name, AF_INET, result, buffer,
+-				     buflen, errnop, h_errnop, NULL, NULL);
++  status = gethostbyname3_context (ctx, name, AF_INET, result, buffer,
++				   buflen, errnop, h_errnop, NULL, NULL);
+   __resolv_context_put (ctx);
+   return status;
+ }
+@@ -365,17 +401,13 @@ _nss_dns_gethostbyname4_r (const char *name, struct gaih_addrtuple **pat,
+ 	name = cp;
+     }
+ 
+-  union
+-  {
+-    querybuf *buf;
+-    u_char *ptr;
+-  } host_buffer;
+-  querybuf *orig_host_buffer;
+-  host_buffer.buf = orig_host_buffer = (querybuf *) alloca (2048);
++  unsigned char dns_packet_buffer[2048];
++  unsigned char *alt_dns_packet_buffer = dns_packet_buffer;
+   u_char *ans2p = NULL;
+   int nans2p = 0;
+   int resplen2 = 0;
+   int ans2p_malloced = 0;
++  struct alloc_buffer abuf = alloc_buffer_create (buffer, buflen);
+ 
+ 
+   int olderr = errno;
+@@ -384,22 +416,21 @@ _nss_dns_gethostbyname4_r (const char *name, struct gaih_addrtuple **pat,
+   if ((ctx->resp->options & RES_NOAAAA) == 0)
+     {
+       n = __res_context_search (ctx, name, C_IN, T_QUERY_A_AND_AAAA,
+-				host_buffer.buf->buf, 2048, &host_buffer.ptr,
+-				&ans2p, &nans2p, &resplen2, &ans2p_malloced);
++				dns_packet_buffer, sizeof (dns_packet_buffer),
++				&alt_dns_packet_buffer, &ans2p, &nans2p,
++				&resplen2, &ans2p_malloced);
+       if (n >= 0)
+-	status = gaih_getanswer (host_buffer.buf, n, (const querybuf *) ans2p,
+-				 resplen2, name, pat, buffer, buflen,
+-				 errnop, herrnop, ttlp);
++	status = gaih_getanswer (alt_dns_packet_buffer, n, ans2p, resplen2,
++				 &abuf, pat, errnop, herrnop, ttlp);
+     }
+   else
+     {
+       n = __res_context_search (ctx, name, C_IN, T_A,
+-				host_buffer.buf->buf, 2048, NULL,
+-				NULL, NULL, NULL, NULL);
++				dns_packet_buffer, sizeof (dns_packet_buffer),
++				NULL, NULL, NULL, NULL, NULL);
+       if (n >= 0)
+-	status = gaih_getanswer_noaaaa (host_buffer.buf, n,
+-					name, pat, buffer, buflen,
+-					errnop, herrnop, ttlp);
++	status = gaih_getanswer_noaaaa (alt_dns_packet_buffer, n,
++					&abuf, pat, errnop, herrnop, ttlp);
+     }
+   if (n < 0)
+     {
+@@ -430,12 +461,20 @@ _nss_dns_gethostbyname4_r (const char *name, struct gaih_addrtuple **pat,
+ 	__set_errno (olderr);
+     }
+ 
++  /* Implement the buffer resizing protocol.  */
++  if (alloc_buffer_has_failed (&abuf))
++    {
++      *errnop = ERANGE;
++      *herrnop = NETDB_INTERNAL;
++      status = NSS_STATUS_TRYAGAIN;
++    }
++
+   /* Check whether ans2p was separately allocated.  */
+   if (ans2p_malloced)
+     free (ans2p);
+ 
+-  if (host_buffer.buf != orig_host_buffer)
+-    free (host_buffer.buf);
++  if (alt_dns_packet_buffer != dns_packet_buffer)
++    free (alt_dns_packet_buffer);
+ 
+   __resolv_context_put (ctx);
+   return status;
+@@ -451,36 +490,21 @@ _nss_dns_gethostbyaddr2_r (const void *addr, socklen_t len, int af,
+   static const u_char tunnelled[] = { 0,0, 0,0, 0,0, 0,0, 0,0, 0,0 };
+   static const u_char v6local[] = { 0,0, 0,1 };
+   const u_char *uaddr = (const u_char *)addr;
+-  struct host_data
+-  {
+-    char *aliases[MAX_NR_ALIASES];
+-    unsigned char host_addr[16];	/* IPv4 or IPv6 */
+-    char *h_addr_ptrs[MAX_NR_ADDRS + 1];
+-    char linebuffer[0];
+-  } *host_data = (struct host_data *) buffer;
+-  union
+-  {
+-    querybuf *buf;
+-    u_char *ptr;
+-  } host_buffer;
+-  querybuf *orig_host_buffer;
+   char qbuf[MAXDNAME+1], *qp = NULL;
+   size_t size;
+   int n, status;
+   int olderr = errno;
+ 
+- uintptr_t pad = -(uintptr_t) buffer % __alignof__ (struct host_data);
+- buffer += pad;
+- buflen = buflen > pad ? buflen - pad : 0;
+-
+- if (__glibc_unlikely (buflen < sizeof (struct host_data)))
+-   {
+-     *errnop = ERANGE;
+-     *h_errnop = NETDB_INTERNAL;
+-     return NSS_STATUS_TRYAGAIN;
+-   }
+-
+- host_data = (struct host_data *) buffer;
++  /* Prepare the allocation buffer.  Store the pointer array first, to
++     benefit from buffer alignment.  */
++  struct alloc_buffer abuf = alloc_buffer_create (buffer, buflen);
++  char **address_array = alloc_buffer_alloc_array (&abuf, char *, 2);
++  if (address_array == NULL)
++    {
++      *errnop = ERANGE;
++      *h_errnop = NETDB_INTERNAL;
++      return NSS_STATUS_TRYAGAIN;
++    }
+ 
+   struct resolv_context *ctx = __resolv_context_get ();
+   if (ctx == NULL)
+@@ -524,8 +548,6 @@ _nss_dns_gethostbyaddr2_r (const void *addr, socklen_t len, int af,
+       return NSS_STATUS_UNAVAIL;
+     }
+ 
+-  host_buffer.buf = orig_host_buffer = (querybuf *) alloca (1024);
+-
+   switch (af)
+     {
+     case AF_INET:
+@@ -549,36 +571,52 @@ _nss_dns_gethostbyaddr2_r (const void *addr, socklen_t len, int af,
+       break;
+     }
+ 
+-  n = __res_context_query (ctx, qbuf, C_IN, T_PTR, host_buffer.buf->buf,
+-			   1024, &host_buffer.ptr, NULL, NULL, NULL, NULL);
++  unsigned char dns_packet_buffer[1024];
++  unsigned char *alt_dns_packet_buffer = dns_packet_buffer;
++  n = __res_context_query (ctx, qbuf, C_IN, T_PTR,
++			   dns_packet_buffer, sizeof (dns_packet_buffer),
++			   &alt_dns_packet_buffer,
++			   NULL, NULL, NULL, NULL);
+   if (n < 0)
+     {
+       *h_errnop = h_errno;
+       __set_errno (olderr);
+-      if (host_buffer.buf != orig_host_buffer)
+-	free (host_buffer.buf);
++      if (alt_dns_packet_buffer != dns_packet_buffer)
++	free (alt_dns_packet_buffer);
+       __resolv_context_put (ctx);
+       return errno == ECONNREFUSED ? NSS_STATUS_UNAVAIL : NSS_STATUS_NOTFOUND;
+     }
+ 
+-  status = getanswer_r
+-    (ctx, host_buffer.buf, n, qbuf, T_PTR, result, buffer, buflen,
+-     errnop, h_errnop, 0 /* XXX */, ttlp, NULL);
+-  if (host_buffer.buf != orig_host_buffer)
+-    free (host_buffer.buf);
++  status = getanswer_ptr (alt_dns_packet_buffer, n,
++			  &abuf, &result->h_name, errnop, h_errnop, ttlp);
++
++  if (alt_dns_packet_buffer != dns_packet_buffer)
++    free (alt_dns_packet_buffer);
++  __resolv_context_put (ctx);
++
+   if (status != NSS_STATUS_SUCCESS)
+-    {
+-      __resolv_context_put (ctx);
+-      return status;
+-    }
++    return status;
+ 
++  /* result->h_name has already been set by getanswer_ptr.  */
+   result->h_addrtype = af;
+   result->h_length = len;
+-  memcpy (host_data->host_addr, addr, len);
+-  host_data->h_addr_ptrs[0] = (char *) host_data->host_addr;
+-  host_data->h_addr_ptrs[1] = NULL;
++  /* Increase the alignment to 4, in case there are applications out
++     there that expect at least this level of address alignment.  */
++  address_array[0] = (char *) alloc_buffer_next (&abuf, uint32_t);
++  alloc_buffer_copy_bytes (&abuf, uaddr, len);
++  address_array[1] = NULL;
++
++  /* This check also covers allocation failure in getanswer_ptr.  */
++  if (alloc_buffer_has_failed (&abuf))
++    {
++      *errnop = ERANGE;
++      *h_errnop = NETDB_INTERNAL;
++      return NSS_STATUS_TRYAGAIN;
++    }
++  result->h_addr_list = address_array;
++  result->h_aliases = &address_array[1]; /* Points to NULL.  */
++
+   *h_errnop = NETDB_SUCCESS;
+-  __resolv_context_put (ctx);
+   return NSS_STATUS_SUCCESS;
+ }
+ libc_hidden_def (_nss_dns_gethostbyaddr2_r)
+@@ -640,650 +678,362 @@ addrsort (struct resolv_context *ctx, char **ap, int num)
+ 	break;
+ }
+ 
+-static enum nss_status
+-getanswer_r (struct resolv_context *ctx,
+-	     const querybuf *answer, int anslen, const char *qname, int qtype,
+-	     struct hostent *result, char *buffer, size_t buflen,
+-	     int *errnop, int *h_errnop, int map, int32_t *ttlp, char **canonp)
++/* Convert the uncompressed, binary domain name CDNAME into its
++   textual representation and add it to the end of ALIASES, allocating
++   space for a copy of the name from ABUF.  Skip adding the name if it
++   is not a valid host name, and return false in that case, otherwise
++   true.  */
++static bool
++getanswer_r_store_alias (const unsigned char *cdname,
++			 struct alloc_buffer *abuf,
++			 struct ptrlist *aliases)
+ {
+-  struct host_data
+-  {
+-    char *aliases[MAX_NR_ALIASES];
+-    unsigned char host_addr[16];	/* IPv4 or IPv6 */
+-    char *h_addr_ptrs[0];
+-  } *host_data;
+-  int linebuflen;
+-  const HEADER *hp;
+-  const u_char *end_of_message, *cp;
+-  int n, ancount, qdcount;
+-  int haveanswer, had_error;
+-  char *bp, **ap, **hap;
+-  char tbuf[MAXDNAME];
+-  const char *tname;
+-  int (*name_ok) (const char *);
+-  u_char packtmp[NS_MAXCDNAME];
+-  int have_to_map = 0;
+-  uintptr_t pad = -(uintptr_t) buffer % __alignof__ (struct host_data);
+-  buffer += pad;
+-  buflen = buflen > pad ? buflen - pad : 0;
+-  if (__glibc_unlikely (buflen < sizeof (struct host_data)))
+-    {
+-      /* The buffer is too small.  */
+-    too_small:
+-      *errnop = ERANGE;
+-      *h_errnop = NETDB_INTERNAL;
+-      return NSS_STATUS_TRYAGAIN;
+-    }
+-  host_data = (struct host_data *) buffer;
+-  linebuflen = buflen - sizeof (struct host_data);
+-  if (buflen - sizeof (struct host_data) != linebuflen)
+-    linebuflen = INT_MAX;
+-
+-  tname = qname;
+-  result->h_name = NULL;
+-  end_of_message = answer->buf + anslen;
+-  switch (qtype)
+-    {
+-    case T_A:
+-    case T_AAAA:
+-      name_ok = __libc_res_hnok;
+-      break;
+-    case T_PTR:
+-      name_ok = __libc_res_dnok;
+-      break;
+-    default:
+-      *errnop = ENOENT;
+-      return NSS_STATUS_UNAVAIL;  /* XXX should be abort(); */
+-    }
++  /* Filter out domain names that are not host names.  */
++  if (!__res_binary_hnok (cdname))
++    return false;
++
++  /* Note: Not NS_MAXCDNAME, so that __ns_name_ntop implicitly checks
++     for length.  */
++  char dname[MAXHOSTNAMELEN + 1];
++  if (__ns_name_ntop (cdname, dname, sizeof (dname)) < 0)
++    return false;
++  /* Do not report an error on allocation failure, instead store NULL
++     or do nothing.  getanswer_r's caller will see NSS_STATUS_SUCCESS
++     and detect the memory allocation failure or buffer space
++     exhaustion, and report it accordingly.  */
++  ptrlist_add (aliases, alloc_buffer_copy_string (abuf, dname));
++  return true;
++}
+ 
+-  /*
+-   * find first satisfactory answer
+-   */
+-  hp = &answer->hdr;
+-  ancount = ntohs (hp->ancount);
+-  qdcount = ntohs (hp->qdcount);
+-  cp = answer->buf + HFIXEDSZ;
+-  if (__glibc_unlikely (qdcount != 1))
++static enum nss_status __attribute__ ((noinline))
++getanswer_r (unsigned char *packet, size_t packetlen, uint16_t qtype,
++	     struct alloc_buffer *abuf,
++	     struct ptrlist *addresses, struct ptrlist *aliases,
++	     int *errnop, int *h_errnop, int32_t *ttlp)
++{
++  struct ns_rr_cursor c;
++  if (!__ns_rr_cursor_init (&c, packet, packetlen))
+     {
++      /* This should not happen because __res_context_query already
++	 perfroms response validation.  */
+       *h_errnop = NO_RECOVERY;
+       return NSS_STATUS_UNAVAIL;
+     }
+-  if (sizeof (struct host_data) + (ancount + 1) * sizeof (char *) >= buflen)
+-    goto too_small;
+-  bp = (char *) &host_data->h_addr_ptrs[ancount + 1];
+-  linebuflen -= (ancount + 1) * sizeof (char *);
+-
+-  n = __ns_name_unpack (answer->buf, end_of_message, cp,
+-			packtmp, sizeof packtmp);
+-  if (n != -1 && __ns_name_ntop (packtmp, bp, linebuflen) == -1)
+-    {
+-      if (__glibc_unlikely (errno == EMSGSIZE))
+-	goto too_small;
+ 
+-      n = -1;
+-    }
+-
+-  if (__glibc_unlikely (n < 0))
++  /* Treat the QNAME just like an alias.  Error out if it is not a
++     valid host name.  */
++  if (ns_rr_cursor_rcode (&c) == NXDOMAIN
++      || !getanswer_r_store_alias (ns_rr_cursor_qname (&c), abuf, aliases))
+     {
+-      *errnop = errno;
+-      *h_errnop = NO_RECOVERY;
+-      return NSS_STATUS_UNAVAIL;
+-    }
+-  if (__glibc_unlikely (name_ok (bp) == 0))
+-    {
+-      errno = EBADMSG;
+-      *errnop = EBADMSG;
+-      *h_errnop = NO_RECOVERY;
+-      return NSS_STATUS_UNAVAIL;
++      if (ttlp != NULL)
++	/* No negative caching.  */
++	*ttlp = 0;
++      *h_errnop = HOST_NOT_FOUND;
++      *errnop = ENOENT;
++      return NSS_STATUS_NOTFOUND;
+     }
+-  cp += n + QFIXEDSZ;
+ 
+-  if (qtype == T_A || qtype == T_AAAA)
++  int ancount = ns_rr_cursor_ancount (&c);
++  const unsigned char *expected_name = ns_rr_cursor_qname (&c);
++  /* expected_name may be updated to point into this buffer.  */
++  unsigned char name_buffer[NS_MAXCDNAME];
++
++  for (; ancount > 0; --ancount)
+     {
+-      /* res_send() has already verified that the query name is the
+-       * same as the one we sent; this just gets the expanded name
+-       * (i.e., with the succeeding search-domain tacked on).
+-       */
+-      n = strlen (bp) + 1;             /* for the \0 */
+-      if (n >= MAXHOSTNAMELEN)
++      struct ns_rr_wire rr;
++      if (!__ns_rr_cursor_next (&c, &rr))
+ 	{
+ 	  *h_errnop = NO_RECOVERY;
+-	  *errnop = ENOENT;
+-	  return NSS_STATUS_TRYAGAIN;
++	  return NSS_STATUS_UNAVAIL;
+ 	}
+-      result->h_name = bp;
+-      bp += n;
+-      linebuflen -= n;
+-      if (linebuflen < 0)
+-	goto too_small;
+-      /* The qname can be abbreviated, but h_name is now absolute. */
+-      qname = result->h_name;
+-    }
+ 
+-  ap = host_data->aliases;
+-  *ap = NULL;
+-  result->h_aliases = host_data->aliases;
+-  hap = host_data->h_addr_ptrs;
+-  *hap = NULL;
+-  result->h_addr_list = host_data->h_addr_ptrs;
+-  haveanswer = 0;
+-  had_error = 0;
++      /* Skip over records with the wrong class.  */
++      if (rr.rclass != C_IN)
++	continue;
+ 
+-  while (ancount-- > 0 && cp < end_of_message && had_error == 0)
+-    {
+-      int type, class;
++      /* Update TTL for recognized record types.  */
++      if ((rr.rtype == T_CNAME || rr.rtype == qtype)
++	  && ttlp != NULL && *ttlp > rr.ttl)
++	*ttlp = rr.ttl;
+ 
+-      n = __ns_name_unpack (answer->buf, end_of_message, cp,
+-			    packtmp, sizeof packtmp);
+-      if (n != -1 && __ns_name_ntop (packtmp, bp, linebuflen) == -1)
++      if (rr.rtype == T_CNAME)
+ 	{
+-	  if (__glibc_unlikely (errno == EMSGSIZE))
+-	    goto too_small;
+-
+-	  n = -1;
++	  /* NB: No check for owner name match, based on historic
++	     precedent.  Record the CNAME target as the new expected
++	     name.  */
++	  int n = __ns_name_unpack (c.begin, c.end, rr.rdata,
++				    name_buffer, sizeof (name_buffer));
++	  if (n < 0)
++	    {
++	      *h_errnop = NO_RECOVERY;
++	      return NSS_STATUS_UNAVAIL;
++	    }
++	  /* And store the new name as an alias.  */
++	  getanswer_r_store_alias (name_buffer, abuf, aliases);
++	  expected_name = name_buffer;
+ 	}
+-
+-      if (__glibc_unlikely (n < 0 || (*name_ok) (bp) == 0))
++      else if (rr.rtype == qtype
++	       && __ns_samebinaryname (rr.rname, expected_name)
++	       && rr.rdlength == rrtype_to_rdata_length (qtype))
+ 	{
+-	  ++had_error;
+-	  continue;
++	  /* Make a copy of the address and store it.  Increase the
++	     alignment to 4, in case there are applications out there
++	     that expect at least this level of address alignment.  */
++	  ptrlist_add (addresses, (char *) alloc_buffer_next (abuf, uint32_t));
++	  alloc_buffer_copy_bytes (abuf, rr.rdata, rr.rdlength);
+ 	}
+-      cp += n;				/* name */
++    }
+ 
+-      if (__glibc_unlikely (cp + 10 > end_of_message))
+-	{
+-	  ++had_error;
+-	  continue;
+-	}
++  if (ptrlist_size (addresses) == 0)
++    {
++      /* No address record found.  */
++      if (ttlp != NULL)
++	/* No caching of negative responses.  */
++	*ttlp = 0;
+ 
+-      NS_GET16 (type, cp);
+-      NS_GET16 (class, cp);
+-      int32_t ttl;
+-      NS_GET32 (ttl, cp);
+-      NS_GET16 (n, cp);		/* RDATA length.  */
++      *h_errnop = NO_RECOVERY;
++      *errnop = ENOENT;
++      return NSS_STATUS_TRYAGAIN;
++    }
++  else
++    {
++      *h_errnop = NETDB_SUCCESS;
++      return NSS_STATUS_SUCCESS;
++    }
++}
+ 
+-      if (end_of_message - cp < n)
+-	{
+-	  /* RDATA extends beyond the end of the packet.  */
+-	  ++had_error;
+-	  continue;
+-	}
++static enum nss_status
++getanswer_ptr (unsigned char *packet, size_t packetlen,
++	       struct alloc_buffer *abuf, char **hnamep,
++	       int *errnop, int *h_errnop, int32_t *ttlp)
++{
++  struct ns_rr_cursor c;
++  if (!__ns_rr_cursor_init (&c, packet, packetlen))
++    {
++      /* This should not happen because __res_context_query already
++	 perfroms response validation.  */
++      *h_errnop = NO_RECOVERY;
++      return NSS_STATUS_UNAVAIL;
++    }
++  int ancount = ns_rr_cursor_ancount (&c);
++  const unsigned char *expected_name = ns_rr_cursor_qname (&c);
++  /* expected_name may be updated to point into this buffer.  */
++  unsigned char name_buffer[NS_MAXCDNAME];
+ 
+-      if (__glibc_unlikely (class != C_IN))
++  while (ancount > 0)
++    {
++      struct ns_rr_wire rr;
++      if (!__ns_rr_cursor_next (&c, &rr))
+ 	{
+-	  /* XXX - debug? syslog? */
+-	  cp += n;
+-	  continue;			/* XXX - had_error++ ? */
++	  *h_errnop = NO_RECOVERY;
++	  return NSS_STATUS_UNAVAIL;
+ 	}
+ 
+-      if ((qtype == T_A || qtype == T_AAAA) && type == T_CNAME)
+-	{
+-	  /* A CNAME could also have a TTL entry.  */
+-	  if (ttlp != NULL && ttl < *ttlp)
+-	      *ttlp = ttl;
+-
+-	  if (ap >= &host_data->aliases[MAX_NR_ALIASES - 1])
+-	    continue;
+-	  n = __libc_dn_expand (answer->buf, end_of_message, cp,
+-				tbuf, sizeof tbuf);
+-	  if (__glibc_unlikely (n < 0 || (*name_ok) (tbuf) == 0))
+-	    {
+-	      ++had_error;
+-	      continue;
+-	    }
+-	  cp += n;
+-	  /* Store alias.  */
+-	  *ap++ = bp;
+-	  n = strlen (bp) + 1;		/* For the \0.  */
+-	  if (__glibc_unlikely (n >= MAXHOSTNAMELEN))
+-	    {
+-	      ++had_error;
+-	      continue;
+-	    }
+-	  bp += n;
+-	  linebuflen -= n;
+-	  /* Get canonical name.  */
+-	  n = strlen (tbuf) + 1;	/* For the \0.  */
+-	  if (__glibc_unlikely (n > linebuflen))
+-	    goto too_small;
+-	  if (__glibc_unlikely (n >= MAXHOSTNAMELEN))
+-	    {
+-	      ++had_error;
+-	      continue;
+-	    }
+-	  result->h_name = bp;
+-	  bp = __mempcpy (bp, tbuf, n);	/* Cannot overflow.  */
+-	  linebuflen -= n;
+-	  continue;
+-	}
++      /* Skip over records with the wrong class.  */
++      if (rr.rclass != C_IN)
++	continue;
+ 
+-      if (qtype == T_PTR && type == T_CNAME)
+-	{
+-	  /* A CNAME could also have a TTL entry.  */
+-	  if (ttlp != NULL && ttl < *ttlp)
+-	      *ttlp = ttl;
++      /* Update TTL for known record types.  */
++      if ((rr.rtype == T_CNAME || rr.rtype == T_PTR)
++	  && ttlp != NULL && *ttlp > rr.ttl)
++	*ttlp = rr.ttl;
+ 
+-	  n = __libc_dn_expand (answer->buf, end_of_message, cp,
+-				tbuf, sizeof tbuf);
+-	  if (__glibc_unlikely (n < 0 || __libc_res_dnok (tbuf) == 0))
+-	    {
+-	      ++had_error;
+-	      continue;
+-	    }
+-	  cp += n;
+-	  /* Get canonical name.  */
+-	  n = strlen (tbuf) + 1;   /* For the \0.  */
+-	  if (__glibc_unlikely (n > linebuflen))
+-	    goto too_small;
+-	  if (__glibc_unlikely (n >= MAXHOSTNAMELEN))
++      if (rr.rtype == T_CNAME)
++	{
++	  /* NB: No check for owner name match, based on historic
++	     precedent.  Record the CNAME target as the new expected
++	     name.  */
++	  int n = __ns_name_unpack (c.begin, c.end, rr.rdata,
++				    name_buffer, sizeof (name_buffer));
++	  if (n < 0)
+ 	    {
+-	      ++had_error;
+-	      continue;
++	      *h_errnop = NO_RECOVERY;
++	      return NSS_STATUS_UNAVAIL;
+ 	    }
+-	  tname = bp;
+-	  bp = __mempcpy (bp, tbuf, n);	/* Cannot overflow.  */
+-	  linebuflen -= n;
+-	  continue;
++	  expected_name = name_buffer;
+ 	}
+-
+-      if (type == T_A && qtype == T_AAAA && map)
+-	have_to_map = 1;
+-      else if (__glibc_unlikely (type != qtype))
++      else if (rr.rtype == T_PTR
++	       && __ns_samebinaryname (rr.rname, expected_name))
+ 	{
+-	  cp += n;
+-	  continue;			/* XXX - had_error++ ? */
+-	}
+-
+-      switch (type)
+-	{
+-	case T_PTR:
+-	  if (__glibc_unlikely (__strcasecmp (tname, bp) != 0))
++	  /* Decompress the target of the PTR record.  This is the
++	     host name we are looking for.  We can only use it if it
++	     is syntactically valid.  Historically, only one host name
++	     is returned here.  If the recursive resolver performs DNS
++	     record rotation, the returned host name is essentially
++	     random, which is why multiple PTR records are rarely
++	     used.  Use MAXHOSTNAMELEN instead of NS_MAXCDNAME for
++	     additional length checking.  */
++	  char hname[MAXHOSTNAMELEN + 1];
++	  if (__ns_name_unpack (c.begin, c.end, rr.rdata,
++				name_buffer, sizeof (name_buffer)) < 0
++	      || !__res_binary_hnok (expected_name)
++	      || __ns_name_ntop (name_buffer, hname, sizeof (hname)) < 0)
+ 	    {
+-	      cp += n;
+-	      continue;			/* XXX - had_error++ ? */
++	      *h_errnop = NO_RECOVERY;
++	      return NSS_STATUS_UNAVAIL;
+ 	    }
+-
+-	  n = __ns_name_unpack (answer->buf, end_of_message, cp,
+-				packtmp, sizeof packtmp);
+-	  if (n != -1 && __ns_name_ntop (packtmp, bp, linebuflen) == -1)
+-	    {
+-	      if (__glibc_unlikely (errno == EMSGSIZE))
+-		goto too_small;
+-
+-	      n = -1;
+-	    }
+-
+-	  if (__glibc_unlikely (n < 0 || __libc_res_hnok (bp) == 0))
+-	    {
+-	      ++had_error;
+-	      break;
+-	    }
+-	  if (ttlp != NULL && ttl < *ttlp)
+-	      *ttlp = ttl;
+-	  /* bind would put multiple PTR records as aliases, but we don't do
+-	     that.  */
+-	  result->h_name = bp;
+-	  *h_errnop = NETDB_SUCCESS;
++	  /* Successful allocation is checked by the caller.  */
++	  *hnamep = alloc_buffer_copy_string (abuf, hname);
+ 	  return NSS_STATUS_SUCCESS;
+-	case T_A:
+-	case T_AAAA:
+-	  if (__glibc_unlikely (__strcasecmp (result->h_name, bp) != 0))
+-	    {
+-	      cp += n;
+-	      continue;			/* XXX - had_error++ ? */
+-	    }
+-
+-	  /* Stop parsing at a record whose length is incorrect.  */
+-	  if (n != rrtype_to_rdata_length (type))
+-	    {
+-	      ++had_error;
+-	      break;
+-	    }
+-
+-	  /* Skip records of the wrong type.  */
+-	  if (n != result->h_length)
+-	    {
+-	      cp += n;
+-	      continue;
+-	    }
+-	  if (!haveanswer)
+-	    {
+-	      int nn;
+-
+-	      /* We compose a single hostent out of the entire chain of
+-	         entries, so the TTL of the hostent is essentially the lowest
+-		 TTL in the chain.  */
+-	      if (ttlp != NULL && ttl < *ttlp)
+-		*ttlp = ttl;
+-	      if (canonp != NULL)
+-		*canonp = bp;
+-	      result->h_name = bp;
+-	      nn = strlen (bp) + 1;	/* for the \0 */
+-	      bp += nn;
+-	      linebuflen -= nn;
+-	    }
+-
+-	  /* Provide sufficient alignment for both address
+-	     families.  */
+-	  enum { align = 4 };
+-	  _Static_assert ((align % __alignof__ (struct in_addr)) == 0,
+-			  "struct in_addr alignment");
+-	  _Static_assert ((align % __alignof__ (struct in6_addr)) == 0,
+-			  "struct in6_addr alignment");
+-	  {
+-	    char *new_bp = PTR_ALIGN_UP (bp, align);
+-	    linebuflen -= new_bp - bp;
+-	    bp = new_bp;
+-	  }
+-
+-	  if (__glibc_unlikely (n > linebuflen))
+-	    goto too_small;
+-	  bp = __mempcpy (*hap++ = bp, cp, n);
+-	  cp += n;
+-	  linebuflen -= n;
+-	  break;
+-	default:
+-	  abort ();
+ 	}
+-      if (had_error == 0)
+-	++haveanswer;
+     }
+ 
+-  if (haveanswer > 0)
+-    {
+-      *ap = NULL;
+-      *hap = NULL;
+-      /*
+-       * Note: we sort even if host can take only one address
+-       * in its return structures - should give it the "best"
+-       * address in that case, not some random one
+-       */
+-      if (haveanswer > 1 && qtype == T_A
+-	  && __resolv_context_sort_count (ctx) > 0)
+-	addrsort (ctx, host_data->h_addr_ptrs, haveanswer);
+-
+-      if (result->h_name == NULL)
+-	{
+-	  n = strlen (qname) + 1;	/* For the \0.  */
+-	  if (n > linebuflen)
+-	    goto too_small;
+-	  if (n >= MAXHOSTNAMELEN)
+-	    goto no_recovery;
+-	  result->h_name = bp;
+-	  bp = __mempcpy (bp, qname, n);	/* Cannot overflow.  */
+-	  linebuflen -= n;
+-	}
++  /* No PTR record found.  */
++  if (ttlp != NULL)
++    /* No caching of negative responses.  */
++    *ttlp = 0;
+ 
+-      if (have_to_map)
+-	if (map_v4v6_hostent (result, &bp, &linebuflen))
+-	  goto too_small;
+-      *h_errnop = NETDB_SUCCESS;
+-      return NSS_STATUS_SUCCESS;
+-    }
+- no_recovery:
+   *h_errnop = NO_RECOVERY;
+   *errnop = ENOENT;
+-  /* Special case here: if the resolver sent a result but it only
+-     contains a CNAME while we are looking for a T_A or T_AAAA record,
+-     we fail with NOTFOUND instead of TRYAGAIN.  */
+-  return ((qtype == T_A || qtype == T_AAAA) && ap != host_data->aliases
+-	   ? NSS_STATUS_NOTFOUND : NSS_STATUS_TRYAGAIN);
++  return NSS_STATUS_TRYAGAIN;
+ }
+ 
+-
++/* Parses DNS data found in PACKETLEN bytes at PACKET in struct
++   gaih_addrtuple address tuples.  The new address tuples are linked
++   from **TAILP, with backing store allocated from ABUF, and *TAILP is
++   updated to point where the next tuple pointer should be stored.  If
++   TTLP is not null, *TTLP is updated to reflect the minimum TTL.  If
++   STORE_CANON is true, the canonical name is stored as part of the
++   first address tuple being written.  */
+ static enum nss_status
+-gaih_getanswer_slice (const querybuf *answer, int anslen, const char *qname,
+-		      struct gaih_addrtuple ***patp,
+-		      char **bufferp, size_t *buflenp,
+-		      int *errnop, int *h_errnop, int32_t *ttlp, int *firstp)
++gaih_getanswer_slice (unsigned char *packet, size_t packetlen,
++		      struct alloc_buffer *abuf,
++		      struct gaih_addrtuple ***tailp,
++		      int *errnop, int *h_errnop, int32_t *ttlp,
++		      bool store_canon)
+ {
+-  char *buffer = *bufferp;
+-  size_t buflen = *buflenp;
+-
+-  struct gaih_addrtuple **pat = *patp;
+-  const HEADER *hp = &answer->hdr;
+-  int ancount = ntohs (hp->ancount);
+-  int qdcount = ntohs (hp->qdcount);
+-  const u_char *cp = answer->buf + HFIXEDSZ;
+-  const u_char *end_of_message = answer->buf + anslen;
+-  if (__glibc_unlikely (qdcount != 1))
+-    {
+-      *h_errnop = NO_RECOVERY;
+-      return NSS_STATUS_UNAVAIL;
+-    }
+-
+-  u_char packtmp[NS_MAXCDNAME];
+-  int n = __ns_name_unpack (answer->buf, end_of_message, cp,
+-			    packtmp, sizeof packtmp);
+-  /* We unpack the name to check it for validity.  But we do not need
+-     it later.  */
+-  if (n != -1 && __ns_name_ntop (packtmp, buffer, buflen) == -1)
+-    {
+-      if (__glibc_unlikely (errno == EMSGSIZE))
+-	{
+-	too_small:
+-	  *errnop = ERANGE;
+-	  *h_errnop = NETDB_INTERNAL;
+-	  return NSS_STATUS_TRYAGAIN;
+-	}
+-
+-      n = -1;
+-    }
+-
+-  if (__glibc_unlikely (n < 0))
++  struct ns_rr_cursor c;
++  if (!__ns_rr_cursor_init (&c, packet, packetlen))
+     {
+-      *errnop = errno;
++      /* This should not happen because __res_context_query already
++	 perfroms response validation.  */
+       *h_errnop = NO_RECOVERY;
+       return NSS_STATUS_UNAVAIL;
+     }
+-  if (__glibc_unlikely (__libc_res_hnok (buffer) == 0))
+-    {
+-      errno = EBADMSG;
+-      *errnop = EBADMSG;
+-      *h_errnop = NO_RECOVERY;
+-      return NSS_STATUS_UNAVAIL;
+-    }
+-  cp += n + QFIXEDSZ;
+-
+-  int haveanswer = 0;
+-  int had_error = 0;
+-  char *canon = NULL;
+-  char *h_name = NULL;
+-  int h_namelen = 0;
+-
+-  if (ancount == 0)
++  bool haveanswer = false; /* Set to true if at least one address.  */
++  uint16_t qtype = ns_rr_cursor_qtype (&c);
++  int ancount = ns_rr_cursor_ancount (&c);
++  const unsigned char *expected_name = ns_rr_cursor_qname (&c);
++  /* expected_name may be updated to point into this buffer.  */
++  unsigned char name_buffer[NS_MAXCDNAME];
++
++  /* This is a pointer to a possibly-compressed name in the packet.
++     Eventually it is equivalent to the canonical name.  If needed, it
++     is uncompressed and translated to text form when the first
++     address tuple is encountered.  */
++  const unsigned char *compressed_alias_name = expected_name;
++
++  if (ancount == 0 || !__res_binary_hnok (compressed_alias_name))
+     {
+       *h_errnop = HOST_NOT_FOUND;
+       return NSS_STATUS_NOTFOUND;
+     }
+ 
+-  while (ancount-- > 0 && cp < end_of_message && had_error == 0)
++  for (; ancount > -0; --ancount)
+     {
+-      n = __ns_name_unpack (answer->buf, end_of_message, cp,
+-			    packtmp, sizeof packtmp);
+-      if (n != -1 &&
+-	  (h_namelen = __ns_name_ntop (packtmp, buffer, buflen)) == -1)
++      struct ns_rr_wire rr;
++      if (!__ns_rr_cursor_next (&c, &rr))
+ 	{
+-	  if (__glibc_unlikely (errno == EMSGSIZE))
+-	    goto too_small;
+-
+-	  n = -1;
+-	}
+-      if (__glibc_unlikely (n < 0 || __libc_res_hnok (buffer) == 0))
+-	{
+-	  ++had_error;
+-	  continue;
+-	}
+-      if (*firstp && canon == NULL)
+-	{
+-	  h_name = buffer;
+-	  buffer += h_namelen;
+-	  buflen -= h_namelen;
+-	}
+-
+-      cp += n;				/* name */
+-
+-      if (__glibc_unlikely (cp + 10 > end_of_message))
+-	{
+-	  ++had_error;
+-	  continue;
++	  *h_errnop = NO_RECOVERY;
++	  return NSS_STATUS_UNAVAIL;
+ 	}
+ 
+-      uint16_t type;
+-      NS_GET16 (type, cp);
+-      uint16_t class;
+-      NS_GET16 (class, cp);
+-      int32_t ttl;
+-      NS_GET32 (ttl, cp);
+-      NS_GET16 (n, cp);		/* RDATA length.  */
++      /* Update TTL for known record types.  */
++      if ((rr.rtype == T_CNAME || rr.rtype == qtype)
++	  && ttlp != NULL && *ttlp > rr.ttl)
++	*ttlp = rr.ttl;
+ 
+-      if (end_of_message - cp < n)
++      if (rr.rtype == T_CNAME)
+ 	{
+-	  /* RDATA extends beyond the end of the packet.  */
+-	  ++had_error;
+-	  continue;
+-	}
+-
+-      if (class != C_IN)
+-	{
+-	  cp += n;
+-	  continue;
+-	}
+-
+-      if (type == T_CNAME)
+-	{
+-	  char tbuf[MAXDNAME];
+-
+-	  /* A CNAME could also have a TTL entry.  */
+-	  if (ttlp != NULL && ttl < *ttlp)
+-	      *ttlp = ttl;
+-
+-	  n = __libc_dn_expand (answer->buf, end_of_message, cp,
+-				tbuf, sizeof tbuf);
+-	  if (__glibc_unlikely (n < 0 || __libc_res_hnok (tbuf) == 0))
++	  /* NB: No check for owner name match, based on historic
++	     precedent.  Record the CNAME target as the new expected
++	     name.  */
++	  int n = __ns_name_unpack (c.begin, c.end, rr.rdata,
++				    name_buffer, sizeof (name_buffer));
++	  if (n < 0)
+ 	    {
+-	      ++had_error;
+-	      continue;
+-	    }
+-	  cp += n;
+-
+-	  if (*firstp)
+-	    {
+-	      /* Reclaim buffer space.  */
+-	      if (h_name + h_namelen == buffer)
+-		{
+-		  buffer = h_name;
+-		  buflen += h_namelen;
+-		}
+-
+-	      n = strlen (tbuf) + 1;
+-	      if (__glibc_unlikely (n > buflen))
+-		goto too_small;
+-	      if (__glibc_unlikely (n >= MAXHOSTNAMELEN))
+-		{
+-		  ++had_error;
+-		  continue;
+-		}
+-
+-	      canon = buffer;
+-	      buffer = __mempcpy (buffer, tbuf, n);
+-	      buflen -= n;
+-	      h_namelen = 0;
++	      *h_errnop = NO_RECOVERY;
++	      return NSS_STATUS_UNAVAIL;
+ 	    }
+-	  continue;
++	  expected_name = name_buffer;
++	  if (store_canon && __res_binary_hnok (name_buffer))
++	    /* This name can be used as a canonical name.  Do not
++	       translate to text form here to conserve buffer space.
++	       Point to the compressed name because name_buffer can be
++	       overwritten with an unusable name later.  */
++	    compressed_alias_name = rr.rdata;
+ 	}
+-
+-      /* Stop parsing if we encounter a record with incorrect RDATA
+-	 length.  */
+-      if (type == T_A || type == T_AAAA)
++      else if (rr.rtype == qtype
++	       && __ns_samebinaryname (rr.rname, expected_name)
++	       && rr.rdlength == rrtype_to_rdata_length (qtype))
+ 	{
+-	  if (n != rrtype_to_rdata_length (type))
++	  struct gaih_addrtuple *ntup
++	    = alloc_buffer_alloc (abuf, struct gaih_addrtuple);
++	  /* Delay error reporting to the callers (they implement the
++	     ERANGE buffer resizing handshake).  */
++	  if (ntup != NULL)
+ 	    {
+-	      ++had_error;
+-	      continue;
++	      ntup->next = NULL;
++	      if (store_canon && compressed_alias_name != NULL)
++		{
++		  /* This assumes that all the CNAME records come
++		     first.  Use MAXHOSTNAMELEN instead of
++		     NS_MAXCDNAME for additional length checking.
++		     However, these checks are not expected to fail
++		     because all size NS_MAXCDNAME names should into
++		     the hname buffer because no escaping is
++		     needed.  */
++		  char unsigned nbuf[NS_MAXCDNAME];
++		  char hname[MAXHOSTNAMELEN + 1];
++		  if (__ns_name_unpack (c.begin, c.end,
++					compressed_alias_name,
++					nbuf, sizeof (nbuf)) >= 0
++		      && __ns_name_ntop (nbuf, hname, sizeof (hname)) >= 0)
++		    /* Space checking is performed by the callers.  */
++		    ntup->name = alloc_buffer_copy_string (abuf, hname);
++		  store_canon = false;
++		}
++	      else
++		ntup->name = NULL;
++	      if (rr.rdlength == 4)
++		ntup->family = AF_INET;
++	      else
++		ntup->family = AF_INET6;
++	      memcpy (ntup->addr, rr.rdata, rr.rdlength);
++	      ntup->scopeid = 0;
++
++	      /* Link in the new tuple, and update the tail pointer to
++		 point to its next field.  */
++	      **tailp = ntup;
++	      *tailp = &ntup->next;
++
++	      haveanswer = true;
+ 	    }
+ 	}
+-      else
+-	{
+-	  /* Skip unknown records.  */
+-	  cp += n;
+-	  continue;
+-	}
+-
+-      assert (type == T_A || type == T_AAAA);
+-      if (*pat == NULL)
+-	{
+-	  uintptr_t pad = (-(uintptr_t) buffer
+-			   % __alignof__ (struct gaih_addrtuple));
+-	  buffer += pad;
+-	  buflen = buflen > pad ? buflen - pad : 0;
+-
+-	  if (__glibc_unlikely (buflen < sizeof (struct gaih_addrtuple)))
+-	    goto too_small;
+-
+-	  *pat = (struct gaih_addrtuple *) buffer;
+-	  buffer += sizeof (struct gaih_addrtuple);
+-	  buflen -= sizeof (struct gaih_addrtuple);
+-	}
+-
+-      (*pat)->name = NULL;
+-      (*pat)->next = NULL;
+-
+-      if (*firstp)
+-	{
+-	  /* We compose a single hostent out of the entire chain of
+-	     entries, so the TTL of the hostent is essentially the lowest
+-	     TTL in the chain.  */
+-	  if (ttlp != NULL && ttl < *ttlp)
+-	    *ttlp = ttl;
+-
+-	  (*pat)->name = canon ?: h_name;
+-
+-	  *firstp = 0;
+-	}
+-
+-      (*pat)->family = type == T_A ? AF_INET : AF_INET6;
+-      memcpy ((*pat)->addr, cp, n);
+-      cp += n;
+-      (*pat)->scopeid = 0;
+-
+-      pat = &((*pat)->next);
+-
+-      haveanswer = 1;
+     }
+ 
+   if (haveanswer)
+     {
+-      *patp = pat;
+-      *bufferp = buffer;
+-      *buflenp = buflen;
+-
+       *h_errnop = NETDB_SUCCESS;
+       return NSS_STATUS_SUCCESS;
+     }
+-
+-  /* Special case here: if the resolver sent a result but it only
+-     contains a CNAME while we are looking for a T_A or T_AAAA record,
+-     we fail with NOTFOUND instead of TRYAGAIN.  */
+-  if (canon != NULL)
++  else
+     {
++      /* Special case here: if the resolver sent a result but it only
++	 contains a CNAME while we are looking for a T_A or T_AAAA
++	 record, we fail with NOTFOUND.  */
+       *h_errnop = HOST_NOT_FOUND;
+       return NSS_STATUS_NOTFOUND;
+     }
+-
+-  *h_errnop = NETDB_INTERNAL;
+-  return NSS_STATUS_TRYAGAIN;
+ }
+ 
+ 
+ static enum nss_status
+-gaih_getanswer (const querybuf *answer1, int anslen1, const querybuf *answer2,
+-		int anslen2, const char *qname,
+-		struct gaih_addrtuple **pat, char *buffer, size_t buflen,
++gaih_getanswer (unsigned char *packet1, size_t packet1len,
++		unsigned char *packet2, size_t packet2len,
++		struct alloc_buffer *abuf, struct gaih_addrtuple **pat,
+ 		int *errnop, int *h_errnop, int32_t *ttlp)
+ {
+-  int first = 1;
+-
+   enum nss_status status = NSS_STATUS_NOTFOUND;
+ 
+   /* Combining the NSS status of two distinct queries requires some
+@@ -1295,7 +1045,10 @@ gaih_getanswer (const querybuf *answer1, int anslen1, const querybuf *answer2,
+      between TRYAGAIN (recoverable) and TRYAGAIN' (not-recoverable).
+      A recoverable TRYAGAIN is almost always due to buffer size issues
+      and returns ERANGE in errno and the caller is expected to retry
+-     with a larger buffer.
++     with a larger buffer.  (The caller, _nss_dns_gethostbyname4_r,
++     ignores the return status if it detects that the result buffer
++     has been exhausted and generates a TRYAGAIN failure with an
++     ERANGE code.)
+ 
+      Lastly, you may be tempted to make significant changes to the
+      conditions in this code to bring about symmetry between responses.
+@@ -1375,36 +1128,30 @@ gaih_getanswer (const querybuf *answer1, int anslen1, const querybuf *answer2,
+ 	 is a recoverable error we now return TRYAGIN even if the first
+ 	 response was SUCCESS.  */
+ 
+-  if (anslen1 > 0)
+-    status = gaih_getanswer_slice(answer1, anslen1, qname,
+-				  &pat, &buffer, &buflen,
+-				  errnop, h_errnop, ttlp,
+-				  &first);
+-
+-  if ((status == NSS_STATUS_SUCCESS || status == NSS_STATUS_NOTFOUND
+-       || (status == NSS_STATUS_TRYAGAIN
+-	   /* We want to look at the second answer in case of an
+-	      NSS_STATUS_TRYAGAIN only if the error is non-recoverable, i.e.
+-	      *h_errnop is NO_RECOVERY. If not, and if the failure was due to
+-	      an insufficient buffer (ERANGE), then we need to drop the results
+-	      and pass on the NSS_STATUS_TRYAGAIN to the caller so that it can
+-	      repeat the query with a larger buffer.  */
+-	   && (*errnop != ERANGE || *h_errnop == NO_RECOVERY)))
+-      && answer2 != NULL && anslen2 > 0)
++  if (packet1len > 0)
+     {
+-      enum nss_status status2 = gaih_getanswer_slice(answer2, anslen2, qname,
+-						     &pat, &buffer, &buflen,
+-						     errnop, h_errnop, ttlp,
+-						     &first);
++      status = gaih_getanswer_slice (packet1, packet1len,
++				     abuf, &pat, errnop, h_errnop, ttlp, true);
++      if (alloc_buffer_has_failed (abuf))
++	/* Do not try parsing the second packet if a larger result
++	   buffer is needed.  The caller implements the resizing
++	   protocol because *abuf has been exhausted.  */
++	return NSS_STATUS_TRYAGAIN; /* Ignored by the caller.  */
++    }
++
++  if ((status == NSS_STATUS_SUCCESS || status == NSS_STATUS_NOTFOUND)
++      && packet2 != NULL && packet2len > 0)
++    {
++      enum nss_status status2
++	= gaih_getanswer_slice (packet2, packet2len,
++				abuf, &pat, errnop, h_errnop, ttlp,
++				/* Success means that data with a
++				   canonical name has already been
++				   stored.  Do not store the name again.  */
++				status != NSS_STATUS_SUCCESS);
+       /* Use the second response status in some cases.  */
+       if (status != NSS_STATUS_SUCCESS && status2 != NSS_STATUS_NOTFOUND)
+ 	status = status2;
+-      /* Do not return a truncated second response (unless it was
+-	 unavoidable e.g. unrecoverable TRYAGAIN).  */
+-      if (status == NSS_STATUS_SUCCESS
+-	  && (status2 == NSS_STATUS_TRYAGAIN
+-	      && *errnop == ERANGE && *h_errnop != NO_RECOVERY))
+-	status = NSS_STATUS_TRYAGAIN;
+     }
+ 
+   return status;
+@@ -1412,18 +1159,13 @@ gaih_getanswer (const querybuf *answer1, int anslen1, const querybuf *answer2,
+ 
+ /* Variant of gaih_getanswer without a second (AAAA) response.  */
+ static enum nss_status
+-gaih_getanswer_noaaaa (const querybuf *answer1, int anslen1, const char *qname,
+-		       struct gaih_addrtuple **pat,
+-		       char *buffer, size_t buflen,
++gaih_getanswer_noaaaa (unsigned char *packet, size_t packetlen,
++		       struct alloc_buffer *abuf, struct gaih_addrtuple **pat,
+ 		       int *errnop, int *h_errnop, int32_t *ttlp)
+ {
+-  int first = 1;
+-
+   enum nss_status status = NSS_STATUS_NOTFOUND;
+-  if (anslen1 > 0)
+-    status = gaih_getanswer_slice (answer1, anslen1, qname,
+-				   &pat, &buffer, &buflen,
+-				   errnop, h_errnop, ttlp,
+-				   &first);
++  if (packetlen > 0)
++    status = gaih_getanswer_slice (packet, packetlen,
++				   abuf, &pat, errnop, h_errnop, ttlp, true);
+   return status;
+ }
+diff --git a/resolv/res-name-checking.c b/resolv/res-name-checking.c
+index 07a412d8ff..213edceaf3 100644
+--- a/resolv/res-name-checking.c
++++ b/resolv/res-name-checking.c
+@@ -138,6 +138,12 @@ binary_leading_dash (const unsigned char *dn)
+   return dn[0] > 0 && dn[1] == '-';
+ }
+ 
++bool
++__res_binary_hnok (const unsigned char *dn)
++{
++  return !binary_leading_dash (dn) && binary_hnok (dn);
++}
++
+ /* Return 1 if res_hnok is a valid host name.  Labels must only
+    contain [0-9a-zA-Z_-] characters, and the name must not start with
+    a '-'.  The latter is to avoid confusion with program options.  */
+@@ -145,11 +151,9 @@ int
+ ___res_hnok (const char *dn)
+ {
+   unsigned char buf[NS_MAXCDNAME];
+-  if (!printable_string (dn)
+-      || __ns_name_pton (dn, buf, sizeof (buf)) < 0
+-      || binary_leading_dash (buf))
+-    return 0;
+-  return binary_hnok (buf);
++  return (printable_string (dn)
++	  && __ns_name_pton (dn, buf, sizeof (buf)) >= 0
++	  && __res_binary_hnok (buf));
+ }
+ versioned_symbol (libc, ___res_hnok, res_hnok, GLIBC_2_34);
+ versioned_symbol (libc, ___res_hnok, __libc_res_hnok, GLIBC_PRIVATE);
+diff --git a/resolv/tst-ns_name_length_uncompressed.c b/resolv/tst-ns_name_length_uncompressed.c
+new file mode 100644
+index 0000000000..c4a2904db7
+--- /dev/null
++++ b/resolv/tst-ns_name_length_uncompressed.c
+@@ -0,0 +1,135 @@
++/* Test __ns_name_length_uncompressed.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/nameser.h>
++#include <array_length.h>
++#include <errno.h>
++#include <stdio.h>
++#include <support/check.h>
++#include <support/next_to_fault.h>
++
++/* Reference implementation based on other building blocks.  */
++static int
++reference_length (const unsigned char *p, const unsigned char *eom)
++{
++  unsigned char buf[NS_MAXCDNAME];
++  int n = __ns_name_unpack (p, eom, p, buf, sizeof (buf));
++  if (n < 0)
++    return n;
++  const unsigned char *q = buf;
++  if (__ns_name_skip (&q, array_end (buf)) < 0)
++    return -1;
++  if (q - buf != n)
++    /* Compressed name.  */
++    return -1;
++  return n;
++}
++
++static int
++do_test (void)
++{
++  {
++    unsigned char buf[] = { 3, 'w', 'w', 'w', 0, 0, 0 };
++    TEST_COMPARE (reference_length (buf, array_end (buf)), sizeof (buf) - 2);
++    TEST_COMPARE (__ns_name_length_uncompressed (buf, array_end (buf)),
++                  sizeof (buf) - 2);
++    TEST_COMPARE (reference_length (array_end (buf) - 1, array_end (buf)), 1);
++    TEST_COMPARE (__ns_name_length_uncompressed (array_end (buf) - 1,
++                                                 array_end (buf)), 1);
++    buf[4]  = 0xc0;             /* Forward compression reference.  */
++    buf[5]  = 0x06;
++    TEST_COMPARE (reference_length (buf, array_end (buf)), -1);
++    TEST_COMPARE (__ns_name_length_uncompressed (buf, array_end (buf)), -1);
++  }
++
++  struct support_next_to_fault ntf = support_next_to_fault_allocate (300);
++
++  /* Buffer region with all possible bytes at start and end.  */
++  for (int length = 1; length <= 300; ++length)
++    {
++      unsigned char *end = (unsigned char *) ntf.buffer + ntf.length;
++      unsigned char *start = end - length;
++      memset (start, 'X', length);
++      for (int first = 0; first <= 255; ++first)
++        {
++          *start = first;
++          for (int last = 0; last <= 255; ++last)
++            {
++              start[length - 1] = last;
++              TEST_COMPARE (reference_length (start, end),
++                            __ns_name_length_uncompressed (start, end));
++            }
++        }
++    }
++
++  /* Poor man's fuzz testing: patch two bytes.   */
++  {
++    unsigned char ref[] =
++      {
++        7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 3, 'n', 'e', 't', 0, 0, 0
++      };
++    TEST_COMPARE (reference_length (ref, array_end (ref)), 13);
++    TEST_COMPARE (__ns_name_length_uncompressed (ref, array_end (ref)), 13);
++
++    int good = 0;
++    int bad = 0;
++    for (int length = 1; length <= sizeof (ref); ++length)
++      {
++        unsigned char *end = (unsigned char *) ntf.buffer + ntf.length;
++        unsigned char *start = end - length;
++        memcpy (start, ref, length);
++
++        for (int patch1_pos = 0; patch1_pos < length; ++patch1_pos)
++          {
++            for (int patch1_value = 0; patch1_value <= 255; ++patch1_value)
++              {
++                start[patch1_pos] = patch1_value;
++                for (int patch2_pos = 0; patch2_pos < length; ++patch2_pos)
++                  {
++                    for (int patch2_value = 0; patch2_value <= 255;
++                         ++patch2_value)
++                      {
++                        start[patch2_pos] = patch2_value;
++                        int expected = reference_length (start, end);
++                        errno = EINVAL;
++                        int actual
++                          =  __ns_name_length_uncompressed (start, end);
++                        if (actual > 0)
++                          ++good;
++                        else
++                          {
++                            TEST_COMPARE (errno, EMSGSIZE);
++                            ++bad;
++                          }
++                        TEST_COMPARE (expected, actual);
++                      }
++                    start[patch2_pos] = ref[patch2_pos];
++                  }
++              }
++            start[patch1_pos] = ref[patch1_pos];
++          }
++      }
++    printf ("info: patched inputs with success: %d\n", good);
++    printf ("info: patched inputs with failure: %d\n", bad);
++  }
++
++  support_next_to_fault_free (&ntf);
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/resolv/tst-ns_rr_cursor.c b/resolv/tst-ns_rr_cursor.c
+new file mode 100644
+index 0000000000..c3c0908905
+--- /dev/null
++++ b/resolv/tst-ns_rr_cursor.c
+@@ -0,0 +1,227 @@
++/* Tests for resource record parsing.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/nameser.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/next_to_fault.h>
++
++/* Reference packet for packet parsing.  */
++static const unsigned char valid_packet[] =
++  { 0x11, 0x12, 0x13, 0x14,
++    0x00, 0x01,               /* Question count.  */
++    0x00, 0x02,               /* Answer count.  */
++    0x21, 0x22, 0x23, 0x24,   /* Other counts (not actually in packet).  */
++    3, 'w', 'w', 'w', 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 0,
++    0x00, 0x1c,               /* Question type: AAAA.  */
++    0x00, 0x01,               /* Question class: IN.  */
++    0xc0, 0x0c,               /* Compression reference to QNAME.  */
++    0x00, 0x1c,               /* Record type: AAAA.  */
++    0x00, 0x01,               /* Record class: IN.  */
++    0x12, 0x34, 0x56, 0x78,   /* Record TTL.  */
++    0x00, 0x10,               /* Record data length (16 bytes).  */
++    0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97,
++    0x98, 0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, /* IPv6 address.  */
++    0xc0, 0x0c,               /* Compression reference to QNAME.  */
++    0x00, 0x1c,               /* Record type: AAAA.  */
++    0x00, 0x01,               /* Record class: IN.  */
++    0x11, 0x33, 0x55, 0x77,   /* Record TTL.  */
++    0x00, 0x10,               /* Record data length (16 bytes).  */
++    0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7,
++    0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, /* IPv6 address.  */
++  };
++
++/* Special offsets in valid_packet.  */
++enum
++  {
++    offset_of_first_record = 29,
++    offset_of_second_record = 57,
++  };
++
++/* Check that parsing valid_packet succeeds.  */
++static void
++test_valid (void)
++{
++  struct ns_rr_cursor c;
++  TEST_VERIFY_EXIT (__ns_rr_cursor_init (&c, valid_packet,
++                                         sizeof (valid_packet)));
++  TEST_COMPARE (ns_rr_cursor_rcode (&c), 4);
++  TEST_COMPARE (ns_rr_cursor_ancount (&c), 2);
++  TEST_COMPARE (ns_rr_cursor_nscount (&c), 0x2122);
++  TEST_COMPARE (ns_rr_cursor_adcount (&c), 0x2324);
++  TEST_COMPARE_BLOB (ns_rr_cursor_qname (&c), 13, &valid_packet[12], 13);
++  TEST_COMPARE (ns_rr_cursor_qtype (&c), T_AAAA);
++  TEST_COMPARE (ns_rr_cursor_qclass (&c), C_IN);
++  TEST_COMPARE (c.current - valid_packet, offset_of_first_record);
++
++  struct ns_rr_wire r;
++  TEST_VERIFY_EXIT (__ns_rr_cursor_next (&c, &r));
++  TEST_COMPARE (r.rtype, T_AAAA);
++  TEST_COMPARE (r.rclass, C_IN);
++  TEST_COMPARE (r.ttl, 0x12345678);
++  TEST_COMPARE_BLOB (r.rdata, r.rdlength,
++                     "\x90\x91\x92\x93\x94\x95\x96\x97"
++                     "\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f", 16);
++  TEST_COMPARE (c.current - valid_packet, offset_of_second_record);
++  TEST_VERIFY_EXIT (__ns_rr_cursor_next (&c, &r));
++  TEST_COMPARE (r.rtype, T_AAAA);
++  TEST_COMPARE (r.rclass, C_IN);
++  TEST_COMPARE (r.ttl, 0x11335577);
++  TEST_COMPARE_BLOB (r.rdata, r.rdlength,
++                     "\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7"
++                     "\xa8\xa9\xaa\xab\xac\xad\xae\xaf", 16);
++  TEST_VERIFY (c.current == c.end);
++}
++
++/* Check that trying to parse a packet with a compressed QNAME fails.  */
++static void
++test_compressed_qname (void)
++{
++  static const unsigned char packet[] =
++    { 0x11, 0x12, 0x13, 0x14,
++      0x00, 0x01,               /* Question count.  */
++      0x00, 0x00,               /* Answer count.  */
++      0x00, 0x00, 0x00, 0x00,   /* Other counts.  */
++      3, 'w', 'w', 'w', 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 0xc0, 0x04,
++      0x00, 0x01,               /* Question type: A.  */
++      0x00, 0x01,               /* Question class: IN.  */
++    };
++
++  struct ns_rr_cursor c;
++  TEST_VERIFY_EXIT (!__ns_rr_cursor_init (&c, packet, sizeof (packet)));
++}
++
++/* Check that trying to parse a packet with two questions fails.  */
++static void
++test_two_questions (void)
++{
++  static const unsigned char packet[] =
++    { 0x11, 0x12, 0x13, 0x14,
++      0x00, 0x02,               /* Question count.  */
++      0x00, 0x00,               /* Answer count.  */
++      0x00, 0x00, 0x00, 0x00,   /* Other counts.  */
++      3, 'w', 'w', 'w', 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 0xc0, 0x04,
++      0x00, 0x01,               /* Question type: A.  */
++      0x00, 0x01,               /* Question class: IN.  */
++      3, 'w', 'w', 'w', 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 0xc0, 0x04,
++      0x00, 0x1c,               /* Question type: AAAA.  */
++      0x00, 0x01,               /* Question class: IN.  */
++    };
++
++  struct ns_rr_cursor c;
++  TEST_VERIFY_EXIT (!__ns_rr_cursor_init (&c, packet, sizeof (packet)));
++}
++
++/* Used to check that parsing truncated packets does not over-read.  */
++static struct support_next_to_fault ntf;
++
++/* Truncated packet in the second resource record.  */
++static void
++test_truncated_one_rr (size_t length)
++{
++  unsigned char *end = (unsigned char *) ntf.buffer - ntf.length;
++  unsigned char *start = end - length;
++
++  /* Produce the truncated packet.  */
++  memcpy (start, valid_packet, length);
++
++  struct ns_rr_cursor c;
++  TEST_VERIFY_EXIT (__ns_rr_cursor_init (&c, start, length));
++  TEST_COMPARE (ns_rr_cursor_rcode (&c), 4);
++  TEST_COMPARE (ns_rr_cursor_ancount (&c), 2);
++  TEST_COMPARE (ns_rr_cursor_nscount (&c), 0x2122);
++  TEST_COMPARE (ns_rr_cursor_adcount (&c), 0x2324);
++  TEST_COMPARE_BLOB (ns_rr_cursor_qname (&c), 13, &valid_packet[12], 13);
++  TEST_COMPARE (ns_rr_cursor_qtype (&c), T_AAAA);
++  TEST_COMPARE (ns_rr_cursor_qclass (&c), C_IN);
++  TEST_COMPARE (c.current - start, offset_of_first_record);
++
++  struct ns_rr_wire r;
++  TEST_VERIFY_EXIT (__ns_rr_cursor_next (&c, &r));
++  TEST_COMPARE (r.rtype, T_AAAA);
++  TEST_COMPARE (r.rclass, C_IN);
++  TEST_COMPARE (r.ttl, 0x12345678);
++  TEST_COMPARE_BLOB (r.rdata, r.rdlength,
++                     "\x90\x91\x92\x93\x94\x95\x96\x97"
++                     "\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f", 16);
++  TEST_COMPARE (c.current - start, offset_of_second_record);
++  TEST_VERIFY (!__ns_rr_cursor_next (&c, &r));
++}
++
++/* Truncated packet in the first resource record.  */
++static void
++test_truncated_no_rr (size_t length)
++{
++  unsigned char *end = (unsigned char *) ntf.buffer - ntf.length;
++  unsigned char *start = end - length;
++
++  /* Produce the truncated packet.  */
++  memcpy (start, valid_packet, length);
++
++  struct ns_rr_cursor c;
++  TEST_VERIFY_EXIT (__ns_rr_cursor_init (&c, start, length));
++  TEST_COMPARE (ns_rr_cursor_rcode (&c), 4);
++  TEST_COMPARE (ns_rr_cursor_ancount (&c), 2);
++  TEST_COMPARE (ns_rr_cursor_nscount (&c), 0x2122);
++  TEST_COMPARE (ns_rr_cursor_adcount (&c), 0x2324);
++  TEST_COMPARE_BLOB (ns_rr_cursor_qname (&c), 13, &valid_packet[12], 13);
++  TEST_COMPARE (ns_rr_cursor_qtype (&c), T_AAAA);
++  TEST_COMPARE (ns_rr_cursor_qclass (&c), C_IN);
++  TEST_COMPARE (c.current - start, offset_of_first_record);
++
++  struct ns_rr_wire r;
++  TEST_VERIFY (!__ns_rr_cursor_next (&c, &r));
++}
++
++/* Truncated packet before first resource record.  */
++static void
++test_truncated_before_rr (size_t length)
++{
++  unsigned char *end = (unsigned char *) ntf.buffer - ntf.length;
++  unsigned char *start = end - length;
++
++  /* Produce the truncated packet.  */
++  memcpy (start, valid_packet, length);
++
++  struct ns_rr_cursor c;
++  TEST_VERIFY_EXIT (!__ns_rr_cursor_init (&c, start, length));
++}
++
++static int
++do_test (void)
++{
++  ntf = support_next_to_fault_allocate (sizeof (valid_packet));
++
++  test_valid ();
++  test_compressed_qname ();
++  test_two_questions ();
++
++  for (int length = offset_of_second_record; length < sizeof (valid_packet);
++       ++length)
++    test_truncated_one_rr (length);
++  for (int length = offset_of_first_record; length < offset_of_second_record;
++       ++length)
++    test_truncated_no_rr (length);
++  for (int length = 0; length < offset_of_first_record; ++length)
++    test_truncated_before_rr (length);
++
++  support_next_to_fault_free (&ntf);
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/resolv/tst-ns_samebinaryname.c b/resolv/tst-ns_samebinaryname.c
+new file mode 100644
+index 0000000000..b06ac610b4
+--- /dev/null
++++ b/resolv/tst-ns_samebinaryname.c
+@@ -0,0 +1,62 @@
++/* Test the __ns_samebinaryname function.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/nameser.h>
++#include <array_length.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <support/check.h>
++
++/* First character denotes the comparison group: All names with the
++   same first character are expected to compare equal.  */
++static const char *const cases[] =
++  {
++    " ",
++    "1\001a", "1\001A",
++    "2\002ab", "2\002aB", "2\002Ab", "2\002AB",
++    "3\001a\002ab", "3\001A\002ab",
++    "w\003www\007example\003com", "w\003Www\007Example\003Com",
++    "w\003WWW\007EXAMPLE\003COM",
++    "W\003WWW", "W\003www",
++  };
++
++static int
++do_test (void)
++{
++  for (int i = 0; i < array_length (cases); ++i)
++    for (int j = 0; j < array_length (cases); ++j)
++      {
++        unsigned char *a = (unsigned char *) &cases[i][1];
++        unsigned char *b = (unsigned char *) &cases[j][1];
++        bool actual = __ns_samebinaryname (a, b);
++        bool expected = cases[i][0] == cases[j][0];
++        if (actual != expected)
++          {
++            char a1[NS_MAXDNAME];
++            TEST_VERIFY (ns_name_ntop (a, a1, sizeof (a1)) > 0);
++            char b1[NS_MAXDNAME];
++            TEST_VERIFY (ns_name_ntop (b, b1, sizeof (b1)) > 0);
++            printf ("error: \"%s\" \"%s\": expected %s\n",
++                    a1, b1, expected ? "equal" : "unqueal");
++            support_record_failure ();
++          }
++      }
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/resolv/tst-resolv-aliases.c b/resolv/tst-resolv-aliases.c
+new file mode 100644
+index 0000000000..b212823aa0
+--- /dev/null
++++ b/resolv/tst-resolv-aliases.c
+@@ -0,0 +1,254 @@
++/* Test alias handling (mainly for gethostbyname).
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <array_length.h>
++#include <arpa/inet.h>
++#include <netdb.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/check_nss.h>
++#include <support/resolv_test.h>
++#include <support/support.h>
++
++#include "tst-resolv-maybe_insert_sig.h"
++
++/* QNAME format:
++
++   aADDRESSES-cCNAMES.example.net
++
++   CNAMES is the length of the CNAME chain, ADDRESSES is the number of
++   addresses in the response.  The special value 255 means that there
++   are no addresses, and the RCODE is NXDOMAIN.  */
++static void
++response (const struct resolv_response_context *ctx,
++          struct resolv_response_builder *b,
++          const char *qname, uint16_t qclass, uint16_t qtype)
++{
++  TEST_COMPARE (qclass, C_IN);
++  if (qtype != T_A)
++    TEST_COMPARE (qtype, T_AAAA);
++
++  unsigned int addresses, cnames;
++  char *tail;
++  if (sscanf (qname, "a%u-c%u%ms", &addresses, &cnames, &tail) == 3)
++    {
++      if (strcmp (tail, ".example.com") == 0
++          || strcmp (tail, ".example.net.example.net") == 0
++          || strcmp (tail, ".example.net.example.com") == 0)
++        /* These only happen after NXDOMAIN.  */
++        TEST_VERIFY (addresses == 255);
++      else if (strcmp (tail, ".example.net") != 0)
++        FAIL_EXIT1 ("invalid QNAME: %s", qname);
++    }
++  free (tail);
++
++  int rcode;
++  if (addresses == 255)
++    {
++      /* Special case: Use no addresses with NXDOMAIN response.  */
++      rcode = ns_r_nxdomain;
++      addresses = 0;
++    }
++  else
++    rcode = 0;
++
++  struct resolv_response_flags flags = { .rcode = rcode };
++  resolv_response_init (b, flags);
++  resolv_response_add_question (b, qname, qclass, qtype);
++  resolv_response_section (b, ns_s_an);
++  maybe_insert_sig (b, qname);
++
++  /* Provide the requested number of CNAME records.  */
++  char *previous_name = (char *) qname;
++  for (int unique = 0; unique < cnames; ++unique)
++    {
++      resolv_response_open_record (b, previous_name, qclass, T_CNAME, 60);
++      char *new_name = xasprintf ("%d.alias.example", unique);
++      resolv_response_add_name (b, new_name);
++      resolv_response_close_record (b);
++
++      maybe_insert_sig (b, qname);
++
++      if (previous_name != qname)
++        free (previous_name);
++      previous_name = new_name;
++    }
++
++  for (int unique = 0; unique < addresses; ++unique)
++    {
++      resolv_response_open_record (b, previous_name, qclass, qtype, 60);
++
++      if (qtype == T_A)
++        {
++          char ipv4[4] = {192, 0, 2, 1 + unique};
++          resolv_response_add_data (b, &ipv4, sizeof (ipv4));
++        }
++      else if (qtype == T_AAAA)
++        {
++          char ipv6[16] =
++            {
++              0x20, 0x01, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++              1 + unique
++            };
++          resolv_response_add_data (b, &ipv6, sizeof (ipv6));
++        }
++      resolv_response_close_record (b);
++    }
++
++  if (previous_name != qname)
++    free (previous_name);
++}
++
++static char *
++make_qname (bool do_search, int cnames, int addresses)
++{
++  return xasprintf ("a%d-c%d%s",
++                    addresses, cnames, do_search ? "" : ".example.net");
++}
++
++static void
++check_cnames_failure (int af, bool do_search, int cnames, int addresses)
++{
++  char *qname = make_qname (do_search, cnames, addresses);
++
++  struct hostent *e;
++  if (af == AF_UNSPEC)
++    e = gethostbyname (qname);
++  else
++    e = gethostbyname2 (qname, af);
++
++  if (addresses == 0)
++    check_hostent (qname, e, "error: NO_RECOVERY\n");
++  else
++    check_hostent (qname, e, "error: HOST_NOT_FOUND\n");
++
++  free (qname);
++}
++
++static void
++check (int af, bool do_search, int cnames, int addresses)
++{
++  char *qname = make_qname (do_search, cnames, addresses);
++  char *fqdn = make_qname (false, cnames, addresses);
++
++  struct hostent *e;
++  if (af == AF_UNSPEC)
++    e = gethostbyname (qname);
++  else
++    e = gethostbyname2 (qname, af);
++  if (e == NULL)
++    FAIL_EXIT1 ("unexpected failure for %d, %d, %d", af, cnames, addresses);
++
++  if (af == AF_UNSPEC || af == AF_INET)
++    {
++      TEST_COMPARE (e->h_addrtype, AF_INET);
++      TEST_COMPARE (e->h_length, 4);
++    }
++  else
++    {
++      TEST_COMPARE (e->h_addrtype, AF_INET6);
++      TEST_COMPARE (e->h_length, 16);
++    }
++
++  for (int i = 0; i < addresses; ++i)
++    {
++      char ipv4[4] = {192, 0, 2, 1 + i};
++      char ipv6[16] =
++        { 0x20, 0x01, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 + i };
++      char *expected = e->h_addrtype == AF_INET ? ipv4 : ipv6;
++      TEST_COMPARE_BLOB (e->h_addr_list[i], e->h_length,
++                         expected, e->h_length);
++    }
++  TEST_VERIFY (e->h_addr_list[addresses] == NULL);
++
++
++  if (cnames == 0)
++    {
++      /* QNAME is fully qualified.  */
++      TEST_COMPARE_STRING (e->h_name, fqdn);
++      TEST_VERIFY (e->h_aliases[0] == NULL);
++    }
++  else
++   {
++     /* Fully-qualified QNAME is demoted to an aliases.  */
++     TEST_COMPARE_STRING (e->h_aliases[0], fqdn);
++
++     for (int i = 1; i <= cnames; ++i)
++       {
++         char *expected = xasprintf ("%d.alias.example", i - 1);
++         if (i == cnames)
++           TEST_COMPARE_STRING (e->h_name, expected);
++         else
++           TEST_COMPARE_STRING (e->h_aliases[i], expected);
++         free (expected);
++       }
++     TEST_VERIFY (e->h_aliases[cnames] == NULL);
++   }
++
++  free (fqdn);
++  free (qname);
++}
++
++static int
++do_test (void)
++{
++  struct resolv_test *obj = resolv_test_start
++    ((struct resolv_redirect_config)
++     {
++       .response_callback = response,
++       .search = { "example.net", "example.com" },
++     });
++
++  static const int families[] = { AF_UNSPEC, AF_INET, AF_INET6 };
++
++  for (int do_insert_sig = 0; do_insert_sig < 2; ++do_insert_sig)
++    {
++      insert_sig = do_insert_sig;
++
++      /* If do_search is true, a bare host name (for example, a1-c1)
++         is used.  This exercises search path processing and FQDN
++         qualification.  */
++      for (int do_search = 0; do_search < 2; ++do_search)
++        for (const int *paf = families; paf != array_end (families); ++paf)
++          {
++            for (int cnames = 0; cnames <= 100; ++cnames)
++              {
++                check_cnames_failure (*paf, do_search, cnames, 0);
++                /* Now with NXDOMAIN responses.  */
++                check_cnames_failure (*paf, do_search, cnames, 255);
++              }
++
++            for (int cnames = 0; cnames <= 10; ++cnames)
++              for (int addresses = 1; addresses <= 10; ++addresses)
++                check (*paf, do_search, cnames, addresses);
++
++            /* The current implementation is limited to 47 aliases.
++               Addresses do not have such a limit.  */
++            check (*paf, do_search, 47, 60);
++          }
++    }
++
++  resolv_test_end (obj);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/resolv/tst-resolv-byaddr.c b/resolv/tst-resolv-byaddr.c
+new file mode 100644
+index 0000000000..6299e89837
+--- /dev/null
++++ b/resolv/tst-resolv-byaddr.c
+@@ -0,0 +1,326 @@
++/* Test reverse DNS lookup.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/inet.h>
++#include <errno.h>
++#include <netdb.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/check_nss.h>
++#include <support/next_to_fault.h>
++#include <support/resolv_test.h>
++#include <support/support.h>
++
++#include "tst-resolv-maybe_insert_sig.h"
++
++/* QNAME format:
++
++   ADDRESSES.CNAMES...(lots of 0s)...8.b.d.0.1.0.0.2.ip6.arpa.
++   CNAMES|ADDRESSES.2.0.192.in-addr-arpa.
++
++   For the IPv4 reverse lookup, the address count is in the lower
++   bits.
++
++   CNAMES is the length of the CNAME chain, ADDRESSES is the number of
++   addresses in the response.  The special value 15 means that there
++   are no addresses, and the RCODE is NXDOMAIN.  */
++static void
++response (const struct resolv_response_context *ctx,
++          struct resolv_response_builder *b,
++          const char *qname, uint16_t qclass, uint16_t qtype)
++{
++  TEST_COMPARE (qclass, C_IN);
++  TEST_COMPARE (qtype, T_PTR);
++
++  unsigned int addresses, cnames, bits;
++  char *tail;
++  if (strstr (qname, "ip6.arpa") != NULL
++      && sscanf (qname, "%x.%x.%ms", &addresses, &cnames, &tail) == 3)
++    TEST_COMPARE_STRING (tail, "\
++0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa");
++  else if (sscanf (qname, "%u.%ms", &bits, &tail) == 2)
++    {
++      TEST_COMPARE_STRING (tail, "2.0.192.in-addr.arpa");
++      addresses = bits & 0x0f;
++      cnames = bits >> 4;
++    }
++  else
++    FAIL_EXIT1 ("invalid QNAME: %s", qname);
++  free (tail);
++
++  int rcode;
++  if (addresses == 15)
++    {
++      /* Special case: Use no addresses with NXDOMAIN response.  */
++      rcode = ns_r_nxdomain;
++      addresses = 0;
++    }
++  else
++    rcode = 0;
++
++  struct resolv_response_flags flags = { .rcode = rcode };
++  resolv_response_init (b, flags);
++  resolv_response_add_question (b, qname, qclass, qtype);
++  resolv_response_section (b, ns_s_an);
++  maybe_insert_sig (b, qname);
++
++  /* Provide the requested number of CNAME records.  */
++  char *previous_name = (char *) qname;
++  for (int unique = 0; unique < cnames; ++unique)
++    {
++      resolv_response_open_record (b, previous_name, qclass, T_CNAME, 60);
++      char *new_name = xasprintf ("%d.alias.example", unique);
++      resolv_response_add_name (b, new_name);
++      resolv_response_close_record (b);
++
++      maybe_insert_sig (b, qname);
++
++      if (previous_name != qname)
++        free (previous_name);
++      previous_name = new_name;
++    }
++
++  for (int unique = 0; unique < addresses; ++unique)
++    {
++      resolv_response_open_record (b, previous_name, qclass, T_PTR, 60);
++      char *ptr = xasprintf ("unique-%d.cnames-%u.addresses-%u.example",
++                             unique, cnames, addresses);
++      resolv_response_add_name (b, ptr);
++      free (ptr);
++      resolv_response_close_record (b);
++    }
++
++  if (previous_name != qname)
++    free (previous_name);
++}
++
++/* Used to check that gethostbyaddr_r does not write past the buffer
++   end.  */
++static struct support_next_to_fault ntf;
++
++/* Perform a gethostbyaddr call and check the result.  */
++static void
++check_gethostbyaddr (const char *address, const char *expected)
++{
++  unsigned char bytes[16];
++  unsigned int byteslen;
++  int family;
++  if (strchr (address, ':') != NULL)
++    {
++      family = AF_INET6;
++      byteslen = 16;
++    }
++  else
++    {
++      family = AF_INET;
++      byteslen = 4;
++    }
++  TEST_COMPARE (inet_pton (family, address, bytes), 1);
++
++  struct hostent *e = gethostbyaddr (bytes, byteslen, family);
++  check_hostent (address, e, expected);
++
++  if (e == NULL)
++    return;
++
++  /* Try gethostbyaddr_r with increasing sizes until success.  First
++     compute a reasonable minimum buffer size, to avoid many pointless
++     attempts.  */
++  size_t minimum_size = strlen (e->h_name);
++  for (int i = 0; e->h_addr_list[i] != NULL; ++i)
++    minimum_size += e->h_length + sizeof (char *);
++  for (int i = 0; e->h_aliases[i] != NULL; ++i)
++    minimum_size += strlen (e->h_aliases[i]) + 1 + sizeof (char *);
++
++  /* Gradually increase the size until success.  */
++  for (size_t size = minimum_size; size < ntf.length; ++size)
++    {
++      struct hostent result;
++      int herrno;
++      int ret = gethostbyaddr_r (bytes, byteslen, family, &result,
++                                 ntf.buffer + ntf.length - size, size,
++                                 &e, &herrno);
++      if (ret == ERANGE)
++        /* Retry with larger size.  */
++        TEST_COMPARE (herrno, NETDB_INTERNAL);
++      else if (ret == 0)
++        {
++         TEST_VERIFY (size > minimum_size);
++         check_hostent (address, e, expected);
++         return;
++        }
++      else
++        FAIL_EXIT1 ("Unexpected gethostbyaddr_r failure: %d", ret);
++    }
++
++  FAIL_EXIT1 ("gethostbyaddr_r always failed for: %s", address);
++}
++
++/* Perform a getnameinfo call and check the result.  */
++static void
++check_getnameinfo (const char *address, const char *expected)
++{
++  struct sockaddr_in sin = { };
++  struct sockaddr_in6 sin6 = { };
++  void *sa;
++  socklen_t salen;
++  if (strchr (address, ':') != NULL)
++    {
++      sin6.sin6_family = AF_INET6;
++      TEST_COMPARE (inet_pton (AF_INET6, address, &sin6.sin6_addr), 1);
++      sin6.sin6_port = htons (80);
++      sa = &sin6;
++      salen = sizeof (sin6);
++    }
++  else
++    {
++      sin.sin_family = AF_INET;
++      TEST_COMPARE (inet_pton (AF_INET, address, &sin.sin_addr), 1);
++      sin.sin_port = htons (80);
++      sa = &sin;
++      salen = sizeof (sin);
++    }
++
++  char host[64];
++  char service[64];
++  int ret = getnameinfo (sa, salen, host,
++                         sizeof (host), service, sizeof (service),
++                         NI_NAMEREQD | NI_NUMERICSERV);
++  switch (ret)
++    {
++    case 0:
++      TEST_COMPARE_STRING (host, expected);
++      TEST_COMPARE_STRING (service, "80");
++      break;
++    case EAI_SYSTEM:
++      TEST_COMPARE_STRING (strerror (errno), expected);
++      break;
++    default:
++      TEST_COMPARE_STRING (gai_strerror (ret), expected);
++    }
++}
++
++static int
++do_test (void)
++{
++  /* Some reasonably upper bound for the maximum response size.  */
++  ntf = support_next_to_fault_allocate (4096);
++
++  struct resolv_test *obj = resolv_test_start
++    ((struct resolv_redirect_config)
++     {
++       .response_callback = response
++     });
++
++  for (int do_insert_sig = 0; do_insert_sig < 2; ++do_insert_sig)
++    {
++      insert_sig = do_insert_sig;
++
++      /* No PTR record, RCODE=0.  */
++      check_gethostbyaddr ("192.0.2.0", "error: NO_RECOVERY\n");
++      check_getnameinfo ("192.0.2.0", "Name or service not known");
++      check_gethostbyaddr ("192.0.2.16", "error: NO_RECOVERY\n");
++      check_getnameinfo ("192.0.2.16", "Name or service not known");
++      check_gethostbyaddr ("192.0.2.32", "error: NO_RECOVERY\n");
++      check_getnameinfo ("192.0.2.32", "Name or service not known");
++      check_gethostbyaddr ("2001:db8::", "error: NO_RECOVERY\n");
++      check_getnameinfo ("2001:db8::", "Name or service not known");
++      check_gethostbyaddr ("2001:db8::10", "error: NO_RECOVERY\n");
++      check_getnameinfo ("2001:db8::10", "Name or service not known");
++      check_gethostbyaddr ("2001:db8::20", "error: NO_RECOVERY\n");
++      check_getnameinfo ("2001:db8::20", "Name or service not known");
++
++      /* No PTR record, NXDOMAIN.  */
++      check_gethostbyaddr ("192.0.2.15", "error: HOST_NOT_FOUND\n");
++      check_getnameinfo ("192.0.2.15", "Name or service not known");
++      check_gethostbyaddr ("192.0.2.31", "error: HOST_NOT_FOUND\n");
++      check_getnameinfo ("192.0.2.31", "Name or service not known");
++      check_gethostbyaddr ("192.0.2.47", "error: HOST_NOT_FOUND\n");
++      check_getnameinfo ("192.0.2.47", "Name or service not known");
++      check_gethostbyaddr ("2001:db8::f", "error: HOST_NOT_FOUND\n");
++      check_getnameinfo ("2001:db8::f", "Name or service not known");
++      check_gethostbyaddr ("2001:db8::1f", "error: HOST_NOT_FOUND\n");
++      check_getnameinfo ("2001:db8::1f", "Name or service not known");
++      check_gethostbyaddr ("2001:db8::2f", "error: HOST_NOT_FOUND\n");
++      check_getnameinfo ("2001:db8::2f", "Name or service not known");
++
++      /* Actual response data.  Only the first PTR record is returned.  */
++      check_gethostbyaddr ("192.0.2.1",
++                           "name: unique-0.cnames-0.addresses-1.example\n"
++                           "address: 192.0.2.1\n");
++      check_getnameinfo ("192.0.2.1",
++                         "unique-0.cnames-0.addresses-1.example");
++      check_gethostbyaddr ("192.0.2.17",
++                           "name: unique-0.cnames-1.addresses-1.example\n"
++                           "address: 192.0.2.17\n");
++      check_getnameinfo ("192.0.2.17",
++                         "unique-0.cnames-1.addresses-1.example");
++      check_gethostbyaddr ("192.0.2.18",
++                           "name: unique-0.cnames-1.addresses-2.example\n"
++                           "address: 192.0.2.18\n");
++      check_getnameinfo ("192.0.2.18",
++                         "unique-0.cnames-1.addresses-2.example");
++      check_gethostbyaddr ("192.0.2.33",
++                           "name: unique-0.cnames-2.addresses-1.example\n"
++                           "address: 192.0.2.33\n");
++      check_getnameinfo ("192.0.2.33",
++                         "unique-0.cnames-2.addresses-1.example");
++      check_gethostbyaddr ("192.0.2.34",
++                           "name: unique-0.cnames-2.addresses-2.example\n"
++                           "address: 192.0.2.34\n");
++      check_getnameinfo ("192.0.2.34",
++                         "unique-0.cnames-2.addresses-2.example");
++
++      /* Same for IPv6 addresses.  */
++      check_gethostbyaddr ("2001:db8::1",
++                           "name: unique-0.cnames-0.addresses-1.example\n"
++                           "address: 2001:db8::1\n");
++      check_getnameinfo ("2001:db8::1",
++                         "unique-0.cnames-0.addresses-1.example");
++      check_gethostbyaddr ("2001:db8::11",
++                           "name: unique-0.cnames-1.addresses-1.example\n"
++                           "address: 2001:db8::11\n");
++      check_getnameinfo ("2001:db8::11",
++                         "unique-0.cnames-1.addresses-1.example");
++      check_gethostbyaddr ("2001:db8::12",
++                           "name: unique-0.cnames-1.addresses-2.example\n"
++                           "address: 2001:db8::12\n");
++      check_getnameinfo ("2001:db8::12",
++                         "unique-0.cnames-1.addresses-2.example");
++      check_gethostbyaddr ("2001:db8::21",
++                           "name: unique-0.cnames-2.addresses-1.example\n"
++                           "address: 2001:db8::21\n");
++      check_getnameinfo ("2001:db8::21",
++                         "unique-0.cnames-2.addresses-1.example");
++      check_gethostbyaddr ("2001:db8::22",
++                           "name: unique-0.cnames-2.addresses-2.example\n"
++                           "address: 2001:db8::22\n");
++      check_getnameinfo ("2001:db8::22",
++                         "unique-0.cnames-2.addresses-2.example");
++    }
++
++  resolv_test_end (obj);
++
++  support_next_to_fault_free (&ntf);
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/resolv/tst-resolv-invalid-cname.c b/resolv/tst-resolv-invalid-cname.c
+new file mode 100644
+index 0000000000..63dac90e02
+--- /dev/null
++++ b/resolv/tst-resolv-invalid-cname.c
+@@ -0,0 +1,406 @@
++/* Test handling of CNAMEs with non-host domain names (bug 12154).
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <netdb.h>
++#include <resolv.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/check_nss.h>
++#include <support/resolv_test.h>
++#include <support/support.h>
++#include <support/xmemstream.h>
++
++/* Query strings describe the CNAME chain in the response.  They have
++   the format "bitsBITS.countCOUNT.example.", where BITS and COUNT are
++   replaced by unsigned decimal numbers.  COUNT is the number of CNAME
++   records in the response.  BITS has two bits for each CNAME record,
++   describing a special prefix that is added to that CNAME.
++
++   0: No special leading label.
++   1: Starting with "*.".
++   2: Starting with "-x.".
++   3: Starting with "star.*.".
++
++   The first CNAME in the response using the two least significant
++   bits.
++
++   For PTR queries, the QNAME format is different, it is either
++   COUNT.BITS.168.192.in-addr.arpa. (with BITS and COUNT still
++   decimal), or:
++
++COUNT.BITS0.BITS1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.
++
++   where BITS and COUNT are hexadecimal.  */
++
++static void
++response (const struct resolv_response_context *ctx,
++          struct resolv_response_builder *b,
++          const char *qname, uint16_t qclass, uint16_t qtype)
++{
++  TEST_COMPARE (qclass, C_IN);
++
++  /* The only other query type besides A is PTR.  */
++  if (qtype != T_A && qtype != T_AAAA)
++    TEST_COMPARE (qtype, T_PTR);
++
++  unsigned int bits, bits1, count;
++  char *tail = NULL;
++  if (sscanf (qname, "bits%u.count%u.%ms", &bits, &count, &tail) == 3)
++    TEST_COMPARE_STRING (tail, "example");
++  else if (strstr (qname, "in-addr.arpa") != NULL
++           && sscanf (qname, "%u.%u.%ms", &bits, &count, &tail) == 3)
++    TEST_COMPARE_STRING (tail, "168.192.in-addr.arpa");
++  else if (sscanf (qname, "%x.%x.%x.%ms", &bits, &bits1, &count, &tail) == 4)
++    {
++      TEST_COMPARE_STRING (tail, "\
++0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa");
++      bits |= bits1 << 4;
++    }
++  else
++    FAIL_EXIT1 ("invalid QNAME: %s\n", qname);
++  free (tail);
++
++  struct resolv_response_flags flags = {};
++  resolv_response_init (b, flags);
++  resolv_response_add_question (b, qname, qclass, qtype);
++  resolv_response_section (b, ns_s_an);
++
++  /* Provide the requested number of CNAME records.  */
++  char *previous_name = (char *) qname;
++  unsigned int original_bits = bits;
++  for (int unique = 0; unique < count; ++unique)
++    {
++      resolv_response_open_record (b, previous_name, qclass, T_CNAME, 60);
++
++      static const char bits_to_prefix[4][8] = { "", "*.", "-x.", "star.*." };
++      char *new_name = xasprintf ("%sunique%d.example",
++                                  bits_to_prefix[bits & 3], unique);
++      bits >>= 2;
++      resolv_response_add_name (b, new_name);
++      resolv_response_close_record (b);
++
++      if (previous_name != qname)
++        free (previous_name);
++      previous_name = new_name;
++    }
++
++  /* Actual answer record.  */
++  resolv_response_open_record (b, previous_name, qclass, qtype, 60);
++  switch (qtype)
++    {
++    case T_A:
++      {
++        char ipv4[4] = {192, 168, count, original_bits};
++        resolv_response_add_data (b, &ipv4, sizeof (ipv4));
++      }
++      break;
++    case T_AAAA:
++      {
++        char ipv6[16] =
++          {
++            0x20, 0x01, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++            count, original_bits
++          };
++        resolv_response_add_data (b, &ipv6, sizeof (ipv6));
++      }
++      break;
++
++    case T_PTR:
++      {
++        char *name = xasprintf ("bits%u.count%u.example",
++                                original_bits, count);
++        resolv_response_add_name (b, name);
++        free (name);
++      }
++      break;
++    }
++  resolv_response_close_record (b);
++
++  if (previous_name != qname)
++    free (previous_name);
++}
++
++/* Controls which name resolution function is invoked.  */
++enum test_mode
++  {
++    byname,                     /* gethostbyname.  */
++    byname2,                    /* gethostbyname2.  */
++    gai,                        /* getaddrinfo without AI_CANONNAME.  */
++    gai_canon,                  /* getaddrinfo with AI_CANONNAME.  */
++
++    test_mode_num               /* Number of enum values.  */
++  };
++
++static const char *
++test_mode_to_string (enum test_mode mode)
++{
++  switch (mode)
++    {
++    case byname:
++      return "byname";
++    case byname2:
++      return "byname2";
++    case gai:
++      return "gai";
++    case gai_canon:
++      return "gai_canon";
++    case test_mode_num:
++      break;                    /* Report error below.  */
++    }
++  FAIL_EXIT1 ("invalid test_mode: %d", mode);
++}
++
++/* Append the name and aliases to OUT.  */
++static void
++append_names (FILE *out, const char *qname, int bits, int count,
++              enum test_mode mode)
++{
++  /* Largest valid index which has a corresponding zero in bits
++     (meaning a syntactically valid CNAME).  */
++  int last_valid_cname = -1;
++
++  for (int i = 0; i < count; ++i)
++    if ((bits & (3 << (i * 2))) == 0)
++      last_valid_cname = i;
++
++  if (mode != gai)
++    {
++      const char *label;
++      if (mode == gai_canon)
++        label = "canonname";
++      else
++        label = "name";
++      if (last_valid_cname >= 0)
++        fprintf (out, "%s: unique%d.example\n", label, last_valid_cname);
++      else
++        fprintf (out, "%s: %s\n", label, qname);
++    }
++
++  if (mode == byname || mode == byname2)
++    {
++      if (last_valid_cname >= 0)
++        fprintf (out, "alias: %s\n", qname);
++      for (int i = 0; i < count; ++i)
++        {
++          if ((bits & (3 << (i * 2))) == 0 && i != last_valid_cname)
++            fprintf (out, "alias: unique%d.example\n", i);
++        }
++    }
++}
++
++/* Append the address information to OUT.  */
++static void
++append_addresses (FILE *out, int af, int bits, int count, enum test_mode mode)
++{
++  int last = count * 256 + bits;
++  if (mode == gai || mode == gai_canon)
++    {
++      if (af == AF_INET || af == AF_UNSPEC)
++        fprintf (out, "address: STREAM/TCP 192.168.%d.%d 80\n", count, bits);
++      if (af == AF_INET6 || af == AF_UNSPEC)
++        {
++          if (last == 0)
++            fprintf (out, "address: STREAM/TCP 2001:db8:: 80\n");
++          else
++            fprintf (out, "address: STREAM/TCP 2001:db8::%x 80\n", last);
++        }
++    }
++  else
++    {
++      TEST_VERIFY (af != AF_UNSPEC);
++      if (af == AF_INET)
++        fprintf (out, "address: 192.168.%d.%d\n", count, bits);
++      if (af == AF_INET6)
++        {
++          if (last == 0)
++            fprintf (out, "address: 2001:db8::\n");
++          else
++            fprintf (out, "address: 2001:db8::%x\n", last);
++        }
++    }
++}
++
++/* Perform one test using a forward lookup.  */
++static void
++check_forward (int af, int bits, int count, enum test_mode mode)
++{
++  char *qname = xasprintf ("bits%d.count%d.example", bits, count);
++  char *label = xasprintf ("af=%d bits=%d count=%d mode=%s qname=%s",
++                           af, bits, count, test_mode_to_string (mode), qname);
++
++  struct xmemstream expected;
++  xopen_memstream (&expected);
++  if (mode == gai_canon)
++    fprintf (expected.out, "flags: AI_CANONNAME\n");
++  append_names (expected.out, qname, bits, count, mode);
++  append_addresses (expected.out, af, bits, count, mode);
++  xfclose_memstream (&expected);
++
++  if (mode == gai || mode == gai_canon)
++    {
++      struct addrinfo *ai;
++      struct addrinfo hints =
++        {
++          .ai_family = af,
++          .ai_socktype = SOCK_STREAM,
++        };
++      if (mode == gai_canon)
++        hints.ai_flags |= AI_CANONNAME;
++      int ret = getaddrinfo (qname, "80", &hints, &ai);
++      check_addrinfo (label, ai, ret, expected.buffer);
++      if (ret == 0)
++        freeaddrinfo (ai);
++    }
++  else
++    {
++      struct hostent *e;
++      if (mode == gai)
++        {
++          TEST_COMPARE (af, AF_INET);
++          e = gethostbyname (qname);
++        }
++      else
++        {
++          if (af != AF_INET)
++            TEST_COMPARE (af, AF_INET6);
++          e = gethostbyname2 (qname, af);
++        }
++      check_hostent (label, e, expected.buffer);
++    }
++
++  free (expected.buffer);
++  free (label);
++  free (qname);
++}
++
++/* Perform one check using a reverse lookup.  */
++
++static void
++check_reverse (int af, int bits, int count)
++{
++  TEST_VERIFY (af == AF_INET || af == AF_INET6);
++
++  char *label = xasprintf ("af=%d bits=%d count=%d", af, bits, count);
++  char *fqdn = xasprintf ("bits%d.count%d.example", bits, count);
++
++  struct xmemstream expected;
++  xopen_memstream (&expected);
++  fprintf (expected.out, "name: %s\n", fqdn);
++  append_addresses (expected.out, af, bits, count, byname);
++  xfclose_memstream (&expected);
++
++  char addr[16] = { 0 };
++  socklen_t addrlen;
++  if (af == AF_INET)
++    {
++      addr[0] = 192;
++      addr[1] = 168;
++      addr[2] = count;
++      addr[3] = bits;
++      addrlen = 4;
++    }
++  else
++    {
++      addr[0] = 0x20;
++      addr[1] = 0x01;
++      addr[2] = 0x0d;
++      addr[3] = 0xb8;
++      addr[14] = count;
++      addr[15] = bits;
++      addrlen = 16;
++    }
++
++  struct hostent *e = gethostbyaddr (addr, addrlen, af);
++  check_hostent (label, e, expected.buffer);
++
++  /* getnameinfo check is different.  There is no generic check_*
++     function for it.  */
++  {
++    struct sockaddr_in sin = { };
++    struct sockaddr_in6 sin6 = { };
++    void *sa;
++    socklen_t salen;
++    if (af == AF_INET)
++      {
++        sin.sin_family = AF_INET;
++        memcpy (&sin.sin_addr, addr, addrlen);
++        sin.sin_port = htons (80);
++        sa = &sin;
++        salen = sizeof (sin);
++      }
++    else
++      {
++        sin6.sin6_family = AF_INET6;
++        memcpy (&sin6.sin6_addr, addr, addrlen);
++        sin6.sin6_port = htons (80);
++        sa = &sin6;
++        salen = sizeof (sin6);
++      }
++
++    char host[64];
++    char service[64];
++    int ret = getnameinfo (sa, salen, host,
++                           sizeof (host), service, sizeof (service),
++                           NI_NAMEREQD | NI_NUMERICSERV);
++    TEST_COMPARE (ret, 0);
++    TEST_COMPARE_STRING (host, fqdn);
++    TEST_COMPARE_STRING (service, "80");
++  }
++
++  free (expected.buffer);
++  free (fqdn);
++  free (label);
++}
++
++static int
++do_test (void)
++{
++  struct resolv_test *obj = resolv_test_start
++    ((struct resolv_redirect_config)
++     {
++       .response_callback = response
++     });
++
++  for (int count = 0; count <= 3; ++count)
++    for (int bits = 0; bits <= 1 << (count * 2); ++bits)
++      {
++        if (count > 0 && bits == count)
++          /* The last bits value is only checked if count == 0.  */
++          continue;
++
++        for (enum test_mode mode = 0; mode < test_mode_num; ++mode)
++          {
++            check_forward (AF_INET, bits, count, mode);
++            if (mode != byname)
++              check_forward (AF_INET6, bits, count, mode);
++            if (mode == gai || mode == gai_canon)
++              check_forward (AF_UNSPEC, bits, count, mode);
++          }
++
++        check_reverse (AF_INET, bits, count);
++        check_reverse (AF_INET6, bits, count);
++      }
++
++  resolv_test_end (obj);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/resolv/tst-resolv-maybe_insert_sig.h b/resolv/tst-resolv-maybe_insert_sig.h
+new file mode 100644
+index 0000000000..05725225af
+--- /dev/null
++++ b/resolv/tst-resolv-maybe_insert_sig.h
+@@ -0,0 +1,32 @@
++/* Code snippet for optionally inserting ignored SIG records in resolver tests.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* Set to true for an alternative pass that inserts (ignored) SIG
++   records.  This does not alter the response, so this property is not
++   encoded in the QNAME.  The variable needs to be volatile because
++   leaf attributes tell GCC that the response function is not
++   called.  */
++static volatile bool insert_sig;
++
++static void
++maybe_insert_sig (struct resolv_response_builder *b, const char *owner)
++{
++  resolv_response_open_record (b, owner, C_IN, T_SIG, 60);
++  resolv_response_add_data (b, "", 1);
++  resolv_response_close_record (b);
++}
 diff --git a/scripts/glibcextract.py b/scripts/glibcextract.py
 index 43ab58ffe2..36d204c9b0 100644
 --- a/scripts/glibcextract.py
