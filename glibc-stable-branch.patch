@@ -15,7 +15,7 @@ Arjun Shankar (2):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (20):
+Florian Weimer (21):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
@@ -36,6 +36,7 @@ Florian Weimer (20):
       nss_dns: Rewrite _nss_dns_gethostbyname4_r using current interfaces
       resolv: Fix building tst-resolv-invalid-cname for earlier C standards
       NEWS: Note bug 12154 and bug 29305 as fixed
+      elf: Run tst-audit-tlsdesc, tst-audit-tlsdesc-dlopen everywhere
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -164,10 +165,19 @@ index 2696dde4b1..9b07b4e132 100644
  
  void *
 diff --git a/elf/Makefile b/elf/Makefile
-index fd77d0c7c8..43353a4b08 100644
+index fd77d0c7c8..72178d33ff 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
-@@ -408,6 +408,7 @@ tests += \
+@@ -374,6 +374,8 @@ tests += \
+   tst-align \
+   tst-align2 \
+   tst-align3 \
++  tst-audit-tlsdesc \
++  tst-audit-tlsdesc-dlopen \
+   tst-audit1 \
+   tst-audit2 \
+   tst-audit8 \
+@@ -408,6 +410,7 @@ tests += \
    tst-dlmopen4 \
    tst-dlmopen-dlerror \
    tst-dlmopen-gethostbyname \
@@ -175,7 +185,24 @@ index fd77d0c7c8..43353a4b08 100644
    tst-dlopenfail \
    tst-dlopenfail-2 \
    tst-dlopenrpath \
-@@ -834,6 +835,8 @@ modules-names += \
+@@ -765,6 +768,8 @@ modules-names += \
+   tst-alignmod3 \
+   tst-array2dep \
+   tst-array5dep \
++  tst-audit-tlsdesc-mod1 \
++  tst-audit-tlsdesc-mod2 \
+   tst-audit11mod1 \
+   tst-audit11mod2 \
+   tst-audit12mod1 \
+@@ -798,6 +803,7 @@ modules-names += \
+   tst-auditmanymod7 \
+   tst-auditmanymod8 \
+   tst-auditmanymod9 \
++  tst-auditmod-tlsdesc  \
+   tst-auditmod1 \
+   tst-auditmod9a \
+   tst-auditmod9b \
+@@ -834,6 +840,8 @@ modules-names += \
    tst-dlmopen1mod \
    tst-dlmopen-dlerror-mod \
    tst-dlmopen-gethostbyname-mod \
@@ -184,7 +211,32 @@ index fd77d0c7c8..43353a4b08 100644
    tst-dlopenfaillinkmod \
    tst-dlopenfailmod1 \
    tst-dlopenfailmod2 \
-@@ -2967,3 +2970,25 @@ $(objpfx)tst-tls-allocation-failure-static-patched.out: \
+@@ -990,23 +998,8 @@ modules-names += tst-gnu2-tls1mod
+ $(objpfx)tst-gnu2-tls1: $(objpfx)tst-gnu2-tls1mod.so
+ tst-gnu2-tls1mod.so-no-z-defs = yes
+ CFLAGS-tst-gnu2-tls1mod.c += -mtls-dialect=gnu2
++endif # $(have-mtls-dialect-gnu2)
+ 
+-tests += tst-audit-tlsdesc tst-audit-tlsdesc-dlopen
+-modules-names += tst-audit-tlsdesc-mod1 tst-audit-tlsdesc-mod2 tst-auditmod-tlsdesc
+-$(objpfx)tst-audit-tlsdesc: $(objpfx)tst-audit-tlsdesc-mod1.so \
+-			    $(objpfx)tst-audit-tlsdesc-mod2.so \
+-			    $(shared-thread-library)
+-CFLAGS-tst-audit-tlsdesc-mod1.c += -mtls-dialect=gnu2
+-CFLAGS-tst-audit-tlsdesc-mod2.c += -mtls-dialect=gnu2
+-$(objpfx)tst-audit-tlsdesc-dlopen: $(shared-thread-library)
+-$(objpfx)tst-audit-tlsdesc-dlopen.out: $(objpfx)tst-audit-tlsdesc-mod1.so \
+-				       $(objpfx)tst-audit-tlsdesc-mod2.so
+-$(objpfx)tst-audit-tlsdesc-mod1.so: $(objpfx)tst-audit-tlsdesc-mod2.so
+-$(objpfx)tst-audit-tlsdesc.out: $(objpfx)tst-auditmod-tlsdesc.so
+-tst-audit-tlsdesc-ENV = LD_AUDIT=$(objpfx)tst-auditmod-tlsdesc.so
+-$(objpfx)tst-audit-tlsdesc-dlopen.out: $(objpfx)tst-auditmod-tlsdesc.so
+-tst-audit-tlsdesc-dlopen-ENV = LD_AUDIT=$(objpfx)tst-auditmod-tlsdesc.so
+-endif
+ ifeq (yes,$(have-protected-data))
+ modules-names += tst-protected1moda tst-protected1modb
+ tests += tst-protected1a tst-protected1b
+@@ -2967,3 +2960,25 @@ $(objpfx)tst-tls-allocation-failure-static-patched.out: \
  	grep -q '^Fatal glibc error: Cannot allocate TLS block$$' $@ \
  	  && grep -q '^status: 127$$' $@; \
  	  $(evaluate-test)
