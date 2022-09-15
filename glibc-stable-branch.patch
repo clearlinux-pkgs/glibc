@@ -41,6 +41,9 @@ Florian Weimer (21):
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
 
+Javier Pello (1):
+      elf: Fix hwcaps string size overestimation
+
 Joseph Myers (1):
       Update syscall lists for Linux 5.19
 
@@ -278,6 +281,42 @@ index 8bbf110d02..b97c17b3a9 100644
    return __strdup (temp);
  }
  
+diff --git a/elf/dl-hwcaps.c b/elf/dl-hwcaps.c
+index 6f161f6ad5..92eb53790e 100644
+--- a/elf/dl-hwcaps.c
++++ b/elf/dl-hwcaps.c
+@@ -193,7 +193,7 @@ _dl_important_hwcaps (const char *glibc_hwcaps_prepend,
+   /* Each hwcaps subdirectory has a GLIBC_HWCAPS_PREFIX string prefix
+      and a "/" suffix once stored in the result.  */
+   hwcaps_counts.maximum_length += strlen (GLIBC_HWCAPS_PREFIX) + 1;
+-  size_t total = (hwcaps_counts.count * (strlen (GLIBC_HWCAPS_PREFIX) + 1)
++  size_t hwcaps_sz = (hwcaps_counts.count * (strlen (GLIBC_HWCAPS_PREFIX) + 1)
+ 		  + hwcaps_counts.total_length);
+ 
+   /* Count the number of bits set in the masked value.  */
+@@ -229,11 +229,12 @@ _dl_important_hwcaps (const char *glibc_hwcaps_prepend,
+   assert (m == cnt);
+ 
+   /* Determine the total size of all strings together.  */
++  size_t total;
+   if (cnt == 1)
+-    total += temp[0].len + 1;
++    total = temp[0].len + 1;
+   else
+     {
+-      total += temp[0].len + temp[cnt - 1].len + 2;
++      total = temp[0].len + temp[cnt - 1].len + 2;
+       if (cnt > 2)
+ 	{
+ 	  total <<= 1;
+@@ -255,6 +256,7 @@ _dl_important_hwcaps (const char *glibc_hwcaps_prepend,
+   /* This is the overall result, including both glibc-hwcaps
+      subdirectories and the legacy hwcaps subdirectories using the
+      power set construction.  */
++  total += hwcaps_sz;
+   struct r_strlenpair *overall_result
+     = malloc (*sz * sizeof (*result) + total);
+   if (overall_result == NULL)
 diff --git a/elf/dl-open.c b/elf/dl-open.c
 index a23e65926b..46e8066fd8 100644
 --- a/elf/dl-open.c
