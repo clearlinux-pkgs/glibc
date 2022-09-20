@@ -15,7 +15,7 @@ Arjun Shankar (2):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (21):
+Florian Weimer (24):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
@@ -37,6 +37,9 @@ Florian Weimer (21):
       resolv: Fix building tst-resolv-invalid-cname for earlier C standards
       NEWS: Note bug 12154 and bug 29305 as fixed
       elf: Run tst-audit-tlsdesc, tst-audit-tlsdesc-dlopen everywhere
+      scripts/dso-ordering-test.py: Generate program run-time dependencies
+      elf: Rename _dl_sort_maps parameter from skip to force_first
+      elf: Implement force_first handling in _dl_sort_maps_dfs (bug 28937)
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -60,10 +63,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..03281e3ab4 100644
+index f61e521fc8..5b4753416f 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,27 @@ See the end for copying conditions.
+@@ -5,6 +5,28 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -82,6 +85,7 @@ index f61e521fc8..03281e3ab4 100644
 +  [28846] CMSG_NXTHDR may trigger -Wstrict-overflow warning
 +  [29305] Conserve NSS buffer space during DNS packet parsing
 +  [29415] nscd: Fix netlink cache invalidation if epoll is used
++  [28937] New DSO dependency sorter does not put new map first if in a cycle
 +  [29446] _dlopen now ignores dl_caller argument in static mode
 +  [29485] Linux: Terminate subprocess on late failure in tst-pidfd
 +  [29490] alpha: New __brk_call implementation is broken
@@ -341,6 +345,116 @@ index a23e65926b..46e8066fd8 100644
  
        _dl_debug_update (nsid)->r_state = RT_CONSISTENT;
      }
+diff --git a/elf/dl-sort-maps.c b/elf/dl-sort-maps.c
+index 96638d7ed1..3e2a6a584e 100644
+--- a/elf/dl-sort-maps.c
++++ b/elf/dl-sort-maps.c
+@@ -27,12 +27,12 @@
+    If FOR_FINI is true, this is called for finishing an object.  */
+ static void
+ _dl_sort_maps_original (struct link_map **maps, unsigned int nmaps,
+-			unsigned int skip, bool for_fini)
++			bool force_first, bool for_fini)
+ {
+   /* Allows caller to do the common optimization of skipping the first map,
+      usually the main binary.  */
+-  maps += skip;
+-  nmaps -= skip;
++  maps += force_first;
++  nmaps -= force_first;
+ 
+   /* A list of one element need not be sorted.  */
+   if (nmaps <= 1)
+@@ -182,8 +182,9 @@ dfs_traversal (struct link_map ***rpo, struct link_map *map,
+ 
+ static void
+ _dl_sort_maps_dfs (struct link_map **maps, unsigned int nmaps,
+-		   unsigned int skip __attribute__ ((unused)), bool for_fini)
++		   bool force_first, bool for_fini)
+ {
++  struct link_map *first_map = maps[0];
+   for (int i = nmaps - 1; i >= 0; i--)
+     maps[i]->l_visited = 0;
+ 
+@@ -208,14 +209,6 @@ _dl_sort_maps_dfs (struct link_map **maps, unsigned int nmaps,
+      Adjusting the order so that maps[0] is last traversed naturally avoids
+      this problem.
+ 
+-     Further, the old "optimization" of skipping the main object at maps[0]
+-     from the call-site (i.e. _dl_sort_maps(maps+1,nmaps-1)) is in general
+-     no longer valid, since traversing along object dependency-links
+-     may "find" the main object even when it is not included in the initial
+-     order (e.g. a dlopen()'ed shared object can have circular dependencies
+-     linked back to itself). In such a case, traversing N-1 objects will
+-     create a N-object result, and raise problems.
+-
+      To summarize, just passing in the full list, and iterating from back
+      to front makes things much more straightforward.  */
+ 
+@@ -274,6 +267,27 @@ _dl_sort_maps_dfs (struct link_map **maps, unsigned int nmaps,
+     }
+ 
+   memcpy (maps, rpo, sizeof (struct link_map *) * nmaps);
++
++  /* Skipping the first object at maps[0] is not valid in general,
++     since traversing along object dependency-links may "find" that
++     first object even when it is not included in the initial order
++     (e.g., a dlopen'ed shared object can have circular dependencies
++     linked back to itself).  In such a case, traversing N-1 objects
++     will create a N-object result, and raise problems.  Instead,
++     force the object back into first place after sorting.  This naive
++     approach may introduce further dependency ordering violations
++     compared to rotating the cycle until the first map is again in
++     the first position, but as there is a cycle, at least one
++     violation is already present.  */
++  if (force_first && maps[0] != first_map)
++    {
++      int i;
++      for (i = 0; maps[i] != first_map; ++i)
++	;
++      assert (i < nmaps);
++      memmove (&maps[1], maps, i * sizeof (maps[0]));
++      maps[0] = first_map;
++    }
+ }
+ 
+ void
+@@ -286,7 +300,7 @@ _dl_sort_maps_init (void)
+ 
+ void
+ _dl_sort_maps (struct link_map **maps, unsigned int nmaps,
+-	       unsigned int skip, bool for_fini)
++	       bool force_first, bool for_fini)
+ {
+   /* It can be tempting to use a static function pointer to store and call
+      the current selected sorting algorithm routine, but experimentation
+@@ -296,9 +310,9 @@ _dl_sort_maps (struct link_map **maps, unsigned int nmaps,
+      input cases. A simple if-case with direct function calls appears to
+      be the fastest.  */
+   if (__glibc_likely (GLRO(dl_dso_sort_algo) == dso_sort_algorithm_original))
+-    _dl_sort_maps_original (maps, nmaps, skip, for_fini);
++    _dl_sort_maps_original (maps, nmaps, force_first, for_fini);
+   else
+-    _dl_sort_maps_dfs (maps, nmaps, skip, for_fini);
++    _dl_sort_maps_dfs (maps, nmaps, force_first, for_fini);
+ }
+ 
+ #endif /* HAVE_TUNABLES.  */
+diff --git a/elf/dso-sort-tests-1.def b/elf/dso-sort-tests-1.def
+index 5f7f18ef27..4bf9052db1 100644
+--- a/elf/dso-sort-tests-1.def
++++ b/elf/dso-sort-tests-1.def
+@@ -64,3 +64,10 @@ output: b>a>{}<a<b
+ tst-bz15311: {+a;+e;+f;+g;+d;%d;-d;-g;-f;-e;-a};a->b->c->d;d=>[ba];c=>a;b=>e=>a;c=>f=>b;d=>g=>c
+ output(glibc.rtld.dynamic_sort=1): {+a[d>c>b>a>];+e[e>];+f[f>];+g[g>];+d[];%d(b(e(a()))a()g(c(a()f(b(e(a()))))));-d[];-g[];-f[];-e[];-a[<a<c<d<g<f<b<e];}
+ output(glibc.rtld.dynamic_sort=2): {+a[d>c>b>a>];+e[e>];+f[f>];+g[g>];+d[];%d(b(e(a()))a()g(c(a()f(b(e(a()))))));-d[];-g[];-f[];-e[];-a[<g<f<a<b<c<d<e];}
++
++# Test that even in the presence of dependency loops involving dlopen'ed
++# object, that object is initialized last (and not unloaded prematurely).
++# Final destructor order is indeterminate due to the cycle.
++tst-bz28937: {+a;+b;-b;+c;%c};a->a1;a->a2;a2->a;b->b1;c->a1;c=>a1
++output(glibc.rtld.dynamic_sort=1): {+a[a2>a1>a>];+b[b1>b>];-b[<b<b1];+c[c>];%c(a1());}<a<a2<c<a1
++output(glibc.rtld.dynamic_sort=2): {+a[a2>a1>a>];+b[b1>b>];-b[<b<b1];+c[c>];%c(a1());}<a2<a<c<a1
 diff --git a/elf/rtld.c b/elf/rtld.c
 index cbbaf4a331..3e771a93d8 100644
 --- a/elf/rtld.c
@@ -4481,6 +4595,30 @@ index 0000000000..05725225af
 +  resolv_response_add_data (b, "", 1);
 +  resolv_response_close_record (b);
 +}
+diff --git a/scripts/dso-ordering-test.py b/scripts/dso-ordering-test.py
+index 2dd6bfda18..b87cf2f809 100644
+--- a/scripts/dso-ordering-test.py
++++ b/scripts/dso-ordering-test.py
+@@ -707,13 +707,12 @@ def process_testcase(t):
+                 "\t$(compile.c) $(OUTPUT_OPTION)\n")
+         makefile.write (rule)
+ 
+-        not_depended_objs = find_objs_not_depended_on(test_descr)
+-        if not_depended_objs:
+-            depstr = ""
+-            for dep in not_depended_objs:
+-                depstr += (" $(objpfx)" + test_subdir + "/"
+-                           + test_name + "-" + dep + ".so")
+-            makefile.write("$(objpfx)%s.out:%s\n" % (base_test_name, depstr))
++        # Ensure that all shared objects are built before running the
++        # test, whether there link-time dependencies or not.
++        depobjs = ["$(objpfx){}/{}-{}.so".format(test_subdir, test_name, dep)
++                   for dep in test_descr.objs]
++        makefile.write("$(objpfx){}.out: {}\n".format(
++            base_test_name, " ".join(depobjs)))
+ 
+         # Add main executable to test-srcs
+         makefile.write("test-srcs += %s/%s\n" % (test_subdir, test_name))
 diff --git a/scripts/glibcextract.py b/scripts/glibcextract.py
 index 43ab58ffe2..36d204c9b0 100644
 --- a/scripts/glibcextract.py
@@ -4687,6 +4825,24 @@ index 0000000000..68c96d3c9d
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+index 050a3032de..6b256b8388 100644
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -1048,9 +1048,11 @@ extern void _dl_init (struct link_map *main_map, int argc, char **argv,
+    initializer functions have completed.  */
+ extern void _dl_fini (void) attribute_hidden;
+ 
+-/* Sort array MAPS according to dependencies of the contained objects.  */
++/* Sort array MAPS according to dependencies of the contained objects.
++   If FORCE_FIRST, MAPS[0] keeps its place even if the dependencies
++   say otherwise.  */
+ extern void _dl_sort_maps (struct link_map **maps, unsigned int nmaps,
+-			   unsigned int skip, bool for_fini) attribute_hidden;
++			   bool force_first, bool for_fini) attribute_hidden;
+ 
+ /* The dynamic linker calls this function before and having changing
+    any shared object mappings.  The `r_state' member of `struct r_debug'
 diff --git a/sysdeps/mach/hurd/bits/socket.h b/sysdeps/mach/hurd/bits/socket.h
 index 5b35ea81ec..70fce4fb27 100644
 --- a/sysdeps/mach/hurd/bits/socket.h
