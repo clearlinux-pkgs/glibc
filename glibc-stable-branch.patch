@@ -1,4 +1,4 @@
-Adhemerval Zanella (8):
+Adhemerval Zanella (9):
       glibcextract.py: Add compile_c_snippet
       linux: Use compile_c_snippet to check linux/pidfd.h availability
       linux: Mimic kernel defition for BLOCK_SIZE
@@ -7,6 +7,7 @@ Adhemerval Zanella (8):
       syslog: Fix large messages (BZ#29536)
       elf: Restore how vDSO dependency is printed with LD_TRACE_LOADED_OBJECTS (BZ #29539)
       syslog: Remove extra whitespace between timestamp and message (BZ#29544)
+      m68k: Enforce 4-byte alignment on internal locks (BZ #29537)
 
 Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
@@ -64,10 +65,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..eab882987b 100644
+index f61e521fc8..1cc9a16bbf 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,29 @@ See the end for copying conditions.
+@@ -5,6 +5,30 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -91,6 +92,7 @@ index f61e521fc8..eab882987b 100644
 +  [29485] Linux: Terminate subprocess on late failure in tst-pidfd
 +  [29490] alpha: New __brk_call implementation is broken
 +  [29528] elf: Call __libc_early_init for reused namespaces
++  [29537] libc: [2.34 regression]: Alignment issue on m68k when using
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
 +  [29583] Use 64-bit interfaces in gconv_parseconfdir
 +
@@ -4894,6 +4896,37 @@ index 050a3032de..6b256b8388 100644
  
  /* The dynamic linker calls this function before and having changing
     any shared object mappings.  The `r_state' member of `struct r_debug'
+diff --git a/sysdeps/generic/libc-lock-arch.h b/sysdeps/generic/libc-lock-arch.h
+new file mode 100644
+index 0000000000..4713b30a8a
+--- /dev/null
++++ b/sysdeps/generic/libc-lock-arch.h
+@@ -0,0 +1,25 @@
++/* Private libc-internal arch-specific definitions.  Generic version.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <https://www.gnu.org/licenses/>.  */
++
++#ifndef _LIBC_LOCK_ARCH_H
++#define _LIBC_LOCK_ARCH_H
++
++/* The default definition uses the natural alignment from the lock type.  */
++#define __LIBC_LOCK_ALIGNMENT
++
++#endif
 diff --git a/sysdeps/mach/hurd/bits/socket.h b/sysdeps/mach/hurd/bits/socket.h
 index 5b35ea81ec..70fce4fb27 100644
 --- a/sysdeps/mach/hurd/bits/socket.h
@@ -4957,6 +4990,48 @@ index 5b35ea81ec..70fce4fb27 100644
    return __cmsg;
  }
  #endif	/* Use `extern inline'.  */
+diff --git a/sysdeps/nptl/libc-lock.h b/sysdeps/nptl/libc-lock.h
+index 5af476c48b..63b3f3d75c 100644
+--- a/sysdeps/nptl/libc-lock.h
++++ b/sysdeps/nptl/libc-lock.h
+@@ -22,6 +22,7 @@
+ #include <pthread.h>
+ #define __need_NULL
+ #include <stddef.h>
++#include <libc-lock-arch.h>
+ 
+ 
+ /* Mutex type.  */
+@@ -29,7 +30,12 @@
+ # if (!IS_IN (libc) && !IS_IN (libpthread)) || !defined _LIBC
+ typedef struct { pthread_mutex_t mutex; } __libc_lock_recursive_t;
+ # else
+-typedef struct { int lock; int cnt; void *owner; } __libc_lock_recursive_t;
++typedef struct
++{
++  int lock __LIBC_LOCK_ALIGNMENT;
++  int cnt;
++  void *owner;
++} __libc_lock_recursive_t;
+ # endif
+ #else
+ typedef struct __libc_lock_recursive_opaque__ __libc_lock_recursive_t;
+diff --git a/sysdeps/nptl/libc-lockP.h b/sysdeps/nptl/libc-lockP.h
+index d3a6837fd2..425f514c5c 100644
+--- a/sysdeps/nptl/libc-lockP.h
++++ b/sysdeps/nptl/libc-lockP.h
+@@ -32,9 +32,10 @@
+    ld.so might be used on old kernels with a different libc.so.  */
+ #include <lowlevellock.h>
+ #include <tls.h>
++#include <libc-lock-arch.h>
+ 
+ /* Mutex type.  */
+-typedef int __libc_lock_t;
++typedef int __libc_lock_t __LIBC_LOCK_ALIGNMENT;
+ typedef struct { pthread_mutex_t mutex; } __rtld_lock_recursive_t;
+ typedef pthread_rwlock_t __libc_rwlock_t;
+ 
 diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
 index a139a16532..3ceda9fdbf 100644
 --- a/sysdeps/unix/sysv/linux/Makefile
@@ -5106,6 +5181,37 @@ index 15b7a3a925..24f72b797a 100644
    return cmsg;
  }
  libc_hidden_def (__cmsg_nxthdr)
+diff --git a/sysdeps/unix/sysv/linux/m68k/libc-lock-arch.h b/sysdeps/unix/sysv/linux/m68k/libc-lock-arch.h
+new file mode 100644
+index 0000000000..1844bbaf6f
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/m68k/libc-lock-arch.h
+@@ -0,0 +1,25 @@
++/* Private libc-internal arch-specific definitions.  m68k version.
++   Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <https://www.gnu.org/licenses/>.  */
++
++#ifndef _LIBC_LOCK_ARCH_H
++#define _LIBC_LOCK_ARCH_H
++
++/* Linux enforces 4-bytes alignment on futex inputs.  */
++#define __LIBC_LOCK_ALIGNMENT __attribute__ ((__aligned__ (4)))
++
++#endif
 diff --git a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
 index bf4be80f8d..202520ee25 100644
 --- a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
