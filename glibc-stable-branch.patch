@@ -15,7 +15,7 @@ Arjun Shankar (2):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (24):
+Florian Weimer (25):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
@@ -40,6 +40,7 @@ Florian Weimer (24):
       scripts/dso-ordering-test.py: Generate program run-time dependencies
       elf: Rename _dl_sort_maps parameter from skip to force_first
       elf: Implement force_first handling in _dl_sort_maps_dfs (bug 28937)
+      gconv: Use 64-bit interfaces in gconv_parseconfdir (bug 29583)
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -63,10 +64,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..5b4753416f 100644
+index f61e521fc8..eab882987b 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,28 @@ See the end for copying conditions.
+@@ -5,6 +5,29 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -91,6 +92,7 @@ index f61e521fc8..5b4753416f 100644
 +  [29490] alpha: New __brk_call implementation is broken
 +  [29528] elf: Call __libc_early_init for reused namespaces
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
++  [29583] Use 64-bit interfaces in gconv_parseconfdir
 +
  Version 2.36
  
@@ -611,6 +613,55 @@ index 0000000000..449f3c8fa9
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/iconv/gconv_parseconfdir.h b/iconv/gconv_parseconfdir.h
+index debb96b322..b72933b526 100644
+--- a/iconv/gconv_parseconfdir.h
++++ b/iconv/gconv_parseconfdir.h
+@@ -29,14 +29,14 @@
+ # define isspace(__c) __isspace_l ((__c), _nl_C_locobj_ptr)
+ # define asprintf __asprintf
+ # define opendir __opendir
+-# define readdir __readdir
++# define readdir64 __readdir64
+ # define closedir __closedir
+ # define mempcpy __mempcpy
+-# define struct_stat struct __stat64_t64
+-# define lstat __lstat64_time64
++# define struct_stat64 struct __stat64_t64
++# define lstat64 __lstat64_time64
+ # define feof_unlocked __feof_unlocked
+ #else
+-# define struct_stat struct stat
++# define struct_stat64 struct stat64
+ #endif
+ 
+ /* Name of the file containing the module information in the directories
+@@ -148,8 +148,8 @@ gconv_parseconfdir (const char *prefix, const char *dir, size_t dir_len)
+   DIR *confdir = opendir (buf);
+   if (confdir != NULL)
+     {
+-      struct dirent *ent;
+-      while ((ent = readdir (confdir)) != NULL)
++      struct dirent64 *ent;
++      while ((ent = readdir64 (confdir)) != NULL)
+ 	{
+ 	  if (ent->d_type != DT_REG && ent->d_type != DT_UNKNOWN)
+ 	    continue;
+@@ -161,12 +161,12 @@ gconv_parseconfdir (const char *prefix, const char *dir, size_t dir_len)
+ 	      && strcmp (ent->d_name + len - strlen (suffix), suffix) == 0)
+ 	    {
+ 	      char *conf;
+-	      struct_stat st;
++	      struct_stat64 st;
+ 	      if (asprintf (&conf, "%s/%s", buf, ent->d_name) < 0)
+ 		continue;
+ 
+ 	      if (ent->d_type != DT_UNKNOWN
+-		  || (lstat (conf, &st) != -1 && S_ISREG (st.st_mode)))
++		  || (lstat64 (conf, &st) != -1 && S_ISREG (st.st_mode)))
+ 		found |= read_conf_file (conf, dir, dir_len);
+ 
+ 	      free (conf);
 diff --git a/include/arpa/nameser.h b/include/arpa/nameser.h
 index 53f1dbc7c3..c27e7886b7 100644
 --- a/include/arpa/nameser.h
