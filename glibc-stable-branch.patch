@@ -52,6 +52,9 @@ Javier Pello (1):
 Joseph Myers (1):
       Update syscall lists for Linux 5.19
 
+Jörg Sonnenberger (1):
+      get_nscd_addresses: Fix subscript typos [BZ #29605]
+
 Noah Goldstein (1):
       elf: Replace `strcpy` call with `memcpy` [BZ #29454]
 
@@ -5032,6 +5035,25 @@ index d3a6837fd2..425f514c5c 100644
  typedef struct { pthread_mutex_t mutex; } __rtld_lock_recursive_t;
  typedef pthread_rwlock_t __libc_rwlock_t;
  
+diff --git a/sysdeps/posix/getaddrinfo.c b/sysdeps/posix/getaddrinfo.c
+index bcff909b2f..5cda9bb072 100644
+--- a/sysdeps/posix/getaddrinfo.c
++++ b/sysdeps/posix/getaddrinfo.c
+@@ -540,11 +540,11 @@ get_nscd_addresses (const char *name, const struct addrinfo *req,
+ 	  at[count].addr[2] = htonl (0xffff);
+ 	}
+       else if (req->ai_family == AF_UNSPEC
+-	       || air->family[count] == req->ai_family)
++	       || air->family[i] == req->ai_family)
+ 	{
+-	  at[count].family = air->family[count];
++	  at[count].family = air->family[i];
+ 	  memcpy (at[count].addr, addrs, size);
+-	  if (air->family[count] == AF_INET6)
++	  if (air->family[i] == AF_INET6)
+ 	    res->got_ipv6 = true;
+ 	}
+       at[count].next = at + count + 1;
 diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
 index a139a16532..3ceda9fdbf 100644
 --- a/sysdeps/unix/sysv/linux/Makefile
