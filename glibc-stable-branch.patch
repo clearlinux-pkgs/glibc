@@ -1,4 +1,4 @@
-Adhemerval Zanella (9):
+Adhemerval Zanella (10):
       glibcextract.py: Add compile_c_snippet
       linux: Use compile_c_snippet to check linux/pidfd.h availability
       linux: Mimic kernel defition for BLOCK_SIZE
@@ -8,6 +8,7 @@ Adhemerval Zanella (9):
       elf: Restore how vDSO dependency is printed with LD_TRACE_LOADED_OBJECTS (BZ #29539)
       syslog: Remove extra whitespace between timestamp and message (BZ#29544)
       m68k: Enforce 4-byte alignment on internal locks (BZ #29537)
+      stdlib: Fix __getrandom_nocancel type and arc4random usage (BZ #29638)
 
 Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
@@ -68,10 +69,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..1cc9a16bbf 100644
+index f61e521fc8..91bcfeb7a6 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,30 @@ See the end for copying conditions.
+@@ -5,6 +5,31 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -98,6 +99,7 @@ index f61e521fc8..1cc9a16bbf 100644
 +  [29537] libc: [2.34 regression]: Alignment issue on m68k when using
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
 +  [29583] Use 64-bit interfaces in gconv_parseconfdir
++  [29638] libc: stdlib: arc4random fallback is never used
 +
  Version 2.36
  
@@ -4881,6 +4883,19 @@ index 0000000000..68c96d3c9d
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/stdlib/arc4random.c b/stdlib/arc4random.c
+index e417ef624d..960a38f295 100644
+--- a/stdlib/arc4random.c
++++ b/stdlib/arc4random.c
+@@ -34,7 +34,7 @@ void
+ __arc4random_buf (void *p, size_t n)
+ {
+   static int seen_initialized;
+-  size_t l;
++  ssize_t l;
+   int fd;
+ 
+   if (n == 0)
 diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
 index 050a3032de..6b256b8388 100644
 --- a/sysdeps/generic/ldsodefs.h
@@ -5234,6 +5249,19 @@ index 0000000000..1844bbaf6f
 +#define __LIBC_LOCK_ALIGNMENT __attribute__ ((__aligned__ (4)))
 +
 +#endif
+diff --git a/sysdeps/unix/sysv/linux/not-cancel.h b/sysdeps/unix/sysv/linux/not-cancel.h
+index a263d294b1..cf35c8bfc9 100644
+--- a/sysdeps/unix/sysv/linux/not-cancel.h
++++ b/sysdeps/unix/sysv/linux/not-cancel.h
+@@ -68,7 +68,7 @@ __writev_nocancel_nostatus (int fd, const struct iovec *iov, int iovcnt)
+   INTERNAL_SYSCALL_CALL (writev, fd, iov, iovcnt);
+ }
+ 
+-static inline int
++static inline ssize_t
+ __getrandom_nocancel (void *buf, size_t buflen, unsigned int flags)
+ {
+   return INLINE_SYSCALL_CALL (getrandom, buf, buflen, flags);
 diff --git a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h b/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
 index bf4be80f8d..202520ee25 100644
 --- a/sysdeps/unix/sysv/linux/riscv/rv32/arch-syscall.h
