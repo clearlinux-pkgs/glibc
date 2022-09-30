@@ -547,6 +547,11 @@ rm %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
 ln -s libc-2.36.so %{buildroot}/usr/lib64/libc.so.6
 ln -s ld-2.36.so  %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
 
+
+# we don't want/need debug symbols for locale .so files, they cause binary delta thrash 
+strip %{buildroot}/usr/lib64/gconv/*.so
+strip --remove-section=".note.gnu.build-id" %{buildroot}/usr/lib64/gconv/*.so
+
 %check
 pushd ../glibc-buildroot
 #make check %{?_smp_mflags} || :
