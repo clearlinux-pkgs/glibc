@@ -50,6 +50,10 @@ H.J. Lu (1):
 Javier Pello (1):
       elf: Fix hwcaps string size overestimation
 
+John David Anglin (2):
+      hppa: Fix initialization of dp register [BZ 29635]
+      hppa: undef __ASSUME_SET_ROBUST_LIST
+
 Joseph Myers (1):
       Update syscall lists for Linux 5.19
 
@@ -4945,6 +4949,57 @@ index 0000000000..4713b30a8a
 +#define __LIBC_LOCK_ALIGNMENT
 +
 +#endif
+diff --git a/sysdeps/hppa/dl-machine.h b/sysdeps/hppa/dl-machine.h
+index c865713be1..1d51948566 100644
+--- a/sysdeps/hppa/dl-machine.h
++++ b/sysdeps/hppa/dl-machine.h
+@@ -347,6 +347,16 @@ elf_machine_runtime_setup (struct link_map *l, struct r_scope_elem *scope[],
+    its return value is the user program's entry point.  */
+ 
+ #define RTLD_START \
++/* Set up dp for any non-PIC lib constructors that may be called.  */	\
++static struct link_map * __attribute__((used))				\
++set_dp (struct link_map *map)						\
++{									\
++  register Elf32_Addr dp asm ("%r27");					\
++  dp = D_PTR (map, l_info[DT_PLTGOT]);					\
++  asm volatile ("" : : "r" (dp));					\
++  return map;								\
++}									\
++									\
+ asm (									\
+ "	.text\n"							\
+ "	.globl _start\n"						\
+@@ -426,6 +436,13 @@ asm (									\
+ 	   direct loader invocation.  Thus, argc and argv must be	\
+ 	   reloaded from from _dl_argc and _dl_argv.  */		\
+ 									\
++	/* Load main_map from _rtld_local and setup dp. */		\
++"	addil	LT'_rtld_local,%r19\n"					\
++"	ldw	RT'_rtld_local(%r1),%r26\n"				\
++"	bl	set_dp, %r2\n"						\
++"	ldw	0(%r26),%r26\n"						\
++"	copy	%ret0,%r26\n"						\
++									\
+ 	/* Load argc from _dl_argc.  */					\
+ "	addil	LT'_dl_argc,%r19\n"					\
+ "	ldw	RT'_dl_argc(%r1),%r20\n"				\
+@@ -438,13 +455,10 @@ asm (									\
+ "	ldw	0(%r20),%r24\n"						\
+ "	stw	%r24,-44(%sp)\n"					\
+ 									\
+-	/* Call _dl_init(main_map, argc, argv, envp). */		\
+-"	addil	LT'_rtld_local,%r19\n"					\
+-"	ldw	RT'_rtld_local(%r1),%r26\n"				\
+-"	ldw	0(%r26),%r26\n"						\
+-									\
+ 	/* envp = argv + argc + 1 */					\
+ "	sh2add	%r25,%r24,%r23\n"					\
++									\
++	/* Call _dl_init(main_map, argc, argv, envp). */		\
+ "	bl	_dl_init,%r2\n"						\
+ "	ldo	4(%r23),%r23\n"	/* delay slot */			\
+ 									\
 diff --git a/sysdeps/mach/hurd/bits/socket.h b/sysdeps/mach/hurd/bits/socket.h
 index 5b35ea81ec..70fce4fb27 100644
 --- a/sysdeps/mach/hurd/bits/socket.h
@@ -5218,6 +5273,17 @@ index 15b7a3a925..24f72b797a 100644
    return cmsg;
  }
  libc_hidden_def (__cmsg_nxthdr)
+diff --git a/sysdeps/unix/sysv/linux/hppa/kernel-features.h b/sysdeps/unix/sysv/linux/hppa/kernel-features.h
+index 0cd21ef0fa..079612e4aa 100644
+--- a/sysdeps/unix/sysv/linux/hppa/kernel-features.h
++++ b/sysdeps/unix/sysv/linux/hppa/kernel-features.h
+@@ -30,3 +30,6 @@
+ 
+ #undef __ASSUME_CLONE_DEFAULT
+ #define __ASSUME_CLONE_BACKWARDS 1
++
++/* QEMU does not support set_robust_list.  */
++#undef __ASSUME_SET_ROBUST_LIST
 diff --git a/sysdeps/unix/sysv/linux/m68k/libc-lock-arch.h b/sysdeps/unix/sysv/linux/m68k/libc-lock-arch.h
 new file mode 100644
 index 0000000000..1844bbaf6f
