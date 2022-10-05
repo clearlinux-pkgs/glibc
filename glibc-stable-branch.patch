@@ -76,17 +76,18 @@ Noah Goldstein (1):
 Raphael Moreira Zinsly (1):
       Apply asm redirections in wchar.h before first use
 
-Siddhesh Poyarekar (1):
+Siddhesh Poyarekar (2):
       Add NEWS entry for CVE-2022-39046
+      nscd: Drop local address tuple variable [BZ #29607]
 
 Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..91bcfeb7a6 100644
+index f61e521fc8..63e26d7062 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,31 @@ See the end for copying conditions.
+@@ -5,6 +5,33 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -113,6 +114,8 @@ index f61e521fc8..91bcfeb7a6 100644
 +  [29537] libc: [2.34 regression]: Alignment issue on m68k when using
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
 +  [29583] Use 64-bit interfaces in gconv_parseconfdir
++  [29607] nscd repeatably crashes calling __strlen_avx2 when hosts cache is
++    enabled
 +  [29638] libc: stdlib: arc4random fallback is never used
 +
  Version 2.36
@@ -1153,6 +1156,32 @@ index e550d15796..3560b518a2 100644
  
    return 0;
  }
+diff --git a/nscd/aicache.c b/nscd/aicache.c
+index 51e793199f..e0baed170b 100644
+--- a/nscd/aicache.c
++++ b/nscd/aicache.c
+@@ -110,11 +110,10 @@ addhstaiX (struct database_dyn *db, int fd, request_header *req,
+ 							  "gethostbyname4_r");
+       if (fct4 != NULL)
+ 	{
+-	  struct gaih_addrtuple atmem;
+ 	  struct gaih_addrtuple *at;
+ 	  while (1)
+ 	    {
+-	      at = &atmem;
++	      at = NULL;
+ 	      rc6 = 0;
+ 	      herrno = 0;
+ 	      status[1] = DL_CALL_FCT (fct4, (key, &at,
+@@ -137,7 +136,7 @@ addhstaiX (struct database_dyn *db, int fd, request_header *req,
+ 	    goto next_nip;
+ 
+ 	  /* We found the data.  Count the addresses and the size.  */
+-	  for (const struct gaih_addrtuple *at2 = at = &atmem; at2 != NULL;
++	  for (const struct gaih_addrtuple *at2 = at; at2 != NULL;
+ 	       at2 = at2->next)
+ 	    {
+ 	      ++naddrs;
 diff --git a/nscd/connections.c b/nscd/connections.c
 index 61d1674eb4..531d2e83df 100644
 --- a/nscd/connections.c
