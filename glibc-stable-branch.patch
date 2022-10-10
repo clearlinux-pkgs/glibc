@@ -70,6 +70,9 @@ Joseph Myers (1):
 Jörg Sonnenberger (1):
       get_nscd_addresses: Fix subscript typos [BZ #29605]
 
+Michael Hudson-Doyle (1):
+      Ensure calculations happen with desired rounding mode in y1lf128
+
 Noah Goldstein (1):
       elf: Replace `strcpy` call with `memcpy` [BZ #29454]
 
@@ -84,10 +87,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..63e26d7062 100644
+index f61e521fc8..bea1d8a11f 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,33 @@ See the end for copying conditions.
+@@ -5,6 +5,34 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -110,6 +113,7 @@ index f61e521fc8..63e26d7062 100644
 +  [29446] _dlopen now ignores dl_caller argument in static mode
 +  [29485] Linux: Terminate subprocess on late failure in tst-pidfd
 +  [29490] alpha: New __brk_call implementation is broken
++  [29463] math/test-float128-y1 fails on x86_64
 +  [29528] elf: Call __libc_early_init for reused namespaces
 +  [29537] libc: [2.34 regression]: Alignment issue on m68k when using
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
@@ -5039,6 +5043,24 @@ index c865713be1..1d51948566 100644
  "	bl	_dl_init,%r2\n"						\
  "	ldo	4(%r23),%r23\n"	/* delay slot */			\
  									\
+diff --git a/sysdeps/ieee754/ldbl-128/e_j1l.c b/sysdeps/ieee754/ldbl-128/e_j1l.c
+index 54c457681a..9a9c5c6f00 100644
+--- a/sysdeps/ieee754/ldbl-128/e_j1l.c
++++ b/sysdeps/ieee754/ldbl-128/e_j1l.c
+@@ -869,10 +869,13 @@ __ieee754_y1l (_Float128 x)
+     {
+       /* 0 <= x <= 2 */
+       SET_RESTORE_ROUNDL (FE_TONEAREST);
++      xx = math_opt_barrier (xx);
++      x = math_opt_barrier (x);
+       z = xx * xx;
+       p = xx * neval (z, Y0_2N, NY0_2N) / deval (z, Y0_2D, NY0_2D);
+       p = -TWOOPI / xx + p;
+       p = TWOOPI * __ieee754_logl (x) * __ieee754_j1l (x) + p;
++      math_force_eval (p);
+       return p;
+     }
+ 
 diff --git a/sysdeps/mach/hurd/bits/socket.h b/sysdeps/mach/hurd/bits/socket.h
 index 5b35ea81ec..70fce4fb27 100644
 --- a/sysdeps/mach/hurd/bits/socket.h
