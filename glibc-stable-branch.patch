@@ -27,7 +27,7 @@ Aurelien Jarno (8):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (25):
+Florian Weimer (28):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
@@ -53,6 +53,9 @@ Florian Weimer (25):
       elf: Rename _dl_sort_maps parameter from skip to force_first
       elf: Implement force_first handling in _dl_sort_maps_dfs (bug 28937)
       gconv: Use 64-bit interfaces in gconv_parseconfdir (bug 29583)
+      nss: Implement --no-addrconfig option for getent
+      nss: Fix tst-nss-files-hosts-long on single-stack hosts (bug 24816)
+      nss: Use shared prefix in IPv4 address in tst-reload1
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -87,14 +90,21 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..bea1d8a11f 100644
+index f61e521fc8..de775ab116 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,34 @@ See the end for copying conditions.
+@@ -5,6 +5,42 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
 +Version 2.36.1
++
++Major new features:
++
++* The getent tool now supports the --no-addrconfig option. The output of
++  getent with --no-addrconfig may contain addresses of families not
++  configured on the current host i.e. as-if you had not passed
++  AI_ADDRCONFIG to getaddrinfo calls.
 +
 +Security related changes:
 +
@@ -106,6 +116,7 @@ index f61e521fc8..bea1d8a11f 100644
 +The following bugs are resolved with this release:
 +
 +  [12154] Do not fail DNS resolution for CNAMEs which are not host names
++  [24816] Fix tst-nss-files-hosts-long on single-stack hosts
 +  [28846] CMSG_NXTHDR may trigger -Wstrict-overflow warning
 +  [29305] Conserve NSS buffer space during DNS packet parsing
 +  [29415] nscd: Fix netlink cache invalidation if epoll is used
@@ -1200,6 +1211,107 @@ index 61d1674eb4..531d2e83df 100644
  	  }
  # endif
  	else
+diff --git a/nss/getent.c b/nss/getent.c
+index 8178b4b470..d2d2524b0c 100644
+--- a/nss/getent.c
++++ b/nss/getent.c
+@@ -58,6 +58,8 @@ static const struct argp_option args_options[] =
+   {
+     { "service", 's', N_("CONFIG"), 0, N_("Service configuration to be used") },
+     { "no-idn", 'i', NULL, 0, N_("disable IDN encoding") },
++    { "no-addrconfig", 'A', NULL, 0,
++      N_("do not filter out unsupported IPv4/IPv6 addresses (with ahosts*)") },
+     { NULL, 0, NULL, 0, NULL },
+   };
+ 
+@@ -79,6 +81,9 @@ static struct argp argp =
+ /* Additional getaddrinfo flags for IDN encoding.  */
+ static int idn_flags = AI_IDN | AI_CANONIDN;
+ 
++/* Set to 0 by --no-addrconfig.  */
++static int addrconfig_flags = AI_ADDRCONFIG;
++
+ /* Print the version information.  */
+ static void
+ print_version (FILE *stream, struct argp_state *state)
+@@ -346,7 +351,7 @@ ahosts_keys_int (int af, int xflags, int number, char *key[])
+ 
+   struct addrinfo hint;
+   memset (&hint, '\0', sizeof (hint));
+-  hint.ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG | AI_CANONNAME
++  hint.ai_flags = (AI_V4MAPPED | addrconfig_flags | AI_CANONNAME
+ 		   | idn_flags | xflags);
+   hint.ai_family = af;
+ 
+@@ -905,6 +910,10 @@ parse_option (int key, char *arg, struct argp_state *state)
+       idn_flags = 0;
+       break;
+ 
++    case 'A':
++      addrconfig_flags = 0;
++      break;
++
+     default:
+       return ARGP_ERR_UNKNOWN;
+     }
+diff --git a/nss/tst-nss-files-hosts-long.c b/nss/tst-nss-files-hosts-long.c
+index 3942cf5fca..a7697e3143 100644
+--- a/nss/tst-nss-files-hosts-long.c
++++ b/nss/tst-nss-files-hosts-long.c
+@@ -28,14 +28,15 @@ do_test (void)
+ {
+   int ret;
+ 
+-  /* Run getent to fetch the IPv4 address for host test4.
+-     This forces /etc/hosts to be parsed.  */
+-  ret = system("getent ahostsv4 test4");
++  /* Run getent to fetch the IPv4 address for host test4.  This forces
++     /etc/hosts to be parsed.  Use --no-addrconfig to return addresses
++     even in an IPv6-only environment.  */
++  ret = system("getent --no-addrconfig ahostsv4 test4");
+   if (ret != 0)
+     FAIL_EXIT1("ahostsv4 failed");
+ 
+   /* Likewise for IPv6.  */
+-  ret = system("getent ahostsv6 test6");
++  ret = system("getent --no-addrconfig  ahostsv6 test6");
+   if (ret != 0)
+     FAIL_EXIT1("ahostsv6 failed");
+ 
+diff --git a/nss/tst-reload1.c b/nss/tst-reload1.c
+index fdc5bdd65b..bc32bb132a 100644
+--- a/nss/tst-reload1.c
++++ b/nss/tst-reload1.c
+@@ -43,12 +43,12 @@ static struct passwd pwd_table_1[] = {
+ 
+ static const char *hostaddr_5[] =
+   {
+-   "ABCD", "abcd", "1234", NULL
++   "ABCd", "ABCD", "ABC4", NULL
+   };
+ 
+ static const char *hostaddr_15[] =
+   {
+-   "4321", "ghij", NULL
++   "4321", "4322", NULL
+   };
+ 
+ static const char *hostaddr_25[] =
+@@ -86,12 +86,12 @@ static const char *hostaddr_6[] =
+ 
+ static const char *hostaddr_16[] =
+   {
+-   "7890", "a1b2", NULL
++   "7890", "7891", NULL
+   };
+ 
+ static const char *hostaddr_26[] =
+   {
+-   "qwer", "tyui", NULL
++   "qwer", "qweR", NULL
+   };
+ 
+ static struct hostent host_table_2[] = {
 diff --git a/resolv/Makefile b/resolv/Makefile
 index 5b15321f9b..f8a92c6cff 100644
 --- a/resolv/Makefile
