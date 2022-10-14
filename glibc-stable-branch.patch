@@ -27,7 +27,7 @@ Aurelien Jarno (8):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (28):
+Florian Weimer (29):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
@@ -56,6 +56,7 @@ Florian Weimer (28):
       nss: Implement --no-addrconfig option for getent
       nss: Fix tst-nss-files-hosts-long on single-stack hosts (bug 24816)
       nss: Use shared prefix in IPv4 address in tst-reload1
+      elf: Do not completely clear reused namespace in dlmopen (bug 29600)
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -90,10 +91,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..de775ab116 100644
+index f61e521fc8..a6da588c85 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,42 @@ See the end for copying conditions.
+@@ -5,6 +5,43 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -129,6 +130,7 @@ index f61e521fc8..de775ab116 100644
 +  [29537] libc: [2.34 regression]: Alignment issue on m68k when using
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
 +  [29583] Use 64-bit interfaces in gconv_parseconfdir
++  [29600] Do not completely clear reused namespace in dlmopen
 +  [29607] nscd repeatably crashes calling __strlen_avx2 when hosts cache is
 +    enabled
 +  [29638] libc: stdlib: arc4random fallback is never used
@@ -363,29 +365,17 @@ index 6f161f6ad5..92eb53790e 100644
      = malloc (*sz * sizeof (*result) + total);
    if (overall_result == NULL)
 diff --git a/elf/dl-open.c b/elf/dl-open.c
-index a23e65926b..46e8066fd8 100644
+index a23e65926b..e7db5e9642 100644
 --- a/elf/dl-open.c
 +++ b/elf/dl-open.c
-@@ -844,11 +844,14 @@ _dl_open (const char *file, int mode, const void *caller_dlopen, Lmid_t nsid,
- 	  _dl_signal_error (EINVAL, file, NULL, N_("\
- no more namespaces available for dlmopen()"));
+@@ -850,6 +850,7 @@ no more namespaces available for dlmopen()"));
+ 	  ++GL(dl_nns);
  	}
--      else if (nsid == GL(dl_nns))
--	{
--	  __rtld_lock_initialize (GL(dl_ns)[nsid]._ns_unique_sym_table.lock);
--	  ++GL(dl_nns);
--	}
-+
-+      if (nsid == GL(dl_nns))
-+	++GL(dl_nns);
-+
-+      /* Initialize the new namespace.  Most members are
-+	 zero-initialized, only the lock needs special treatment.  */
-+      memset (&GL(dl_ns)[nsid], 0, sizeof (GL(dl_ns)[nsid]));
-+      __rtld_lock_initialize (GL(dl_ns)[nsid]._ns_unique_sym_table.lock);
  
++      GL(dl_ns)[nsid].libc_map = NULL;
        _dl_debug_update (nsid)->r_state = RT_CONSISTENT;
      }
+   /* Never allow loading a DSO in a namespace which is empty.  Such
 diff --git a/elf/dl-sort-maps.c b/elf/dl-sort-maps.c
 index 96638d7ed1..3e2a6a584e 100644
 --- a/elf/dl-sort-maps.c
@@ -614,10 +604,10 @@ index 0000000000..40c6c01f96
 +}
 diff --git a/elf/tst-dlmopen-twice.c b/elf/tst-dlmopen-twice.c
 new file mode 100644
-index 0000000000..449f3c8fa9
+index 0000000000..70c71fe19c
 --- /dev/null
 +++ b/elf/tst-dlmopen-twice.c
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,54 @@
 +/* Initialization of libc after dlmopen/dlclose/dlmopen (bug 29528).  Main.
 +   Copyright (C) 2022 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -636,18 +626,38 @@ index 0000000000..449f3c8fa9
 +   License along with the GNU C Library; if not, see
 +   <https://www.gnu.org/licenses/>.  */
 +
-+#include <support/xdlfcn.h>
++#include <stdio.h>
 +#include <support/check.h>
++#include <support/xdlfcn.h>
 +
-+static int
-+do_test (void)
++/* Run the test multiple times, to check finding a new namespace while
++   another namespace is already in use.  This used to trigger bug 29600.  */
++static void
++recurse (int depth)
 +{
-+  void *handle = xdlmopen (LM_ID_NEWLM, "tst-dlmopen-twice-mod1.so", RTLD_NOW);
++  if (depth == 0)
++    return;
++
++  printf ("info: running at depth %d\n", depth);
++  void *handle = xdlmopen (LM_ID_NEWLM, "tst-dlmopen-twice-mod1.so",
++                           RTLD_NOW);
 +  xdlclose (handle);
 +  handle = xdlmopen (LM_ID_NEWLM, "tst-dlmopen-twice-mod2.so", RTLD_NOW);
 +  int (*run_check) (void) = xdlsym (handle, "run_check");
 +  TEST_COMPARE (run_check (), 0);
++  recurse (depth - 1);
 +  xdlclose (handle);
++}
++
++static int
++do_test (void)
++{
++  /* First run the test without nesting.  */
++  recurse (1);
++
++  /* Then with nesting.  The constant needs to be less than the
++     internal DL_NNS namespace constant.  */
++  recurse (10);
 +  return 0;
 +}
 +
