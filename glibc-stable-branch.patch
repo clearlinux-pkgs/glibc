@@ -1,4 +1,4 @@
-Adhemerval Zanella (10):
+Adhemerval Zanella (12):
       glibcextract.py: Add compile_c_snippet
       linux: Use compile_c_snippet to check linux/pidfd.h availability
       linux: Mimic kernel defition for BLOCK_SIZE
@@ -9,12 +9,14 @@ Adhemerval Zanella (10):
       syslog: Remove extra whitespace between timestamp and message (BZ#29544)
       m68k: Enforce 4-byte alignment on internal locks (BZ #29537)
       stdlib: Fix __getrandom_nocancel type and arc4random usage (BZ #29638)
+      linux: Fix generic struct_stat for 64 bit time (BZ# 29657)
+      elf: Reinstate on DL_DEBUG_BINDINGS _dl_lookup_symbol_x
 
 Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
       NEWS: Add entry for bug 28846
 
-Aurelien Jarno (8):
+Aurelien Jarno (9):
       x86: include BMI1 and BMI2 in x86-64-v3 level
       x86-64: Require BMI2 for AVX2 str(n)casecmp implementations
       x86-64: Require BMI2 for AVX2 strcmp implementation
@@ -23,6 +25,7 @@ Aurelien Jarno (8):
       x86-64: Require BMI2 for AVX2 (raw|w)memchr implementations
       x86-64: Require BMI2 and LZCNT for AVX2 memrchr implementation
       x86-64: Require BMI1/BMI2 for AVX2 strrchr and wcsrchr implementations
+      Avoid undefined behaviour in ibm128 implementation of llroundl (BZ #29488)
 
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
@@ -74,8 +77,9 @@ Joseph Myers (1):
 Jörg Sonnenberger (1):
       get_nscd_addresses: Fix subscript typos [BZ #29605]
 
-Michael Hudson-Doyle (1):
+Michael Hudson-Doyle (2):
       Ensure calculations happen with desired rounding mode in y1lf128
+      Fix BZ #29463 in the ibm128 implementation of y1l too
 
 Noah Goldstein (1):
       elf: Replace `strcpy` call with `memcpy` [BZ #29454]
@@ -91,10 +95,10 @@ Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
 diff --git a/NEWS b/NEWS
-index f61e521fc8..a6da588c85 100644
+index f61e521fc8..833045585f 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,43 @@ See the end for copying conditions.
+@@ -5,6 +5,47 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -126,6 +130,8 @@ index f61e521fc8..a6da588c85 100644
 +  [29485] Linux: Terminate subprocess on late failure in tst-pidfd
 +  [29490] alpha: New __brk_call implementation is broken
 +  [29463] math/test-float128-y1 fails on x86_64
++  [29488] test-ibm128-llround fails on ppc64el when built with gcc-12 and -O2
++    or higher
 +  [29528] elf: Call __libc_early_init for reused namespaces
 +  [29537] libc: [2.34 regression]: Alignment issue on m68k when using
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
@@ -134,6 +140,8 @@ index f61e521fc8..a6da588c85 100644
 +  [29607] nscd repeatably crashes calling __strlen_avx2 when hosts cache is
 +    enabled
 +  [29638] libc: stdlib: arc4random fallback is never used
++  [29657] libc: Incorrect struct stat for 64-bit time on linux/generic
++    platforms
 +
  Version 2.36
  
@@ -364,6 +372,34 @@ index 6f161f6ad5..92eb53790e 100644
    struct r_strlenpair *overall_result
      = malloc (*sz * sizeof (*result) + total);
    if (overall_result == NULL)
+diff --git a/elf/dl-lookup.c b/elf/dl-lookup.c
+index 4c86dc694e..67fb2e31e2 100644
+--- a/elf/dl-lookup.c
++++ b/elf/dl-lookup.c
+@@ -854,6 +854,23 @@ _dl_lookup_symbol_x (const char *undef_name, struct link_map *undef_map,
+   if (__glibc_unlikely (current_value.m->l_used == 0))
+     current_value.m->l_used = 1;
+ 
++ if (__glibc_unlikely (GLRO(dl_debug_mask) & DL_DEBUG_BINDINGS))
++   {
++      const char *reference_name = undef_map->l_name;
++
++      _dl_debug_printf ("binding file %s [%lu] to %s [%lu]: %s symbol `%s'",
++			DSO_FILENAME (reference_name),
++			undef_map->l_ns,
++			DSO_FILENAME (current_value.m->l_name),
++			current_value.m->l_ns,
++			protected ? "protected" : "normal", undef_name);
++      if (version)
++	_dl_debug_printf_c (" [%s]\n", version->name);
++      else
++	_dl_debug_printf_c ("\n");
++   }
++
++
+   *ref = current_value.s;
+   return LOOKUP_VALUE (current_value.m);
+ }
 diff --git a/elf/dl-open.c b/elf/dl-open.c
 index a23e65926b..e7db5e9642 100644
 --- a/elf/dl-open.c
@@ -5183,6 +5219,76 @@ index 54c457681a..9a9c5c6f00 100644
        return p;
      }
  
+diff --git a/sysdeps/ieee754/ldbl-128ibm/e_j1l.c b/sysdeps/ieee754/ldbl-128ibm/e_j1l.c
+index f85ba94466..0a5fe68342 100644
+--- a/sysdeps/ieee754/ldbl-128ibm/e_j1l.c
++++ b/sysdeps/ieee754/ldbl-128ibm/e_j1l.c
+@@ -792,10 +792,13 @@ __ieee754_y1l (long double x)
+     {
+       /* 0 <= x <= 2 */
+       SET_RESTORE_ROUNDL (FE_TONEAREST);
++      xx = math_opt_barrier (xx);
++      x = math_opt_barrier (x);
+       z = xx * xx;
+       p = xx * neval (z, Y0_2N, NY0_2N) / deval (z, Y0_2D, NY0_2D);
+       p = -TWOOPI / xx + p;
+       p = TWOOPI * __ieee754_logl (x) * __ieee754_j1l (x) + p;
++      math_force_eval (p);
+       return p;
+     }
+ 
+diff --git a/sysdeps/ieee754/ldbl-128ibm/s_llroundl.c b/sysdeps/ieee754/ldbl-128ibm/s_llroundl.c
+index d85154e73a..d8c0de1faf 100644
+--- a/sysdeps/ieee754/ldbl-128ibm/s_llroundl.c
++++ b/sysdeps/ieee754/ldbl-128ibm/s_llroundl.c
+@@ -66,38 +66,35 @@ __llroundl (long double x)
+       /* Peg at max/min values, assuming that the above conversions do so.
+          Strictly speaking, we can return anything for values that overflow,
+          but this is more useful.  */
+-      res = hi + lo;
+-
+-      /* This is just sign(hi) == sign(lo) && sign(res) != sign(hi).  */
+-      if (__glibc_unlikely (((~(hi ^ lo) & (res ^ hi)) < 0)))
++      if (__glibc_unlikely (__builtin_add_overflow (hi, lo, &res)))
+ 	goto overflow;
+ 
+       xh -= lo;
+       ldbl_canonicalize (&xh, &xl);
+ 
+-      hi = res;
+       if (xh > 0.5)
+ 	{
+-	  res += 1;
++	  if (__glibc_unlikely (__builtin_add_overflow (res, 1, &res)))
++	    goto overflow;
+ 	}
+       else if (xh == 0.5)
+ 	{
+ 	  if (xl > 0.0 || (xl == 0.0 && res >= 0))
+-	    res += 1;
++	    if (__glibc_unlikely (__builtin_add_overflow (res, 1, &res)))
++	      goto overflow;
+ 	}
+       else if (-xh > 0.5)
+ 	{
+-	  res -= 1;
++	  if (__glibc_unlikely (__builtin_add_overflow (res, -1, &res)))
++	    goto overflow;
+ 	}
+       else if (-xh == 0.5)
+ 	{
+ 	  if (xl < 0.0 || (xl == 0.0 && res <= 0))
+-	    res -= 1;
++	    if (__glibc_unlikely (__builtin_add_overflow (res, -1, &res)))
++	      goto overflow;
+ 	}
+ 
+-      if (__glibc_unlikely (((~(hi ^ (res - hi)) & (res ^ hi)) < 0)))
+-	goto overflow;
+-
+       return res;
+     }
+   else
 diff --git a/sysdeps/mach/hurd/bits/socket.h b/sysdeps/mach/hurd/bits/socket.h
 index 5b35ea81ec..70fce4fb27 100644
 --- a/sysdeps/mach/hurd/bits/socket.h
@@ -5342,6 +5448,151 @@ index b8088cf13f..0b851b6c86 100644
 +    result = INTERNAL_SYSCALL_CALL (brk, 0);
 +  return (void *) result;
  }
+diff --git a/sysdeps/unix/sysv/linux/arm/bits/struct_stat.h b/sysdeps/unix/sysv/linux/arm/bits/struct_stat.h
+new file mode 100644
+index 0000000000..30ee6279d2
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/arm/bits/struct_stat.h
+@@ -0,0 +1,139 @@
++/* Definition for struct stat.  Linux/arm version.
++   Copyright (C) 2020-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#if !defined _SYS_STAT_H && !defined _FCNTL_H
++# error "Never include <bits/struct_stat.h> directly; use <sys/stat.h> instead."
++#endif
++
++#ifndef _BITS_STRUCT_STAT_H
++#define _BITS_STRUCT_STAT_H	1
++
++#include <bits/endian.h>
++#include <bits/wordsize.h>
++
++struct stat
++  {
++#ifdef __USE_TIME_BITS64
++# include <bits/struct_stat_time64_helper.h>
++#else
++    __dev_t st_dev;			/* Device.  */
++    unsigned short int __pad1;
++# ifndef __USE_FILE_OFFSET64
++    __ino_t st_ino;			/* File serial number.	*/
++# else
++    __ino_t __st_ino;			/* 32bit file serial number.	*/
++# endif
++    __mode_t st_mode;			/* File mode.  */
++    __nlink_t st_nlink;			/* Link count.  */
++    __uid_t st_uid;			/* User ID of the file's owner.	*/
++    __gid_t st_gid;			/* Group ID of the file's group.*/
++    __dev_t st_rdev;			/* Device number, if device.  */
++    unsigned short int __pad2;
++# ifndef __USE_FILE_OFFSET64
++    __off_t st_size;			/* Size of file, in bytes.  */
++# else
++    __off64_t st_size;			/* Size of file, in bytes.  */
++# endif
++    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
++
++# ifndef __USE_FILE_OFFSET64
++    __blkcnt_t st_blocks;		/* Number 512-byte blocks allocated. */
++# else
++    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
++# endif
++# ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++#  define st_mtime st_mtim.tv_sec
++#  define st_ctime st_ctim.tv_sec
++# else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++# endif
++# ifndef __USE_FILE_OFFSET64
++    unsigned long int __glibc_reserved4;
++    unsigned long int __glibc_reserved5;
++# else
++    __ino64_t st_ino;			/* File serial number.	*/
++# endif
++#endif /* __USE_TIME_BITS64  */
++  };
++
++#ifdef __USE_LARGEFILE64
++struct stat64
++  {
++# ifdef __USE_TIME_BITS64
++#  include <bits/struct_stat_time64_helper.h>
++# else
++    __dev_t st_dev;			/* Device.  */
++    unsigned int __pad1;
++
++    __ino_t __st_ino;			/* 32bit file serial number.	*/
++    __mode_t st_mode;			/* File mode.  */
++    __nlink_t st_nlink;			/* Link count.  */
++    __uid_t st_uid;			/* User ID of the file's owner.	*/
++    __gid_t st_gid;			/* Group ID of the file's group.*/
++    __dev_t st_rdev;			/* Device number, if device.  */
++    unsigned int __pad2;
++    __off64_t st_size;			/* Size of file, in bytes.  */
++    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
++
++    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
++#  ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++#  endif
++    __ino64_t st_ino;			/* File serial number.		*/
++# endif /* __USE_TIME_BITS64  */
++  };
++#endif
++
++/* Tell code we have these members.  */
++#define	_STATBUF_ST_BLKSIZE
++#define _STATBUF_ST_RDEV
++/* Nanosecond resolution time values are supported.  */
++#define _STATBUF_ST_NSEC
++
++
++#endif /* _BITS_STRUCT_STAT_H  */
 diff --git a/sysdeps/unix/sysv/linux/bits/socket.h b/sysdeps/unix/sysv/linux/bits/socket.h
 index 4f1f810ea1..539b8d7716 100644
 --- a/sysdeps/unix/sysv/linux/bits/socket.h
@@ -5405,6 +5656,171 @@ index 4f1f810ea1..539b8d7716 100644
    return __cmsg;
  }
  #endif	/* Use `extern inline'.  */
+diff --git a/sysdeps/unix/sysv/linux/bits/struct_stat.h b/sysdeps/unix/sysv/linux/bits/struct_stat.h
+index 25bd6cb638..fb11a3fba4 100644
+--- a/sysdeps/unix/sysv/linux/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/bits/struct_stat.h
+@@ -26,37 +26,36 @@
+ #include <bits/endian.h>
+ #include <bits/wordsize.h>
+ 
+-struct stat
+-  {
+-#ifdef __USE_TIME_BITS64
+-# include <bits/struct_stat_time64_helper.h>
+-#else
+-    __dev_t st_dev;			/* Device.  */
+-    unsigned short int __pad1;
+-# ifndef __USE_FILE_OFFSET64
+-    __ino_t st_ino;			/* File serial number.	*/
+-# else
+-    __ino_t __st_ino;			/* 32bit file serial number.	*/
++#if defined __USE_FILE_OFFSET64
++# define __field64(type, type64, name) type64 name
++#elif __WORDSIZE == 64 || defined __INO_T_MATCHES_INO64_T
++# if defined __INO_T_MATCHES_INO64_T && !defined __OFF_T_MATCHES_OFF64_T
++#  error "ino_t and off_t must both be the same type"
+ # endif
+-    __mode_t st_mode;			/* File mode.  */
+-    __nlink_t st_nlink;			/* Link count.  */
+-    __uid_t st_uid;			/* User ID of the file's owner.	*/
+-    __gid_t st_gid;			/* Group ID of the file's group.*/
+-    __dev_t st_rdev;			/* Device number, if device.  */
+-    unsigned short int __pad2;
+-# ifndef __USE_FILE_OFFSET64
+-    __off_t st_size;			/* Size of file, in bytes.  */
+-# else
+-    __off64_t st_size;			/* Size of file, in bytes.  */
+-# endif
+-    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
++# define __field64(type, type64, name) type name
++#elif __BYTE_ORDER == __LITTLE_ENDIAN
++# define __field64(type, type64, name) \
++  type name __attribute__((__aligned__ (__alignof__ (type64)))); int __##name##_pad
++#else
++# define __field64(type, type64, name) \
++  int __##name##_pad __attribute__((__aligned__ (__alignof__ (type64)))); type name
++#endif
+ 
+-# ifndef __USE_FILE_OFFSET64
+-    __blkcnt_t st_blocks;		/* Number 512-byte blocks allocated. */
+-# else
+-    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
+-# endif
+-# ifdef __USE_XOPEN2K8
++struct stat
++  {
++    __dev_t st_dev;		/* Device.  */
++    __field64(__ino_t, __ino64_t, st_ino);  /* File serial number. */
++    __mode_t st_mode;		/* File mode.  */
++    __nlink_t st_nlink;		/* Link count.  */
++    __uid_t st_uid;		/* User ID of the file's owner.	*/
++    __gid_t st_gid;		/* Group ID of the file's group.*/
++    __dev_t st_rdev;		/* Device number, if device.  */
++    __dev_t __pad1;
++    __field64(__off_t, __off64_t, st_size);  /* Size of file, in bytes. */
++    __blksize_t st_blksize;	/* Optimal block size for I/O.  */
++    int __pad2;
++    __field64(__blkcnt_t, __blkcnt64_t, st_blocks);  /* 512-byte blocks */
++#ifdef __USE_XOPEN2K8
+     /* Nanosecond resolution timestamps are stored in a format
+        equivalent to 'struct timespec'.  This is the type used
+        whenever possible but the Unix namespace rules do not allow the
+@@ -66,47 +65,38 @@ struct stat
+     struct timespec st_atim;		/* Time of last access.  */
+     struct timespec st_mtim;		/* Time of last modification.  */
+     struct timespec st_ctim;		/* Time of last status change.  */
+-#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
+-#  define st_mtime st_mtim.tv_sec
+-#  define st_ctime st_ctim.tv_sec
+-# else
++# define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++# define st_mtime st_mtim.tv_sec
++# define st_ctime st_ctim.tv_sec
++#else
+     __time_t st_atime;			/* Time of last access.  */
+     unsigned long int st_atimensec;	/* Nscecs of last access.  */
+     __time_t st_mtime;			/* Time of last modification.  */
+     unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
+     __time_t st_ctime;			/* Time of last status change.  */
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+-# endif
+-# ifndef __USE_FILE_OFFSET64
+-    unsigned long int __glibc_reserved4;
+-    unsigned long int __glibc_reserved5;
+-# else
+-    __ino64_t st_ino;			/* File serial number.	*/
+-# endif
+-#endif /* __USE_TIME_BITS64  */
++#endif
++    int __glibc_reserved[2];
+   };
+ 
++#undef __field64
++
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
+-#  include <bits/struct_stat_time64_helper.h>
+-# else
+-    __dev_t st_dev;			/* Device.  */
+-    unsigned int __pad1;
+-
+-    __ino_t __st_ino;			/* 32bit file serial number.	*/
+-    __mode_t st_mode;			/* File mode.  */
+-    __nlink_t st_nlink;			/* Link count.  */
+-    __uid_t st_uid;			/* User ID of the file's owner.	*/
+-    __gid_t st_gid;			/* Group ID of the file's group.*/
+-    __dev_t st_rdev;			/* Device number, if device.  */
+-    unsigned int __pad2;
+-    __off64_t st_size;			/* Size of file, in bytes.  */
+-    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
+-
+-    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
+-#  ifdef __USE_XOPEN2K8
++    __dev_t st_dev;		/* Device.  */
++    __ino64_t st_ino;		/* File serial number.	*/
++    __mode_t st_mode;		/* File mode.  */
++    __nlink_t st_nlink;		/* Link count.  */
++    __uid_t st_uid;		/* User ID of the file's owner.	*/
++    __gid_t st_gid;		/* Group ID of the file's group.*/
++    __dev_t st_rdev;		/* Device number, if device.  */
++    __dev_t __pad1;
++    __off64_t st_size;		/* Size of file, in bytes.  */
++    __blksize_t st_blksize;	/* Optimal block size for I/O.  */
++    int __pad2;
++    __blkcnt64_t st_blocks;	/* Nr. 512-byte blocks allocated.  */
++#ifdef __USE_XOPEN2K8
+     /* Nanosecond resolution timestamps are stored in a format
+        equivalent to 'struct timespec'.  This is the type used
+        whenever possible but the Unix namespace rules do not allow the
+@@ -116,16 +106,15 @@ struct stat64
+     struct timespec st_atim;		/* Time of last access.  */
+     struct timespec st_mtim;		/* Time of last modification.  */
+     struct timespec st_ctim;		/* Time of last status change.  */
+-#  else
++#else
+     __time_t st_atime;			/* Time of last access.  */
+     unsigned long int st_atimensec;	/* Nscecs of last access.  */
+     __time_t st_mtime;			/* Time of last modification.  */
+     unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
+     __time_t st_ctime;			/* Time of last status change.  */
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+-#  endif
+-    __ino64_t st_ino;			/* File serial number.		*/
+-# endif /* __USE_TIME_BITS64  */
++#endif
++    int __glibc_reserved[2];
+   };
+ #endif
+ 
+@@ -135,5 +124,4 @@ struct stat64
+ /* Nanosecond resolution time values are supported.  */
+ #define _STATBUF_ST_NSEC
+ 
+-
+ #endif /* _BITS_STRUCT_STAT_H  */
 diff --git a/sysdeps/unix/sysv/linux/cmsg_nxthdr.c b/sysdeps/unix/sysv/linux/cmsg_nxthdr.c
 index 15b7a3a925..24f72b797a 100644
 --- a/sysdeps/unix/sysv/linux/cmsg_nxthdr.c
@@ -5456,6 +5872,246 @@ index 15b7a3a925..24f72b797a 100644
    return cmsg;
  }
  libc_hidden_def (__cmsg_nxthdr)
+diff --git a/sysdeps/unix/sysv/linux/generic/bits/struct_stat.h b/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
+similarity index 92%
+rename from sysdeps/unix/sysv/linux/generic/bits/struct_stat.h
+rename to sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
+index fb11a3fba4..f0ee455748 100644
+--- a/sysdeps/unix/sysv/linux/generic/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
+@@ -1,4 +1,4 @@
+-/* Definition for struct stat.
++/* Definition for struct stat.  Linux/csky version.
+    Copyright (C) 2020-2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+@@ -43,6 +43,9 @@
+ 
+ struct stat
+   {
++#ifdef __USE_TIME_BITS64
++# include <bits/struct_stat_time64_helper.h>
++#else
+     __dev_t st_dev;		/* Device.  */
+     __field64(__ino_t, __ino64_t, st_ino);  /* File serial number. */
+     __mode_t st_mode;		/* File mode.  */
+@@ -55,7 +58,7 @@ struct stat
+     __blksize_t st_blksize;	/* Optimal block size for I/O.  */
+     int __pad2;
+     __field64(__blkcnt_t, __blkcnt64_t, st_blocks);  /* 512-byte blocks */
+-#ifdef __USE_XOPEN2K8
++# ifdef __USE_XOPEN2K8
+     /* Nanosecond resolution timestamps are stored in a format
+        equivalent to 'struct timespec'.  This is the type used
+        whenever possible but the Unix namespace rules do not allow the
+@@ -65,18 +68,19 @@ struct stat
+     struct timespec st_atim;		/* Time of last access.  */
+     struct timespec st_mtim;		/* Time of last modification.  */
+     struct timespec st_ctim;		/* Time of last status change.  */
+-# define st_atime st_atim.tv_sec	/* Backward compatibility.  */
+-# define st_mtime st_mtim.tv_sec
+-# define st_ctime st_ctim.tv_sec
+-#else
++#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++#  define st_mtime st_mtim.tv_sec
++#  define st_ctime st_ctim.tv_sec
++# else
+     __time_t st_atime;			/* Time of last access.  */
+     unsigned long int st_atimensec;	/* Nscecs of last access.  */
+     __time_t st_mtime;			/* Time of last modification.  */
+     unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
+     __time_t st_ctime;			/* Time of last status change.  */
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+-#endif
++# endif
+     int __glibc_reserved[2];
++#endif
+   };
+ 
+ #undef __field64
+@@ -84,6 +88,9 @@ struct stat
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
++# ifdef __USE_TIME_BITS64
++#  include <bits/struct_stat_time64_helper.h>
++# else
+     __dev_t st_dev;		/* Device.  */
+     __ino64_t st_ino;		/* File serial number.	*/
+     __mode_t st_mode;		/* File mode.  */
+@@ -96,7 +103,7 @@ struct stat64
+     __blksize_t st_blksize;	/* Optimal block size for I/O.  */
+     int __pad2;
+     __blkcnt64_t st_blocks;	/* Nr. 512-byte blocks allocated.  */
+-#ifdef __USE_XOPEN2K8
++#  ifdef __USE_XOPEN2K8
+     /* Nanosecond resolution timestamps are stored in a format
+        equivalent to 'struct timespec'.  This is the type used
+        whenever possible but the Unix namespace rules do not allow the
+@@ -106,15 +113,16 @@ struct stat64
+     struct timespec st_atim;		/* Time of last access.  */
+     struct timespec st_mtim;		/* Time of last modification.  */
+     struct timespec st_ctim;		/* Time of last status change.  */
+-#else
++#  else
+     __time_t st_atime;			/* Time of last access.  */
+     unsigned long int st_atimensec;	/* Nscecs of last access.  */
+     __time_t st_mtime;			/* Time of last modification.  */
+     unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
+     __time_t st_ctime;			/* Time of last status change.  */
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+-#endif
++#  endif
+     int __glibc_reserved[2];
++# endif
+   };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/hppa/bits/struct_stat.h b/sysdeps/unix/sysv/linux/hppa/bits/struct_stat.h
+new file mode 100644
+index 0000000000..38b6e13e68
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/hppa/bits/struct_stat.h
+@@ -0,0 +1,139 @@
++/* Definition for struct stat.  Linux/hppa version.
++   Copyright (C) 2020-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#if !defined _SYS_STAT_H && !defined _FCNTL_H
++# error "Never include <bits/struct_stat.h> directly; use <sys/stat.h> instead."
++#endif
++
++#ifndef _BITS_STRUCT_STAT_H
++#define _BITS_STRUCT_STAT_H	1
++
++#include <bits/endian.h>
++#include <bits/wordsize.h>
++
++struct stat
++  {
++#ifdef __USE_TIME_BITS64
++# include <bits/struct_stat_time64_helper.h>
++#else
++    __dev_t st_dev;			/* Device.  */
++    unsigned short int __pad1;
++# ifndef __USE_FILE_OFFSET64
++    __ino_t st_ino;			/* File serial number.	*/
++# else
++    __ino_t __st_ino;			/* 32bit file serial number.	*/
++# endif
++    __mode_t st_mode;			/* File mode.  */
++    __nlink_t st_nlink;			/* Link count.  */
++    __uid_t st_uid;			/* User ID of the file's owner.	*/
++    __gid_t st_gid;			/* Group ID of the file's group.*/
++    __dev_t st_rdev;			/* Device number, if device.  */
++    unsigned short int __pad2;
++# ifndef __USE_FILE_OFFSET64
++    __off_t st_size;			/* Size of file, in bytes.  */
++# else
++    __off64_t st_size;			/* Size of file, in bytes.  */
++# endif
++    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
++
++# ifndef __USE_FILE_OFFSET64
++    __blkcnt_t st_blocks;		/* Number 512-byte blocks allocated. */
++# else
++    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
++# endif
++# ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++#  define st_mtime st_mtim.tv_sec
++#  define st_ctime st_ctim.tv_sec
++# else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++# endif
++# ifndef __USE_FILE_OFFSET64
++    unsigned long int __glibc_reserved4;
++    unsigned long int __glibc_reserved5;
++# else
++    __ino64_t st_ino;			/* File serial number.	*/
++# endif
++#endif /* __USE_TIME_BITS64  */
++  };
++
++#ifdef __USE_LARGEFILE64
++struct stat64
++  {
++# ifdef __USE_TIME_BITS64
++#  include <bits/struct_stat_time64_helper.h>
++# else
++    __dev_t st_dev;			/* Device.  */
++    unsigned int __pad1;
++
++    __ino_t __st_ino;			/* 32bit file serial number.	*/
++    __mode_t st_mode;			/* File mode.  */
++    __nlink_t st_nlink;			/* Link count.  */
++    __uid_t st_uid;			/* User ID of the file's owner.	*/
++    __gid_t st_gid;			/* Group ID of the file's group.*/
++    __dev_t st_rdev;			/* Device number, if device.  */
++    unsigned int __pad2;
++    __off64_t st_size;			/* Size of file, in bytes.  */
++    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
++
++    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
++#  ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++#  endif
++    __ino64_t st_ino;			/* File serial number.		*/
++# endif /* __USE_TIME_BITS64  */
++  };
++#endif
++
++/* Tell code we have these members.  */
++#define	_STATBUF_ST_BLKSIZE
++#define _STATBUF_ST_RDEV
++/* Nanosecond resolution time values are supported.  */
++#define _STATBUF_ST_NSEC
++
++
++#endif /* _BITS_STRUCT_STAT_H  */
 diff --git a/sysdeps/unix/sysv/linux/hppa/kernel-features.h b/sysdeps/unix/sysv/linux/hppa/kernel-features.h
 index 0cd21ef0fa..079612e4aa 100644
 --- a/sysdeps/unix/sysv/linux/hppa/kernel-features.h
@@ -5498,6 +6154,147 @@ index 0000000000..1844bbaf6f
 +#define __LIBC_LOCK_ALIGNMENT __attribute__ ((__aligned__ (4)))
 +
 +#endif
+diff --git a/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h b/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h
+new file mode 100644
+index 0000000000..e00e71173e
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h
+@@ -0,0 +1,135 @@
++/* Definition for struct stat.  Linux/nios2 version.
++   Copyright (C) 2020-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#if !defined _SYS_STAT_H && !defined _FCNTL_H
++# error "Never include <bits/struct_stat.h> directly; use <sys/stat.h> instead."
++#endif
++
++#ifndef _BITS_STRUCT_STAT_H
++#define _BITS_STRUCT_STAT_H	1
++
++#include <bits/endian.h>
++#include <bits/wordsize.h>
++
++#if defined __USE_FILE_OFFSET64
++# define __field64(type, type64, name) type64 name
++#elif __WORDSIZE == 64 || defined __INO_T_MATCHES_INO64_T
++# if defined __INO_T_MATCHES_INO64_T && !defined __OFF_T_MATCHES_OFF64_T
++#  error "ino_t and off_t must both be the same type"
++# endif
++# define __field64(type, type64, name) type name
++#elif __BYTE_ORDER == __LITTLE_ENDIAN
++# define __field64(type, type64, name) \
++  type name __attribute__((__aligned__ (__alignof__ (type64)))); int __##name##_pad
++#else
++# define __field64(type, type64, name) \
++  int __##name##_pad __attribute__((__aligned__ (__alignof__ (type64)))); type name
++#endif
++
++struct stat
++  {
++#ifdef __USE_TIME_BITS64
++# include <bits/struct_stat_time64_helper.h>
++#else
++    __dev_t st_dev;		/* Device.  */
++    __field64(__ino_t, __ino64_t, st_ino);  /* File serial number. */
++    __mode_t st_mode;		/* File mode.  */
++    __nlink_t st_nlink;		/* Link count.  */
++    __uid_t st_uid;		/* User ID of the file's owner.	*/
++    __gid_t st_gid;		/* Group ID of the file's group.*/
++    __dev_t st_rdev;		/* Device number, if device.  */
++    __dev_t __pad1;
++    __field64(__off_t, __off64_t, st_size);  /* Size of file, in bytes. */
++    __blksize_t st_blksize;	/* Optimal block size for I/O.  */
++    int __pad2;
++    __field64(__blkcnt_t, __blkcnt64_t, st_blocks);  /* 512-byte blocks */
++# ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++#  define st_mtime st_mtim.tv_sec
++#  define st_ctime st_ctim.tv_sec
++# else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++# endif
++    int __glibc_reserved[2];
++#endif
++  };
++
++#undef __field64
++
++#ifdef __USE_LARGEFILE64
++struct stat64
++  {
++# ifdef __USE_TIME_BITS64
++#  include <bits/struct_stat_time64_helper.h>
++# else
++    __dev_t st_dev;		/* Device.  */
++    __ino64_t st_ino;		/* File serial number.	*/
++    __mode_t st_mode;		/* File mode.  */
++    __nlink_t st_nlink;		/* Link count.  */
++    __uid_t st_uid;		/* User ID of the file's owner.	*/
++    __gid_t st_gid;		/* Group ID of the file's group.*/
++    __dev_t st_rdev;		/* Device number, if device.  */
++    __dev_t __pad1;
++    __off64_t st_size;		/* Size of file, in bytes.  */
++    __blksize_t st_blksize;	/* Optimal block size for I/O.  */
++    int __pad2;
++    __blkcnt64_t st_blocks;	/* Nr. 512-byte blocks allocated.  */
++#  ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++#  endif
++    int __glibc_reserved[2];
++# endif
++  };
++#endif
++
++/* Tell code we have these members.  */
++#define	_STATBUF_ST_BLKSIZE
++#define _STATBUF_ST_RDEV
++/* Nanosecond resolution time values are supported.  */
++#define _STATBUF_ST_NSEC
++
++#endif /* _BITS_STRUCT_STAT_H  */
 diff --git a/sysdeps/unix/sysv/linux/not-cancel.h b/sysdeps/unix/sysv/linux/not-cancel.h
 index a263d294b1..cf35c8bfc9 100644
 --- a/sysdeps/unix/sysv/linux/not-cancel.h
@@ -5535,6 +6332,151 @@ index d656aedcc2..4e65f337d4 100644
  #define __NR_migrate_pages 238
  #define __NR_mincore 232
  #define __NR_mkdirat 34
+diff --git a/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h b/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h
+new file mode 100644
+index 0000000000..0f7c9cdc89
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h
+@@ -0,0 +1,139 @@
++/* Definition for struct stat.  Linux/sh version.
++   Copyright (C) 2020-2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#if !defined _SYS_STAT_H && !defined _FCNTL_H
++# error "Never include <bits/struct_stat.h> directly; use <sys/stat.h> instead."
++#endif
++
++#ifndef _BITS_STRUCT_STAT_H
++#define _BITS_STRUCT_STAT_H	1
++
++#include <bits/endian.h>
++#include <bits/wordsize.h>
++
++struct stat
++  {
++#ifdef __USE_TIME_BITS64
++# include <bits/struct_stat_time64_helper.h>
++#else
++    __dev_t st_dev;			/* Device.  */
++    unsigned short int __pad1;
++# ifndef __USE_FILE_OFFSET64
++    __ino_t st_ino;			/* File serial number.	*/
++# else
++    __ino_t __st_ino;			/* 32bit file serial number.	*/
++# endif
++    __mode_t st_mode;			/* File mode.  */
++    __nlink_t st_nlink;			/* Link count.  */
++    __uid_t st_uid;			/* User ID of the file's owner.	*/
++    __gid_t st_gid;			/* Group ID of the file's group.*/
++    __dev_t st_rdev;			/* Device number, if device.  */
++    unsigned short int __pad2;
++# ifndef __USE_FILE_OFFSET64
++    __off_t st_size;			/* Size of file, in bytes.  */
++# else
++    __off64_t st_size;			/* Size of file, in bytes.  */
++# endif
++    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
++
++# ifndef __USE_FILE_OFFSET64
++    __blkcnt_t st_blocks;		/* Number 512-byte blocks allocated. */
++# else
++    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
++# endif
++# ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  define st_atime st_atim.tv_sec	/* Backward compatibility.  */
++#  define st_mtime st_mtim.tv_sec
++#  define st_ctime st_ctim.tv_sec
++# else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++# endif
++# ifndef __USE_FILE_OFFSET64
++    unsigned long int __glibc_reserved4;
++    unsigned long int __glibc_reserved5;
++# else
++    __ino64_t st_ino;			/* File serial number.	*/
++# endif
++#endif /* __USE_TIME_BITS64  */
++  };
++
++#ifdef __USE_LARGEFILE64
++struct stat64
++  {
++# ifdef __USE_TIME_BITS64
++#  include <bits/struct_stat_time64_helper.h>
++# else
++    __dev_t st_dev;			/* Device.  */
++    unsigned int __pad1;
++
++    __ino_t __st_ino;			/* 32bit file serial number.	*/
++    __mode_t st_mode;			/* File mode.  */
++    __nlink_t st_nlink;			/* Link count.  */
++    __uid_t st_uid;			/* User ID of the file's owner.	*/
++    __gid_t st_gid;			/* Group ID of the file's group.*/
++    __dev_t st_rdev;			/* Device number, if device.  */
++    unsigned int __pad2;
++    __off64_t st_size;			/* Size of file, in bytes.  */
++    __blksize_t st_blksize;		/* Optimal block size for I/O.  */
++
++    __blkcnt64_t st_blocks;		/* Number 512-byte blocks allocated. */
++#  ifdef __USE_XOPEN2K8
++    /* Nanosecond resolution timestamps are stored in a format
++       equivalent to 'struct timespec'.  This is the type used
++       whenever possible but the Unix namespace rules do not allow the
++       identifier 'timespec' to appear in the <sys/stat.h> header.
++       Therefore we have to handle the use of this header in strictly
++       standard-compliant sources special.  */
++    struct timespec st_atim;		/* Time of last access.  */
++    struct timespec st_mtim;		/* Time of last modification.  */
++    struct timespec st_ctim;		/* Time of last status change.  */
++#  else
++    __time_t st_atime;			/* Time of last access.  */
++    unsigned long int st_atimensec;	/* Nscecs of last access.  */
++    __time_t st_mtime;			/* Time of last modification.  */
++    unsigned long int st_mtimensec;	/* Nsecs of last modification.  */
++    __time_t st_ctime;			/* Time of last status change.  */
++    unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
++#  endif
++    __ino64_t st_ino;			/* File serial number.		*/
++# endif /* __USE_TIME_BITS64  */
++  };
++#endif
++
++/* Tell code we have these members.  */
++#define	_STATBUF_ST_BLKSIZE
++#define _STATBUF_ST_RDEV
++/* Nanosecond resolution time values are supported.  */
++#define _STATBUF_ST_NSEC
++
++
++#endif /* _BITS_STRUCT_STAT_H  */
 diff --git a/sysdeps/unix/sysv/linux/sys/mount.h b/sysdeps/unix/sysv/linux/sys/mount.h
 index f965986ba8..19841d0738 100644
 --- a/sysdeps/unix/sysv/linux/sys/mount.h
