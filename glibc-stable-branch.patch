@@ -94,6 +94,9 @@ Siddhesh Poyarekar (2):
 Tom Honermann (1):
       stdlib: Suppress gcc diagnostic that char8_t is a keyword in C++20 in uchar.h.
 
+Xi Ruoyao (1):
+      longlong.h: update from GCC for LoongArch clz/ctz support
+
 diff --git a/NEWS b/NEWS
 index f61e521fc8..833045585f 100644
 --- a/NEWS
@@ -5101,6 +5104,29 @@ index e417ef624d..960a38f295 100644
    int fd;
  
    if (n == 0)
+diff --git a/stdlib/longlong.h b/stdlib/longlong.h
+index 9b89469ac2..d8f76a43b5 100644
+--- a/stdlib/longlong.h
++++ b/stdlib/longlong.h
+@@ -593,6 +593,18 @@ extern UDItype __umulsidi3 (USItype, USItype);
+ #define UMUL_TIME 14
+ #endif
+ 
++#ifdef __loongarch__
++# if W_TYPE_SIZE == 32
++#  define count_leading_zeros(count, x)  ((count) = __builtin_clz (x))
++#  define count_trailing_zeros(count, x) ((count) = __builtin_ctz (x))
++#  define COUNT_LEADING_ZEROS_0 32
++# elif W_TYPE_SIZE == 64
++#  define count_leading_zeros(count, x)  ((count) = __builtin_clzll (x))
++#  define count_trailing_zeros(count, x) ((count) = __builtin_ctzll (x))
++#  define COUNT_LEADING_ZEROS_0 64
++# endif
++#endif
++
+ #if defined (__M32R__) && W_TYPE_SIZE == 32
+ #define add_ssaaaa(sh, sl, ah, al, bh, bl) \
+   /* The cmp clears the condition bit.  */ \
 diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
 index 050a3032de..6b256b8388 100644
 --- a/sysdeps/generic/ldsodefs.h
