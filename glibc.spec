@@ -43,6 +43,8 @@ Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 Patch57:	glibc-backport.patch
 
+Patch62:	limit-avx512-freq-damage.patch
+
 Patch63:	utf8-locale-naming.patch
 Patch64:	noclone3yet.patch
 Patch65:	seccomp_workaround.patch
@@ -229,6 +231,7 @@ GNU C library extra components.
 %patch55 -p1
 %patch56 -p1
 #%patch57 -p1
+%patch62 -p1
 %patch63 -p1
 %patch64 -p1
 %patch65 -p1
