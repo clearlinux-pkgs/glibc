@@ -4,13 +4,14 @@ if it weren't for previous generations. By adding extra conditions to get_isa_le
 we can make sure we don't get regressions on prior generations
 
 
---- glibc-2.36/sysdeps/x86/get-isa-level.h~	2022-07-29 22:03:09.000000000 +0000
-+++ glibc-2.36/sysdeps/x86/get-isa-level.h	2022-11-02 14:43:12.182290313 +0000
-@@ -57,6 +57,7 @@
- 		  && CPU_FEATURE_USABLE_P (cpu_features, AVX512BW)
- 		  && CPU_FEATURE_USABLE_P (cpu_features, AVX512CD)
- 		  && CPU_FEATURE_USABLE_P (cpu_features, AVX512DQ)
-+		  && CPU_FEATURE_USABLE_P (cpu_features, AMX_TILE)
- 		  && CPU_FEATURE_USABLE_P (cpu_features, AVX512VL))
- 		isa_level |= GNU_PROPERTY_X86_ISA_1_V4;
- 	    }
+--- glibc-2.36/sysdeps/x86_64/dl-hwcaps-subdirs.c~	2022-07-29 22:03:09.000000000 +0000
++++ glibc-2.36/sysdeps/x86_64/dl-hwcaps-subdirs.c	2022-11-04 14:19:14.364314024 +0000
+@@ -44,7 +44,7 @@
+   ++active;
+ 
+   /* x86-64-v4.  */
+-  if (!(isa_level & GNU_PROPERTY_X86_ISA_1_V4))
++  if (!(isa_level & GNU_PROPERTY_X86_ISA_1_V4) || ! CPU_FEATURE_USABLE_P (cpu_features, AMX_TILE))
+     return _dl_hwcaps_subdirs_build_bitmask (subdirs_count, active);
+   ++active;
+ 
