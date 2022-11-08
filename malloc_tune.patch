@@ -45,3 +45,15 @@
              }
          }
      repeat:;
+--- glibc-2.36/malloc/malloc.c~	2022-09-02 18:38:17.000000000 +0000
++++ glibc-2.36/malloc/malloc.c	2022-11-08 20:32:05.797225851 +0000
+@@ -2710,6 +2710,9 @@
+ #endif
+ 	size = ALIGN_UP (size, GLRO(dl_pagesize));
+ 
++     if (size < 512 * 1024)
++	 size = 512 * 1024;
++
+       /*
+          Don't try to call MORECORE if argument is so big as to appear
+          negative. Note that since mmap takes size_t arg, it may succeed
