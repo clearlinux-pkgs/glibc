@@ -85,8 +85,14 @@ Michael Hudson-Doyle (2):
 Noah Goldstein (1):
       elf: Replace `strcpy` call with `memcpy` [BZ #29454]
 
+Paul Eggert (1):
+      mktime: improve heuristic for ca-1986 Indiana DST
+
 Raphael Moreira Zinsly (1):
       Apply asm redirections in wchar.h before first use
+
+Sergei Trofimovich (1):
+      Makerules: fix MAKEFLAGS assignment for upcoming make-4.4 [BZ# 29564]
 
 Siddhesh Poyarekar (2):
       Add NEWS entry for CVE-2022-39046
@@ -101,6 +107,64 @@ Xi Ruoyao (1):
 caiyinyu (1):
       LoongArch: Fix ABI related macros in elf.h to keep consistent with binutils[1].
 
+diff --git a/Makeconfig b/Makeconfig
+index ba70321af1..2bbcabd8f9 100644
+--- a/Makeconfig
++++ b/Makeconfig
+@@ -43,6 +43,22 @@ else
+ $(error objdir must be defined by the build-directory Makefile)
+ endif
+ 
++# Did we request 'make -s' run? "yes" or "no".
++# Starting from make-4.4 MAKEFLAGS now contains long
++# options like '--shuffle'. To detect presence of 's'
++# we pick first word with short options. Long options
++# are guaranteed to come after whitespace. We use '-'
++# prefix to always have a word before long options
++# even if no short options were passed.
++# Typical MAKEFLAGS values to watch for:
++#   "rs --shuffle=42" (silent)
++#   " --shuffle" (not silent)
++ifeq ($(findstring s, $(firstword -$(MAKEFLAGS))),)
++silent-make := no
++else
++silent-make := yes
++endif
++
+ # Root of the sysdeps tree.
+ sysdep_dir := $(..)sysdeps
+ export sysdep_dir := $(sysdep_dir)
+@@ -917,7 +933,7 @@ endif
+ # umpteen zillion filenames along with it (we use `...' instead)
+ # but we don't want this echoing done when the user has said
+ # he doesn't want to see commands echoed by using -s.
+-ifneq	"$(findstring s,$(MAKEFLAGS))" ""	# if -s
++ifeq ($(silent-make),yes)			# if -s
+ +cmdecho	:= echo >/dev/null
+ else						# not -s
+ +cmdecho	:= echo
+diff --git a/Makerules b/Makerules
+index d1e139d03c..09c0cf8357 100644
+--- a/Makerules
++++ b/Makerules
+@@ -794,7 +794,7 @@ endif
+ # Maximize efficiency by minimizing the number of rules.
+ .SUFFIXES:	# Clear the suffix list.  We don't use suffix rules.
+ # Don't define any builtin rules.
+-MAKEFLAGS := $(MAKEFLAGS)r
++MAKEFLAGS := $(MAKEFLAGS) -r
+ 
+ # Generic rule for making directories.
+ %/:
+@@ -811,7 +811,7 @@ MAKEFLAGS := $(MAKEFLAGS)r
+ .PRECIOUS: $(foreach l,$(libtypes),$(patsubst %,$(common-objpfx)$l,c))
+ 
+ # Use the verbose option of ar and tar when not running silently.
+-ifeq	"$(findstring s,$(MAKEFLAGS))" ""	# if not -s
++ifeq ($(silent-make),no)			# if not -s
+ verbose := v
+ else	   					# -s
+ verbose	:=
 diff --git a/NEWS b/NEWS
 index f61e521fc8..e92d547e2c 100644
 --- a/NEWS
@@ -548,6 +612,19 @@ index 02a1b3f52f..014393f3cc 100644
  
  /* LoongArch specific dynamic relocations */
  #define R_LARCH_NONE		0
+diff --git a/elf/rtld-Rules b/elf/rtld-Rules
+index ca00dd1fe2..3c5e273f2b 100644
+--- a/elf/rtld-Rules
++++ b/elf/rtld-Rules
+@@ -52,7 +52,7 @@ $(objpfx)rtld-libc.a: $(foreach dir,$(rtld-subdirs),\
+ 	mv -f $@T $@
+ 
+ # Use the verbose option of ar and tar when not running silently.
+-ifeq	"$(findstring s,$(MAKEFLAGS))" ""	# if not -s
++ifeq ($(silent-make),no)			# if not -s
+ verbose := v
+ else						# -s
+ verbose	:=
 diff --git a/elf/rtld.c b/elf/rtld.c
 index cbbaf4a331..3e771a93d8 100644
 --- a/elf/rtld.c
@@ -7285,6 +7362,59 @@ index 4ebe4bde30..c4f8b6bbb5 100644
  	return OPTIMIZE (evex);
  
        if (CPU_FEATURE_USABLE_P (cpu_features, RTM))
+diff --git a/time/mktime.c b/time/mktime.c
+index 494c89bf54..e9a6006710 100644
+--- a/time/mktime.c
++++ b/time/mktime.c
+@@ -429,8 +429,13 @@ __mktime_internal (struct tm *tp,
+ 	 time with the right value, and use its UTC offset.
+ 
+ 	 Heuristic: probe the adjacent timestamps in both directions,
+-	 looking for the desired isdst.  This should work for all real
+-	 time zone histories in the tz database.  */
++	 looking for the desired isdst.  If none is found within a
++	 reasonable duration bound, assume a one-hour DST difference.
++	 This should work for all real time zone histories in the tz
++	 database.  */
++
++      /* +1 if we wanted standard time but got DST, -1 if the reverse.  */
++      int dst_difference = (isdst == 0) - (tm.tm_isdst == 0);
+ 
+       /* Distance between probes when looking for a DST boundary.  In
+ 	 tzdata2003a, the shortest period of DST is 601200 seconds
+@@ -441,12 +446,14 @@ __mktime_internal (struct tm *tp,
+ 	 periods when probing.  */
+       int stride = 601200;
+ 
+-      /* The longest period of DST in tzdata2003a is 536454000 seconds
+-	 (e.g., America/Jujuy starting 1946-10-01 01:00).  The longest
+-	 period of non-DST is much longer, but it makes no real sense
+-	 to search for more than a year of non-DST, so use the DST
+-	 max.  */
+-      int duration_max = 536454000;
++      /* In TZDB 2021e, the longest period of DST (or of non-DST), in
++	 which the DST (or adjacent DST) difference is not one hour,
++	 is 457243209 seconds: e.g., America/Cambridge_Bay with leap
++	 seconds, starting 1965-10-31 00:00 in a switch from
++	 double-daylight time (-05) to standard time (-07), and
++	 continuing to 1980-04-27 02:00 in a switch from standard time
++	 (-07) to daylight time (-06).  */
++      int duration_max = 457243209;
+ 
+       /* Search in both directions, so the maximum distance is half
+ 	 the duration; add the stride to avoid off-by-1 problems.  */
+@@ -483,6 +490,11 @@ __mktime_internal (struct tm *tp,
+ 	      }
+ 	  }
+ 
++      /* No unusual DST offset was found nearby.  Assume one-hour DST.  */
++      t += 60 * 60 * dst_difference;
++      if (mktime_min <= t && t <= mktime_max && convert_time (convert, t, &tm))
++	goto offset_found;
++
+       __set_errno (EOVERFLOW);
+       return -1;
+     }
 diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
 index e6b9e8743a..4af102a3f6 100644
 --- a/wcsmbs/Makefile
