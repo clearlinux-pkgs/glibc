@@ -31,7 +31,7 @@ Aurelien Jarno (10):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (29):
+Florian Weimer (30):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
@@ -61,6 +61,7 @@ Florian Weimer (29):
       nss: Fix tst-nss-files-hosts-long on single-stack hosts (bug 24816)
       nss: Use shared prefix in IPv4 address in tst-reload1
       elf: Do not completely clear reused namespace in dlmopen (bug 29600)
+      Linux: Support __IPC_64 in sysvctl *ctl command arguments (bug 29771)
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -166,10 +167,10 @@ index d1e139d03c..09c0cf8357 100644
  else	   					# -s
  verbose	:=
 diff --git a/NEWS b/NEWS
-index f61e521fc8..e92d547e2c 100644
+index f61e521fc8..9f8edea5db 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,48 @@ See the end for copying conditions.
+@@ -5,6 +5,49 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -214,6 +215,7 @@ index f61e521fc8..e92d547e2c 100644
 +  [29657] libc: Incorrect struct stat for 64-bit time on linux/generic
 +    platforms
 +  [29730] broken y2038 support in fstatat on MIPS N64
++  [29771] Restore IPC_64 support in sysvipc *ctl functions
 +
  Version 2.36
  
@@ -6249,6 +6251,21 @@ index 0cd21ef0fa..079612e4aa 100644
 +
 +/* QEMU does not support set_robust_list.  */
 +#undef __ASSUME_SET_ROBUST_LIST
+diff --git a/sysdeps/unix/sysv/linux/ipc_priv.h b/sysdeps/unix/sysv/linux/ipc_priv.h
+index 87893a6757..2f50c31a8e 100644
+--- a/sysdeps/unix/sysv/linux/ipc_priv.h
++++ b/sysdeps/unix/sysv/linux/ipc_priv.h
+@@ -63,4 +63,10 @@ struct __old_ipc_perm
+ # define __IPC_TIME64 0
+ #endif
+ 
++#if __IPC_TIME64 || defined __ASSUME_SYSVIPC_BROKEN_MODE_T
++# define IPC_CTL_NEED_TRANSLATION 1
++#else
++# define IPC_CTL_NEED_TRANSLATION 0
++#endif
++
+ #include <ipc_ops.h>
 diff --git a/sysdeps/unix/sysv/linux/m68k/libc-lock-arch.h b/sysdeps/unix/sysv/linux/m68k/libc-lock-arch.h
 new file mode 100644
 index 0000000000..1844bbaf6f
@@ -6337,6 +6354,89 @@ index 0000000000..fe6c3a0dda
 +}
 +
 +weak_alias (__fstatat, fstatat)
+diff --git a/sysdeps/unix/sysv/linux/msgctl.c b/sysdeps/unix/sysv/linux/msgctl.c
+index e824ebb095..2072205252 100644
+--- a/sysdeps/unix/sysv/linux/msgctl.c
++++ b/sysdeps/unix/sysv/linux/msgctl.c
+@@ -85,11 +85,19 @@ msgctl_syscall (int msqid, int cmd, msgctl_arg_t *buf)
+ int
+ __msgctl64 (int msqid, int cmd, struct __msqid64_ds *buf)
+ {
+-#if __IPC_TIME64
++#if IPC_CTL_NEED_TRANSLATION
++# if __IPC_TIME64
+   struct kernel_msqid64_ds ksemid, *arg = NULL;
+-#else
++# else
+   msgctl_arg_t *arg;
+-#endif
++# endif
++
++  /* Some applications pass the __IPC_64 flag in cmd, to invoke
++     previously unsupported commands back when there was no EINVAL
++     error checking in glibc.  Mask the flag for the switch statements
++     below.  msgctl_syscall adds back the __IPC_64 flag for the actual
++     system call.  */
++  cmd &= ~__IPC_64;
+ 
+   switch (cmd)
+     {
+@@ -101,19 +109,19 @@ __msgctl64 (int msqid, int cmd, struct __msqid64_ds *buf)
+     case IPC_STAT:
+     case MSG_STAT:
+     case MSG_STAT_ANY:
+-#if __IPC_TIME64
++# if __IPC_TIME64
+       if (buf != NULL)
+ 	{
+ 	  msqid64_to_kmsqid64 (buf, &ksemid);
+ 	  arg = &ksemid;
+ 	}
+-# ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
++#  ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+       if (cmd == IPC_SET)
+ 	arg->msg_perm.mode *= 0x10000U;
+-# endif
+-#else
++#  endif
++# else
+       arg = buf;
+-#endif
++# endif
+       break;
+ 
+     case IPC_INFO:
+@@ -137,21 +145,25 @@ __msgctl64 (int msqid, int cmd, struct __msqid64_ds *buf)
+     case IPC_STAT:
+     case MSG_STAT:
+     case MSG_STAT_ANY:
+-#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
++# ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+       arg->msg_perm.mode >>= 16;
+-#else
++# else
+       /* Old Linux kernel versions might not clear the mode padding.  */
+       if (sizeof ((struct msqid_ds){0}.msg_perm.mode)
+           != sizeof (__kernel_mode_t))
+ 	arg->msg_perm.mode &= 0xFFFF;
+-#endif
++# endif
+ 
+-#if __IPC_TIME64
++# if __IPC_TIME64
+       kmsqid64_to_msqid64 (arg, buf);
+-#endif
++# endif
+     }
+ 
+   return ret;
++
++#else /* !IPC_CTL_NEED_TRANSLATION */
++  return msgctl_syscall (msqid, cmd, buf);
++#endif
+ }
+ #if __TIMESIZE != 64
+ libc_hidden_def (__msgctl64)
 diff --git a/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h b/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h
 new file mode 100644
 index 0000000000..e00e71173e
@@ -6515,6 +6615,24 @@ index d656aedcc2..4e65f337d4 100644
  #define __NR_migrate_pages 238
  #define __NR_mincore 232
  #define __NR_mkdirat 34
+diff --git a/sysdeps/unix/sysv/linux/semctl.c b/sysdeps/unix/sysv/linux/semctl.c
+index 77a8130c18..3458b018bc 100644
+--- a/sysdeps/unix/sysv/linux/semctl.c
++++ b/sysdeps/unix/sysv/linux/semctl.c
+@@ -140,6 +140,13 @@ __semctl64 (int semid, int semnum, int cmd, ...)
+   union semun64 arg64 = { 0 };
+   va_list ap;
+ 
++  /* Some applications pass the __IPC_64 flag in cmd, to invoke
++     previously unsupported commands back when there was no EINVAL
++     error checking in glibc.  Mask the flag for the switch statements
++     below.  semctl_syscall adds back the __IPC_64 flag for the actual
++     system call.  */
++  cmd &= ~__IPC_64;
++
+   /* Get the argument only if required.  */
+   switch (cmd)
+     {
 diff --git a/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h b/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h
 new file mode 100644
 index 0000000000..0f7c9cdc89
@@ -6660,6 +6778,89 @@ index 0000000000..0f7c9cdc89
 +
 +
 +#endif /* _BITS_STRUCT_STAT_H  */
+diff --git a/sysdeps/unix/sysv/linux/shmctl.c b/sysdeps/unix/sysv/linux/shmctl.c
+index ea38935497..f00817a6f6 100644
+--- a/sysdeps/unix/sysv/linux/shmctl.c
++++ b/sysdeps/unix/sysv/linux/shmctl.c
+@@ -85,11 +85,19 @@ shmctl_syscall (int shmid, int cmd, shmctl_arg_t *buf)
+ int
+ __shmctl64 (int shmid, int cmd, struct __shmid64_ds *buf)
+ {
+-#if __IPC_TIME64
++#if IPC_CTL_NEED_TRANSLATION
++# if __IPC_TIME64
+   struct kernel_shmid64_ds kshmid, *arg = NULL;
+-#else
++# else
+   shmctl_arg_t *arg;
+-#endif
++# endif
++
++  /* Some applications pass the __IPC_64 flag in cmd, to invoke
++     previously unsupported commands back when there was no EINVAL
++     error checking in glibc.  Mask the flag for the switch statements
++     below.  shmctl_syscall adds back the __IPC_64 flag for the actual
++     system call.  */
++  cmd &= ~__IPC_64;
+ 
+   switch (cmd)
+     {
+@@ -103,19 +111,19 @@ __shmctl64 (int shmid, int cmd, struct __shmid64_ds *buf)
+     case IPC_STAT:
+     case SHM_STAT:
+     case SHM_STAT_ANY:
+-#if __IPC_TIME64
++# if __IPC_TIME64
+       if (buf != NULL)
+ 	{
+ 	  shmid64_to_kshmid64 (buf, &kshmid);
+ 	  arg = &kshmid;
+ 	}
+-# ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
++#  ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+       if (cmd == IPC_SET)
+         arg->shm_perm.mode *= 0x10000U;
+-# endif
+-#else
++#  endif
++# else
+       arg = buf;
+-#endif
++# endif
+       break;
+ 
+     case IPC_INFO:
+@@ -140,21 +148,25 @@ __shmctl64 (int shmid, int cmd, struct __shmid64_ds *buf)
+       case IPC_STAT:
+       case SHM_STAT:
+       case SHM_STAT_ANY:
+-#ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
++# ifdef __ASSUME_SYSVIPC_BROKEN_MODE_T
+         arg->shm_perm.mode >>= 16;
+-#else
++# else
+       /* Old Linux kernel versions might not clear the mode padding.  */
+       if (sizeof ((struct shmid_ds){0}.shm_perm.mode)
+ 	  != sizeof (__kernel_mode_t))
+ 	arg->shm_perm.mode &= 0xFFFF;
+-#endif
++# endif
+ 
+-#if __IPC_TIME64
++# if __IPC_TIME64
+       kshmid64_to_shmid64 (arg, buf);
+-#endif
++# endif
+     }
+ 
+   return ret;
++
++#else /* !IPC_CTL_NEED_TRANSLATION */
++  return shmctl_syscall (shmid, cmd, buf);
++#endif
+ }
+ #if __TIMESIZE != 64
+ libc_hidden_def (__shmctl64)
 diff --git a/sysdeps/unix/sysv/linux/sys/mount.h b/sysdeps/unix/sysv/linux/sys/mount.h
 index f965986ba8..19841d0738 100644
 --- a/sysdeps/unix/sysv/linux/sys/mount.h
