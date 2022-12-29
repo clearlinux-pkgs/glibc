@@ -2,6 +2,11 @@
 %define glibc_target x86_64-generic-linux
 %define abi_package %{nil}
 
+# glibc is important enough to have debug info always
+%define debug_package %{nil}
+%define __strip /bin/true
+
+
 
 Name:           glibc
 Version:        2.36
@@ -254,7 +259,7 @@ mv -v $supported.new $supported
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz=none "
+export CFLAGS="-O3 -march=westmere -mtune=skylake -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz"
 export ASFLAGS=""
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -304,7 +309,7 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz=none"
+export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -353,7 +358,7 @@ popd
 mkdir ../glibc-buildroot-avx512
 pushd ../glibc-buildroot-avx512
 
-export CFLAGS="-O3 -march=x86-64-v4 -mtune=sapphirerapids -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -Wl,-z,x86-64-v4 -gz=none"
+export CFLAGS="-O3 -march=x86-64-v4 -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -Wl,-z,x86-64-v4 -gz"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -D__AVX512__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -402,7 +407,7 @@ mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
 
 unset ASFLAGS
-export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -mstackrealign -g2  -Wl,-z,max-page-size=0x1000 -gdwarf-4"
+export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -mstackrealign -g1  -Wl,-z,max-page-size=0x1000 -gdwarf-4 -gz"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
