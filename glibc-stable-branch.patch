@@ -12,6 +12,13 @@ Adhemerval Zanella (12):
       linux: Fix generic struct_stat for 64 bit time (BZ# 29657)
       elf: Reinstate on DL_DEBUG_BINDINGS _dl_lookup_symbol_x
 
+Adhemerval Zanella Netto (5):
+      nis: Build libnsl with 64 bit time_t
+      nscd: Use 64 bit time_t on libc nscd routines (BZ# 29402)
+      time: Use 64 bit time on tzfile
+      sunrpc: Suppress GCC -Os warning on user2netname
+      x86: Fix -Os build (BZ #29576)
+
 Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
       NEWS: Add entry for bug 28846
@@ -79,6 +86,9 @@ Joseph Myers (1):
 Jörg Sonnenberger (1):
       get_nscd_addresses: Fix subscript typos [BZ #29605]
 
+Martin Jansa (1):
+      locale: prevent maybe-uninitialized errors with -Os [BZ #19444]
+
 Michael Hudson-Doyle (2):
       Ensure calculations happen with desired rounding mode in y1lf128
       Fix BZ #29463 in the ibm128 implementation of y1l too
@@ -116,7 +126,7 @@ caiyinyu (1):
       LoongArch: Fix ABI related macros in elf.h to keep consistent with binutils[1].
 
 diff --git a/Makeconfig b/Makeconfig
-index ba70321af1..2bbcabd8f9 100644
+index ba70321af1..9dd058e04b 100644
 --- a/Makeconfig
 +++ b/Makeconfig
 @@ -43,6 +43,22 @@ else
@@ -142,6 +152,15 @@ index ba70321af1..2bbcabd8f9 100644
  # Root of the sysdeps tree.
  sysdep_dir := $(..)sysdeps
  export sysdep_dir := $(sysdep_dir)
+@@ -868,7 +884,7 @@ endif
+ # Use 64 bit time_t support for installed programs
+ installed-modules = nonlib nscd lddlibc4 ldconfig locale_programs \
+ 		    iconvprogs libnss_files libnss_compat libnss_db libnss_hesiod \
+-		    libutil libpcprofile libSegFault
++		    libutil libpcprofile libSegFault libnsl
+ +extra-time-flags = $(if $(filter $(installed-modules),\
+                            $(in-module)),-D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64)
+ 
 @@ -917,7 +933,7 @@ endif
  # umpteen zillion filenames along with it (we use `...' instead)
  # but we don't want this echoing done when the user has said
@@ -174,10 +193,10 @@ index d1e139d03c..09c0cf8357 100644
  else	   					# -s
  verbose	:=
 diff --git a/NEWS b/NEWS
-index f61e521fc8..9f8edea5db 100644
+index f61e521fc8..fb2d73a6be 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,49 @@ See the end for copying conditions.
+@@ -5,6 +5,52 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -203,6 +222,7 @@ index f61e521fc8..9f8edea5db 100644
 +  [24816] Fix tst-nss-files-hosts-long on single-stack hosts
 +  [28846] CMSG_NXTHDR may trigger -Wstrict-overflow warning
 +  [29305] Conserve NSS buffer space during DNS packet parsing
++  [29402] nscd: nscd: No such file or directory
 +  [29415] nscd: Fix netlink cache invalidation if epoll is used
 +  [28937] New DSO dependency sorter does not put new map first if in a cycle
 +  [29446] _dlopen now ignores dl_caller argument in static mode
@@ -214,6 +234,8 @@ index f61e521fc8..9f8edea5db 100644
 +  [29528] elf: Call __libc_early_init for reused namespaces
 +  [29537] libc: [2.34 regression]: Alignment issue on m68k when using
 +  [29539] libc: LD_TRACE_LOADED_OBJECTS changed how vDSO library are
++  [29576] build: librtld.os: in function `_dl_start_profile':
++    (.text+0x9444): undefined reference to `strcpy'
 +  [29583] Use 64-bit interfaces in gconv_parseconfdir
 +  [29600] Do not completely clear reused namespace in dlmopen
 +  [29607] nscd repeatably crashes calling __strlen_avx2 when hosts cache is
@@ -1002,6 +1024,25 @@ index 3590b6f496..4dbbac3800 100644
 +
  # endif /* _RESOLV_H_ && !_ISOMAC */
  #endif
+diff --git a/locale/weight.h b/locale/weight.h
+index 8be2d220f8..4a4d5aa6b2 100644
+--- a/locale/weight.h
++++ b/locale/weight.h
+@@ -27,7 +27,14 @@ findidx (const int32_t *table,
+ 	 const unsigned char *extra,
+ 	 const unsigned char **cpp, size_t len)
+ {
++  /* With GCC 8 when compiling with -Os the compiler warns that
++     seq1.back_us and seq2.back_us might be used uninitialized.
++     This uninitialized use is impossible for the same reason
++     as described in comments in locale/weightwc.h.  */
++  DIAG_PUSH_NEEDS_COMMENT;
++  DIAG_IGNORE_Os_NEEDS_COMMENT (8, "-Wmaybe-uninitialized");
+   int32_t i = table[*(*cpp)++];
++  DIAG_POP_NEEDS_COMMENT;
+   const unsigned char *cp;
+   const unsigned char *usrc;
+ 
 diff --git a/misc/bits/syslog.h b/misc/bits/syslog.h
 index fd30dd3114..916d2b6f12 100644
 --- a/misc/bits/syslog.h
@@ -1386,6 +1427,55 @@ index e550d15796..3560b518a2 100644
  
    return 0;
  }
+diff --git a/nis/nis_call.c b/nis/nis_call.c
+index 90187e30b1..5b9dd50151 100644
+--- a/nis/nis_call.c
++++ b/nis/nis_call.c
+@@ -574,7 +574,7 @@ static struct nis_server_cache
+   unsigned int size;
+   unsigned int server_used;
+   unsigned int current_ep;
+-  __time64_t expires;
++  time_t expires;
+   char name[];
+ } *nis_server_cache[16];
+ static time_t nis_cold_start_mtime;
+@@ -583,7 +583,7 @@ __libc_lock_define_initialized (static, nis_server_cache_lock)
+ static directory_obj *
+ nis_server_cache_search (const_nis_name name, int search_parent,
+ 			 unsigned int *server_used, unsigned int *current_ep,
+-			 struct __timespec64 *now)
++			 struct timespec *now)
+ {
+   directory_obj *ret = NULL;
+   int i;
+@@ -641,7 +641,7 @@ nis_server_cache_search (const_nis_name name, int search_parent,
+ static void
+ nis_server_cache_add (const_nis_name name, int search_parent,
+ 		      directory_obj *dir, unsigned int server_used,
+-		      unsigned int current_ep, struct __timespec64 *now)
++		      unsigned int current_ep, struct timespec *now)
+ {
+   struct nis_server_cache **loc;
+   struct nis_server_cache *new;
+@@ -707,7 +707,7 @@ __nisfind_server (const_nis_name name, int search_parent,
+   nis_error result = NIS_SUCCESS;
+   nis_error status;
+   directory_obj *obj;
+-  struct __timespec64 ts;
++  struct timespec ts;
+   unsigned int server_used = ~0;
+   unsigned int current_ep = ~0;
+ 
+@@ -717,7 +717,7 @@ __nisfind_server (const_nis_name name, int search_parent,
+   if (*dir != NULL)
+     return NIS_SUCCESS;
+ 
+-  __clock_gettime64 (CLOCK_REALTIME, &ts);
++  clock_gettime (CLOCK_REALTIME, &ts);
+ 
+   if ((flags & NO_CACHE) == 0)
+     *dir = nis_server_cache_search (name, search_parent, &server_used,
 diff --git a/nscd/aicache.c b/nscd/aicache.c
 index 51e793199f..e0baed170b 100644
 --- a/nscd/aicache.c
@@ -1426,6 +1516,32 @@ index 61d1674eb4..531d2e83df 100644
  	  }
  # endif
  	else
+diff --git a/nscd/nscd.h b/nscd/nscd.h
+index 368091aef8..f15321585b 100644
+--- a/nscd/nscd.h
++++ b/nscd/nscd.h
+@@ -65,7 +65,7 @@ typedef enum
+ struct traced_file
+ {
+   /* Tracks the last modified time of the traced file.  */
+-  time_t mtime;
++  __time64_t mtime;
+   /* Support multiple registered files per database.  */
+   struct traced_file *next;
+   int call_res_init;
+diff --git a/nscd/nscd_gethst_r.c b/nscd/nscd_gethst_r.c
+index 9becb62033..31c64275f0 100644
+--- a/nscd/nscd_gethst_r.c
++++ b/nscd/nscd_gethst_r.c
+@@ -112,7 +112,7 @@ __nscd_get_nl_timestamp (void)
+   if (map == NULL
+       || (map != NO_MAPPING
+ 	  && map->head->nscd_certainly_running == 0
+-	  && map->head->timestamp + MAPPING_TIMEOUT < time_now ()))
++	  && map->head->timestamp + MAPPING_TIMEOUT < time64_now ()))
+     map = __nscd_get_mapping (GETFDHST, "hosts", &__hst_map_handle.mapped);
+ 
+   if (map == NO_MAPPING)
 diff --git a/nss/getent.c b/nss/getent.c
 index 8178b4b470..d2d2524b0c 100644
 --- a/nss/getent.c
@@ -5385,6 +5501,31 @@ index 4a9375112a..5cbaf4b734 100644
      }
  }
  
+diff --git a/sunrpc/netname.c b/sunrpc/netname.c
+index bf7f0b81c4..c1d1c43e50 100644
+--- a/sunrpc/netname.c
++++ b/sunrpc/netname.c
+@@ -20,6 +20,7 @@
+ #include <string.h>
+ #include <rpc/rpc.h>
+ #include <shlib-compat.h>
++#include <libc-diag.h>
+ 
+ #include "nsswitch.h"
+ 
+@@ -48,7 +49,12 @@ user2netname (char netname[MAXNETNAMELEN + 1], const uid_t uid,
+   if ((strlen (dfltdom) + OPSYS_LEN + 3 + MAXIPRINT) > (size_t) MAXNETNAMELEN)
+     return 0;
+ 
++  /* GCC with -Os warns that sprint might overflow while handling dfltdom,
++     however the above test does check if an overflow would happen.  */
++  DIAG_PUSH_NEEDS_COMMENT;
++  DIAG_IGNORE_Os_NEEDS_COMMENT (8, "-Wformat-overflow");
+   sprintf (netname, "%s.%d@%s", OPSYS, uid, dfltdom);
++  DIAG_POP_NEEDS_COMMENT;
+   i = strlen (netname);
+   if (netname[i - 1] == '.')
+     netname[i - 1] = '\0';
 diff --git a/sysdeps/aarch64/dl-trampoline.S b/sysdeps/aarch64/dl-trampoline.S
 index 909b208578..d66f0b9c45 100644
 --- a/sysdeps/aarch64/dl-trampoline.S
@@ -7707,6 +7848,30 @@ index 68646ef199..7622af259c 100644
        && X86_ISA_CPU_FEATURES_ARCH_P (cpu_features,
  				      AVX_Fast_Unaligned_Load, ))
      {
+diff --git a/sysdeps/x86_64/multiarch/rtld-strcpy.S b/sysdeps/x86_64/multiarch/rtld-strcpy.S
+new file mode 100644
+index 0000000000..19439c553d
+--- /dev/null
++++ b/sysdeps/x86_64/multiarch/rtld-strcpy.S
+@@ -0,0 +1,18 @@
++/* Copyright (C) 2022 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include "../strcpy.S"
 diff --git a/sysdeps/x86_64/multiarch/strcmp.c b/sysdeps/x86_64/multiarch/strcmp.c
 index fdd5afe3af..9d6c9f66ba 100644
 --- a/sysdeps/x86_64/multiarch/strcmp.c
@@ -7819,6 +7984,19 @@ index 494c89bf54..e9a6006710 100644
        __set_errno (EOVERFLOW);
        return -1;
      }
+diff --git a/time/tzfile.c b/time/tzfile.c
+index dd75848ba9..394b098856 100644
+--- a/time/tzfile.c
++++ b/time/tzfile.c
+@@ -32,7 +32,7 @@
+ int __use_tzfile;
+ static dev_t tzfile_dev;
+ static ino64_t tzfile_ino;
+-static time_t tzfile_mtime;
++static __time64_t tzfile_mtime;
+ 
+ struct ttinfo
+   {
 diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
 index e6b9e8743a..4af102a3f6 100644
 --- a/wcsmbs/Makefile

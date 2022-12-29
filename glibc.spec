@@ -5,7 +5,7 @@
 
 Name:           glibc
 Version:        2.36
-Release:        552
+Release:        553
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -254,10 +254,10 @@ mv -v $supported.new $supported
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 "
+export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz "
 export ASFLAGS=""
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 --compress-debug-sections=zlib "
 
 ../glibc-2.36/configure \
     --prefix=/usr \
@@ -346,7 +346,8 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
 
-make %{?_smp_mflags}
+make 
+#%{?_smp_mflags}
 popd
 
 mkdir ../glibc-buildroot-avx512
