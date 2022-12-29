@@ -254,10 +254,10 @@ mv -v $supported.new $supported
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz "
+export CFLAGS="-O3 -march=westmere -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz=none "
 export ASFLAGS=""
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000 --compress-debug-sections=zlib "
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
 ../glibc-2.36/configure \
     --prefix=/usr \
@@ -304,7 +304,7 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3"
+export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz=none"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -353,7 +353,7 @@ popd
 mkdir ../glibc-buildroot-avx512
 pushd ../glibc-buildroot-avx512
 
-export CFLAGS="-O3 -march=x86-64-v4 -mtune=skylake -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -Wl,-z,x86-64-v4 "
+export CFLAGS="-O3 -march=x86-64-v4 -mtune=sapphirerapids -g2 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -Wl,-z,x86-64-v4 -gz=none"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -D__AVX512__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
