@@ -9,3 +9,14 @@
    if (mm == MAP_FAILED)
      return mm;
  
+--- glibc-2.36/malloc/malloc.c~	2022-12-30 18:10:21.000000000 +0000
++++ glibc-2.36/malloc/malloc.c	2022-12-30 18:14:26.007645056 +0000
+@@ -2031,7 +2031,7 @@
+       p = q;
+     }
+ 
+-  __madvise (p, size, MADV_HUGEPAGE);
++  __madvise (p, size, MADV_COLLAPSE);
+ #endif
+ }
+ 
