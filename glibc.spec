@@ -38,6 +38,7 @@ Patch28:	stateless.patch
 #Patch29:	nsswitch-altfiles-bugfix.patch
 Patch32:	mathlto.patch
 Patch35:	vzeroupper-2.27.patch
+Patch36:	populate.patch
 # backports of libm work
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
 Patch50:	pause.patch
@@ -229,6 +230,7 @@ GNU C library extra components.
 %patch28 -p1
 %patch32 -p1
 %patch35 -p1
+%patch36 -p1
 %patch50 -p1
 #%patch51 -p1
 %patch53 -p1
