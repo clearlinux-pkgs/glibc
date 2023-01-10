@@ -19,6 +19,9 @@ Adhemerval Zanella Netto (5):
       sunrpc: Suppress GCC -Os warning on user2netname
       x86: Fix -Os build (BZ #29576)
 
+Alan Modra (1):
+      elf/tst-tlsopt-powerpc fails when compiled with -mcpu=power10 (BZ# 29776)
+
 Arjun Shankar (2):
       socket: Check lengths before advancing pointer in CMSG_NXTHDR
       NEWS: Add entry for bug 28846
@@ -38,7 +41,7 @@ Aurelien Jarno (10):
 Fabian Vogt (1):
       nscd: Fix netlink cache invalidation if epoll is used [BZ #29415]
 
-Florian Weimer (30):
+Florian Weimer (31):
       dlfcn: Pass caller pointer to static dlopen implementation (bug 29446)
       Linux: Terminate subprocess on late failure in tst-pidfd (bug 29485)
       alpha: Fix generic brk system call emulation in __brk_call (bug 29490)
@@ -69,6 +72,7 @@ Florian Weimer (30):
       nss: Use shared prefix in IPv4 address in tst-reload1
       elf: Do not completely clear reused namespace in dlmopen (bug 29600)
       Linux: Support __IPC_64 in sysvctl *ctl command arguments (bug 29771)
+      time: Set daylight to 1 for matching DST/offset change (bug 29951)
 
 H.J. Lu (1):
       wcsmbs: Add missing test-c8rtomb/test-mbrtoc8 dependency
@@ -193,10 +197,10 @@ index d1e139d03c..09c0cf8357 100644
  else	   					# -s
  verbose	:=
 diff --git a/NEWS b/NEWS
-index f61e521fc8..fb2d73a6be 100644
+index f61e521fc8..8c79e83b77 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,52 @@ See the end for copying conditions.
+@@ -5,6 +5,54 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -245,6 +249,8 @@ index f61e521fc8..fb2d73a6be 100644
 +    platforms
 +  [29730] broken y2038 support in fstatat on MIPS N64
 +  [29771] Restore IPC_64 support in sysvipc *ctl functions
++  [29776] elf/tst-tlsopt-powerpc fails when compiled with -mcpu=power10
++  [29951] time: Set daylight to 1 for matching DST/offset change
 +
  Version 2.36
  
@@ -5864,6 +5870,23 @@ index bcff909b2f..5cda9bb072 100644
  	    res->got_ipv6 = true;
  	}
        at[count].next = at + count + 1;
+diff --git a/sysdeps/powerpc/mod-tlsopt-powerpc.c b/sysdeps/powerpc/mod-tlsopt-powerpc.c
+index 2a82e53baf..d941024963 100644
+--- a/sysdeps/powerpc/mod-tlsopt-powerpc.c
++++ b/sysdeps/powerpc/mod-tlsopt-powerpc.c
+@@ -22,7 +22,11 @@ tls_get_addr_opt_test (void)
+   tls_index *tls_arg;
+ #ifdef __powerpc64__
+   register unsigned long thread_pointer __asm__ ("r13");
+-  asm ("addi %0,2,foo@got@tlsgd" : "=r" (tls_arg));
++# ifdef __PCREL__
++  asm ("paddi %0,0,foo@got@tlsgd@pcrel,1" : "=b" (tls_arg));
++# else
++  asm ("addi %0,2,foo@got@tlsgd" : "=b" (tls_arg));
++# endif
+ #else
+   register unsigned long thread_pointer __asm__ ("r2");
+   asm ("bcl 20,31,1f\n1:\t"
 diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
 index a139a16532..3ceda9fdbf 100644
 --- a/sysdeps/unix/sysv/linux/Makefile
@@ -7985,7 +8008,7 @@ index 494c89bf54..e9a6006710 100644
        return -1;
      }
 diff --git a/time/tzfile.c b/time/tzfile.c
-index dd75848ba9..394b098856 100644
+index dd75848ba9..8bba4e5b8d 100644
 --- a/time/tzfile.c
 +++ b/time/tzfile.c
 @@ -32,7 +32,7 @@
@@ -7997,6 +8020,185 @@ index dd75848ba9..394b098856 100644
  
  struct ttinfo
    {
+@@ -61,6 +61,10 @@ static size_t num_leaps;
+ static struct leap *leaps;
+ static char *tzspec;
+ 
++/* Used to restore the daylight variable during time conversion, as if
++   tzset had been called.  */
++static int daylight_saved;
++
+ #include <endian.h>
+ #include <byteswap.h>
+ 
+@@ -438,36 +442,35 @@ __tzfile_read (const char *file, size_t extra, char **extrap)
+   if (__tzname[1] == NULL)
+     __tzname[1] = __tzname[0];
+ 
++  daylight_saved = 0;
+   if (num_transitions == 0)
+     /* Use the first rule (which should also be the only one).  */
+     rule_stdoff = rule_dstoff = types[0].offset;
+   else
+     {
+-      int stdoff_set = 0, dstoff_set = 0;
+-      rule_stdoff = rule_dstoff = 0;
++      rule_stdoff = 0;
++
++      /* Search for the last rule with a standard time offset.  This
++	 will be used for the global timezone variable.  */
+       i = num_transitions - 1;
+       do
+-	{
+-	  if (!stdoff_set && !types[type_idxs[i]].isdst)
+-	    {
+-	      stdoff_set = 1;
+-	      rule_stdoff = types[type_idxs[i]].offset;
+-	    }
+-	  else if (!dstoff_set && types[type_idxs[i]].isdst)
+-	    {
+-	      dstoff_set = 1;
+-	      rule_dstoff = types[type_idxs[i]].offset;
+-	    }
+-	  if (stdoff_set && dstoff_set)
++	if (!types[type_idxs[i]].isdst)
++	  {
++	    rule_stdoff = types[type_idxs[i]].offset;
+ 	    break;
+-	}
++	  }
++	else
++	  daylight_saved = 1;
+       while (i-- > 0);
+ 
+-      if (!dstoff_set)
+-	rule_dstoff = rule_stdoff;
++      /* Keep searching to see if there is a DST rule.  This
++	 information will be used to set the global daylight
++	 variable.  */
++      while (i-- > 0 && !daylight_saved)
++	daylight_saved = types[type_idxs[i]].isdst;
+     }
+ 
+-  __daylight = rule_stdoff != rule_dstoff;
++  __daylight = daylight_saved;
+   __timezone = -rule_stdoff;
+ 
+  done:
+@@ -731,7 +734,7 @@ __tzfile_compute (__time64_t timer, int use_localtime,
+ 	}
+ 
+       struct ttinfo *info = &types[i];
+-      __daylight = rule_stdoff != rule_dstoff;
++      __daylight = daylight_saved;
+       __timezone = -rule_stdoff;
+ 
+       if (__tzname[0] == NULL)
+diff --git a/timezone/Makefile b/timezone/Makefile
+index a789c22d26..5002de39ad 100644
+--- a/timezone/Makefile
++++ b/timezone/Makefile
+@@ -23,7 +23,7 @@ subdir	:= timezone
+ include ../Makeconfig
+ 
+ others	:= zdump zic
+-tests	:= test-tz tst-timezone tst-tzset tst-bz28707
++tests	:= test-tz tst-timezone tst-tzset tst-bz28707 tst-bz29951
+ 
+ generated-dirs += testdata
+ 
+@@ -86,11 +86,13 @@ $(objpfx)tst-timezone.out: $(addprefix $(testdata)/, \
+ 				       Europe/London)
+ $(objpfx)tst-tzset.out: $(addprefix $(testdata)/XT, 1 2 3 4)
+ $(objpfx)tst-bz28707.out: $(testdata)/XT5
++$(objpfx)tst-bz29951.out: $(testdata)/XT6
+ 
+ test-tz-ENV = TZDIR=$(testdata)
+ tst-timezone-ENV = TZDIR=$(testdata)
+ tst-tzset-ENV = TZDIR=$(testdata)
+ tst-bz28707-ENV = TZDIR=$(testdata)
++tst-bz29951-ENV = TZDIR=$(testdata)
+ 
+ # Note this must come second in the deps list for $(built-program-cmd) to work.
+ zic-deps = $(objpfx)zic $(leapseconds) yearistype
+diff --git a/timezone/testdata/XT6 b/timezone/testdata/XT6
+new file mode 100644
+index 0000000000..07b393bb7d
+Binary files /dev/null and b/timezone/testdata/XT6 differ
+diff --git a/timezone/tst-bz29951.c b/timezone/tst-bz29951.c
+new file mode 100644
+index 0000000000..abd334683b
+--- /dev/null
++++ b/timezone/tst-bz29951.c
+@@ -0,0 +1,68 @@
++/* Check that daylight is set if the last DST transition did not change offset.
++   Copyright (C) 2023 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <stdlib.h>
++#include <support/check.h>
++#include <time.h>
++
++/* Set the specified time zone with error checking.  */
++static void
++set_timezone (const char *name)
++{
++  TEST_VERIFY (setenv ("TZ", name, 1) == 0);
++  errno = 0;
++  tzset ();
++  TEST_COMPARE (errno, 0);
++}
++
++static int
++do_test (void)
++{
++  /* Test zone based on tz-2022g version of Africa/Tripoli.  The last
++     DST transition coincided with a change in the standard time
++     offset, effectively making it a no-op.
++
++     Africa/Tripoli  Thu Oct 24 23:59:59 2013 UT
++       = Fri Oct 25 01:59:59 2013 CEST isdst=1 gmtoff=7200
++     Africa/Tripoli  Fri Oct 25 00:00:00 2013 UT
++       = Fri Oct 25 02:00:00 2013 EET isdst=0 gmtoff=7200
++   */
++  set_timezone ("XT6");
++  TEST_VERIFY (daylight != 0);
++  TEST_COMPARE (timezone, -7200);
++
++  /* Check that localtime re-initializes the two variables.  */
++  daylight = timezone = 17;
++  time_t t = 844034401;
++  struct tm *tm = localtime (&t);
++  TEST_VERIFY (daylight != 0);
++  TEST_COMPARE (timezone, -7200);
++  TEST_COMPARE (tm->tm_year, 96);
++  TEST_COMPARE (tm->tm_mon, 8);
++  TEST_COMPARE (tm->tm_mday, 29);
++  TEST_COMPARE (tm->tm_hour, 23);
++  TEST_COMPARE (tm->tm_min, 0);
++  TEST_COMPARE (tm->tm_sec, 1);
++  TEST_COMPARE (tm->tm_gmtoff, 3600);
++  TEST_COMPARE (tm->tm_isdst, 0);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
 index e6b9e8743a..4af102a3f6 100644
 --- a/wcsmbs/Makefile
