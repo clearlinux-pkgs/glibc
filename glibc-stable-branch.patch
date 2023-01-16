@@ -97,9 +97,10 @@ Michael Hudson-Doyle (2):
       Ensure calculations happen with desired rounding mode in y1lf128
       Fix BZ #29463 in the ibm128 implementation of y1l too
 
-Noah Goldstein (2):
+Noah Goldstein (3):
       elf: Replace `strcpy` call with `memcpy` [BZ #29454]
       x86: Fix wcsnlen-avx2 page cross length comparison [BZ #29591]
+      x86: Prevent SIGSEGV in memcmp-sse2 when data is concurrently modified [BZ #29863]
 
 Paul Eggert (1):
       mktime: improve heuristic for ca-1986 Indiana DST
@@ -7871,6 +7872,29 @@ index 68646ef199..7622af259c 100644
        && X86_ISA_CPU_FEATURES_ARCH_P (cpu_features,
  				      AVX_Fast_Unaligned_Load, ))
      {
+diff --git a/sysdeps/x86_64/multiarch/memcmp-sse2.S b/sysdeps/x86_64/multiarch/memcmp-sse2.S
+index afd450d020..51bc9344f0 100644
+--- a/sysdeps/x86_64/multiarch/memcmp-sse2.S
++++ b/sysdeps/x86_64/multiarch/memcmp-sse2.S
+@@ -308,7 +308,17 @@ L(ret_nonzero_vec_end_0):
+ 	setg	%dl
+ 	leal	-1(%rdx, %rdx), %eax
+ #  else
+-	addl	%edx, %eax
++	/* Use `addq` instead of `addl` here so that even if `rax` + `rdx`
++       is negative value of the sum will be usable as a 64-bit offset
++       (negative 32-bit numbers zero-extend to a large and often
++       out-of-bounds 64-bit offsets).  Note that `rax` + `rdx` >= 0 is
++       an invariant when `memcmp` is used correctly, but if the input
++       strings `rsi`/`rdi` are concurrently modified as the function
++       runs (there is a Data-Race) it is possible for `rax` + `rdx` to
++       be negative.  Given that there is virtually no extra to cost
++       using `addq` instead of `addl` we may as well protect the
++       data-race case.  */
++	addq	%rdx, %rax
+ 	movzbl	(VEC_SIZE * -1 + SIZE_OFFSET)(%rsi, %rax), %ecx
+ 	movzbl	(VEC_SIZE * -1 + SIZE_OFFSET)(%rdi, %rax), %eax
+ 	subl	%ecx, %eax
 diff --git a/sysdeps/x86_64/multiarch/rtld-strcpy.S b/sysdeps/x86_64/multiarch/rtld-strcpy.S
 new file mode 100644
 index 0000000000..19439c553d
