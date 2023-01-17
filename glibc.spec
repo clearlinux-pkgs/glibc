@@ -261,7 +261,7 @@ mv -v $supported.new $supported
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=skylake -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz"
+export CFLAGS="-O3 -march=westmere -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz"
 export ASFLAGS=""
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
@@ -409,7 +409,7 @@ mkdir ../glibc-buildroot32
 pushd ../glibc-buildroot32
 
 unset ASFLAGS
-export CFLAGS="-O3 -m32 -march=westmere -mtune=skylake -mstackrealign -g1  -Wl,-z,max-page-size=0x1000 -gdwarf-4 -gz"
+export CFLAGS="-O3 -m32 -march=westmere -mtune=sapphirerapids -mstackrealign -g1  -Wl,-z,max-page-size=0x1000 -gdwarf-4 -gz"
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
