@@ -965,7 +965,6 @@ popd
 %files libc32
 /usr/lib32/*.so
 /usr/lib/ld-linux.so.2
-/usr/bin/lddlibc4
 
 /usr/lib32/glibc/getconf
 /usr/lib32/gconv/
