@@ -10,7 +10,7 @@
 
 Name:           glibc
 Version:        2.37
-Release:        563
+Release:        564
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -37,7 +37,6 @@ Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch28:	stateless.patch
 #Patch29:	nsswitch-altfiles-bugfix.patch
 Patch32:	mathlto.patch
-Patch35:	vzeroupper-2.27.patch
 Patch36:	populate.patch
 # backports of libm work
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
@@ -229,7 +228,6 @@ GNU C library extra components.
 %patch26 -p1
 %patch28 -p1
 %patch32 -p1
-%patch35 -p1
 #%patch36 -p1
 %patch50 -p1
 #%patch51 -p1
