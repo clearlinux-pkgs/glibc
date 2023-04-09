@@ -10,7 +10,7 @@
 
 Name:           glibc
 Version:        2.37
-Release:        564
+Release:        565
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -47,6 +47,7 @@ Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
 Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 Patch57:	glibc-backport.patch
+Patch60:	glibc-2.37/sysdeps/x86/dl-cacheinfo.h~
 
 Patch62:	limit-avx512-freq-damage.patch
 
@@ -236,6 +237,7 @@ GNU C library extra components.
 %patch55 -p1
 %patch56 -p1
 #%patch57 -p1
+%patch60 -p1
 %patch62 -p1
 %patch63 -p1
 %patch64 -p1

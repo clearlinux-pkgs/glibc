@@ -1,0 +1,20 @@
+--- glibc-2.37/sysdeps/x86/dl-cacheinfo.h~	2023-02-01 03:27:45.000000000 +0000
++++ glibc-2.37/sysdeps/x86/dl-cacheinfo.h	2023-04-09 17:07:41.823112932 +0000
+@@ -606,17 +606,11 @@
+ 	       & 0xff);
+         }
+ 
+-        /* Cap usage of highest cache level to the number of supported
+-           threads.  */
+-        if (shared > 0 && threads > 0)
+-          shared /= threads;
+     }
+ 
+   /* Account for non-inclusive L2 and L3 caches.  */
+   if (!inclusive_cache)
+     {
+-      if (threads_l2 > 0)
+-        core /= threads_l2;
+       shared += core;
+     }
+ 
