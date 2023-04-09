@@ -47,7 +47,7 @@ Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
 Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
 Patch57:	glibc-backport.patch
-Patch60:	glibc-2.37/sysdeps/x86/dl-cacheinfo.h~
+Patch60:	nontemp-tweak.patch
 
 Patch62:	limit-avx512-freq-damage.patch
 
