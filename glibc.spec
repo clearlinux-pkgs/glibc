@@ -40,6 +40,7 @@ Patch32:	mathlto.patch
 Patch36:	populate.patch
 # backports of libm work
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
+Patch39: 	tune_adaptive_spin.patch
 Patch51:        gcc-8-fix.patch
 Patch53: 	nostackshrink.patch
 Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
@@ -228,6 +229,7 @@ GNU C library extra components.
 %patch26 -p1
 %patch28 -p1
 %patch32 -p1
+%patch39 -p1
 #%patch36 -p1
 #%patch51 -p1
 %patch53 -p1
