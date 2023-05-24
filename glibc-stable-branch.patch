@@ -15,6 +15,10 @@ Florian Weimer (5):
       gmon: Revert addition of tunables to preserve GLIBC_PRIVATE ABI
       gmon: Revert addition of tunables to the manual
 
+H.J. Lu (2):
+      __check_pf: Add a cancellation cleanup handler [BZ #20975]
+      Document BZ #20975 fix
+
 Joan Bruguera (1):
       elf: Restore ldconfig libc6 implicit soname logic [BZ #30125]
 
@@ -41,10 +45,10 @@ caiyinyu (1):
       gmon: Fix allocated buffer overflow (bug 29444)
 
 diff --git a/NEWS b/NEWS
-index ad5196a5f1..343719044a 100644
+index ad5196a5f1..b54f9d9a9e 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,29 @@ See the end for copying conditions.
+@@ -5,6 +5,30 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -61,6 +65,7 @@ index ad5196a5f1..343719044a 100644
 +
 +The following bugs are resolved with this release:
 +
++  [20975] Deferred cancellation triggers in __check_pf and looses lock leading to deadlock
 +  [27576] gmon: improve mcount overflow handling
 +  [29444] gmon: Fix allocated buffer overflow (bug 29444)
 +  [30053] time: strftime %s returns -1 after 2038 on 32 bits systems
@@ -1418,6 +1423,59 @@ index 2335a99184..d77720a625 100644
  
    if (ret != 0)
      __set_errno (ret);
+diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
+index f298878e8f..94747b37a6 100644
+--- a/sysdeps/unix/sysv/linux/Makefile
++++ b/sysdeps/unix/sysv/linux/Makefile
+@@ -456,6 +456,8 @@ sysdep_headers += netinet/if_fddi.h netinet/if_tr.h \
+ 		  netrom/netrom.h netpacket/packet.h netrose/rose.h \
+ 		  neteconet/ec.h netiucv/iucv.h
+ sysdep_routines += netlink_assert_response
++
++CFLAGS-check_pf.c += -fexceptions
+ endif
+ 
+ # Don't compile the ctype glue code, since there is no old non-GNU C library.
+diff --git a/sysdeps/unix/sysv/linux/check_pf.c b/sysdeps/unix/sysv/linux/check_pf.c
+index de207122b0..50654cb28d 100644
+--- a/sysdeps/unix/sysv/linux/check_pf.c
++++ b/sysdeps/unix/sysv/linux/check_pf.c
+@@ -292,6 +292,14 @@ make_request (int fd, pid_t pid)
+   return NULL;
+ }
+ 
++#ifdef __EXCEPTIONS
++static void
++cancel_handler (void *arg __attribute__((unused)))
++{
++  /* Release the lock.  */
++  __libc_lock_unlock (lock);
++}
++#endif
+ 
+ void
+ attribute_hidden
+@@ -304,6 +312,10 @@ __check_pf (bool *seen_ipv4, bool *seen_ipv6,
+   struct cached_data *olddata = NULL;
+   struct cached_data *data = NULL;
+ 
++#ifdef __EXCEPTIONS
++  /* Make sure that lock is released when the thread is cancelled.  */
++  __libc_cleanup_push (cancel_handler, NULL);
++#endif
+   __libc_lock_lock (lock);
+ 
+   if (cache_valid_p ())
+@@ -338,6 +350,9 @@ __check_pf (bool *seen_ipv4, bool *seen_ipv6,
+ 	}
+     }
+ 
++#ifdef __EXCEPTIONS
++  __libc_cleanup_pop (0);
++#endif
+   __libc_lock_unlock (lock);
+ 
+   if (data != NULL)
 diff --git a/sysdeps/unix/sysv/linux/tst-mman-consts.py b/sysdeps/unix/sysv/linux/tst-mman-consts.py
 index 0bba893064..92b78a877c 100644
 --- a/sysdeps/unix/sysv/linux/tst-mman-consts.py
