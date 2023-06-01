@@ -1,8 +1,9 @@
 Adam Yi (1):
       posix: Fix system blocks SIGCHLD erroneously [BZ #30163]
 
-Adhemerval Zanella (1):
+Adhemerval Zanella (2):
       io: Fix record locking contants on 32 bit arch with 64 bit default time_t (BZ#30477)
+      io: Fix F_GETLK, F_SETLK, and F_SETLKW for powerpc64
 
 Andreas Schwab (1):
       Use 64-bit time_t interfaces in strftime and strptime (bug 30053)
@@ -1757,6 +1758,23 @@ index de207122b0..50654cb28d 100644
    __libc_lock_unlock (lock);
  
    if (data != NULL)
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h b/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
+index 0905cd833c..f7615a447e 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
+@@ -33,6 +33,12 @@
+ # define __O_LARGEFILE	0200000
+ #endif
+ 
++#if __WORDSIZE == 64
++# define F_GETLK	5
++# define F_SETLK	6
++# define F_SETLKW	7
++#endif
++
+ struct flock
+   {
+     short int l_type;	/* Type of lock: F_RDLCK, F_WRLCK, or F_UNLCK.	*/
 diff --git a/sysdeps/unix/sysv/linux/tst-mman-consts.py b/sysdeps/unix/sysv/linux/tst-mman-consts.py
 index 0bba893064..92b78a877c 100644
 --- a/sysdeps/unix/sysv/linux/tst-mman-consts.py
