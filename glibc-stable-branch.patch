@@ -26,6 +26,9 @@ H.J. Lu (2):
 Joan Bruguera (1):
       elf: Restore ldconfig libc6 implicit soname logic [BZ #30125]
 
+John David Anglin (1):
+      hppa: xfail debug/tst-ssp-1 when have-ssp is yes (gcc-12 and later)
+
 Joseph Myers (1):
       Ignore MAP_VARIABLE in tst-mman-consts.py
 
@@ -1758,6 +1761,18 @@ index de207122b0..50654cb28d 100644
    __libc_lock_unlock (lock);
  
    if (data != NULL)
+diff --git a/sysdeps/unix/sysv/linux/hppa/Makefile b/sysdeps/unix/sysv/linux/hppa/Makefile
+index c89ec83182..2e031e2f8a 100644
+--- a/sysdeps/unix/sysv/linux/hppa/Makefile
++++ b/sysdeps/unix/sysv/linux/hppa/Makefile
+@@ -14,3 +14,7 @@ test-xfail-check-execstack = yes
+ test-xfail-check-wx-segment = *
+ 
+ endif # $(subdir) == elf
++
++ifeq ($(subdir),debug)
++test-xfail-tst-ssp-1 = $(have-ssp)
++endif # $(subdir) == debug
 diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h b/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
 index 0905cd833c..f7615a447e 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
