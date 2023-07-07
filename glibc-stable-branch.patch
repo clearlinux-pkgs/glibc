@@ -12,12 +12,13 @@ Carlos O'Donell (2):
       Account for grouping in printf width (bug 30068)
       NEWS: Document CVE-2023-25139.
 
-Florian Weimer (5):
+Florian Weimer (6):
       elf: Smoke-test ldconfig -p against system /etc/ld.so.cache
       gshadow: Matching sgetsgent, sgetsgent_r ERANGE handling (bug 30151)
       x86_64: Fix asm constraints in feraiseexcept (bug 30305)
       gmon: Revert addition of tunables to preserve GLIBC_PRIVATE ABI
       gmon: Revert addition of tunables to the manual
+      elf: _dl_find_object may return 1 during early startup (bug 30515)
 
 H.J. Lu (2):
       __check_pf: Add a cancellation cleanup handler [BZ #20975]
@@ -53,10 +54,10 @@ caiyinyu (1):
       gmon: Fix allocated buffer overflow (bug 29444)
 
 diff --git a/NEWS b/NEWS
-index ad5196a5f1..7869c39673 100644
+index ad5196a5f1..0ec70a1b97 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,31 @@ See the end for copying conditions.
+@@ -5,6 +5,32 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -84,6 +85,7 @@ index ad5196a5f1..7869c39673 100644
 +  [30163] posix: Fix system blocks SIGCHLD erroneously
 +  [30305] x86_64: Fix asm constraints in feraiseexcept
 +  [30477] libc: [RISCV]: time64 does not work on riscv32
++  [30515] _dl_find_object incorrectly returns 1 during early startup
 +
  Version 2.37
  
@@ -133,6 +135,19 @@ index b509b3eada..0d19964d42 100644
  # Test static linking of all the libraries we can possibly link
  # together.  Note that in some configurations this may be less than the
  # complete list of libraries we build but we try to maxmimize this list.
+diff --git a/elf/dl-find_object.c b/elf/dl-find_object.c
+index 2ced2f3510..934e77e11f 100644
+--- a/elf/dl-find_object.c
++++ b/elf/dl-find_object.c
+@@ -46,7 +46,7 @@ _dl_find_object_slow (void *pc, struct dl_find_object *result)
+           struct dl_find_object_internal internal;
+           _dl_find_object_from_map (l, &internal);
+           _dl_find_object_to_external (&internal, result);
+-          return 1;
++          return 0;
+         }
+ 
+   /* Object not found.  */
 diff --git a/elf/dl-tunables.list b/elf/dl-tunables.list
 index a685f5cdbc..695ba7192e 100644
 --- a/elf/dl-tunables.list
@@ -257,6 +272,28 @@ index c5c3591eef..bc13d9acc6 100644
 -
  /* Get architecture specific version of process_elf_file.  */
  #include <readelflib.c>
+diff --git a/elf/tst-auditmod28.c b/elf/tst-auditmod28.c
+index f6ab991398..f6dfbbe202 100644
+--- a/elf/tst-auditmod28.c
++++ b/elf/tst-auditmod28.c
+@@ -71,6 +71,17 @@ la_version (unsigned int current)
+   TEST_VERIFY (dladdr1 (&_exit, &info, &extra_info, RTLD_DL_LINKMAP) != 0);
+   TEST_VERIFY (extra_info == handle);
+ 
++  /* Check _dl_find_object.  */
++  struct dl_find_object dlfo;
++  TEST_COMPARE (_dl_find_object (__builtin_return_address (0), &dlfo), 0);
++  /* "ld.so" is seen with --enable-hardcoded-path-in-tests.  */
++  if (strcmp (basename (dlfo.dlfo_link_map->l_name), "ld.so") != 0)
++    TEST_COMPARE_STRING (basename (dlfo.dlfo_link_map->l_name), LD_SO);
++  TEST_COMPARE (_dl_find_object (dlsym (handle, "environ"), &dlfo), 0);
++  TEST_COMPARE_STRING (basename (dlfo.dlfo_link_map->l_name), LIBC_SO);
++  TEST_COMPARE (_dl_find_object ((void *) 1, &dlfo), -1);
++  TEST_COMPARE (_dl_find_object ((void *) -1, &dlfo), -1);
++
+   /* Verify that dlmopen creates a new namespace.  */
+   void *dlmopen_handle = xdlmopen (LM_ID_NEWLM, LIBC_SO, RTLD_NOW);
+   TEST_VERIFY (dlmopen_handle != handle);
 diff --git a/elf/tst-ldconfig-p.sh b/elf/tst-ldconfig-p.sh
 new file mode 100644
 index 0000000000..ec937bf4ec
