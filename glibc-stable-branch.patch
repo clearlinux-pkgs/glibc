@@ -1,10 +1,11 @@
 Adam Yi (1):
       posix: Fix system blocks SIGCHLD erroneously [BZ #30163]
 
-Adhemerval Zanella (3):
+Adhemerval Zanella (4):
       io: Fix record locking contants on 32 bit arch with 64 bit default time_t (BZ#30477)
       io: Fix F_GETLK, F_SETLK, and F_SETLKW for powerpc64
       nptl: Fix tst-cancel30 on sparc64
+      sparc: Fix la_symbind for bind-now (BZ 23734)
 
 Andreas Schwab (1):
       Use 64-bit time_t interfaces in strftime and strptime (bug 30053)
@@ -136,6 +137,30 @@ index b509b3eada..0d19964d42 100644
  # Test static linking of all the libraries we can possibly link
  # together.  Note that in some configurations this may be less than the
  # complete list of libraries we build but we try to maxmimize this list.
+diff --git a/elf/dl-audit.c b/elf/dl-audit.c
+index 00e794aa26..81543f85fe 100644
+--- a/elf/dl-audit.c
++++ b/elf/dl-audit.c
+@@ -176,8 +176,8 @@ rtld_hidden_def (_dl_audit_symbind_alt)
+ 
+ void
+ _dl_audit_symbind (struct link_map *l, struct reloc_result *reloc_result,
+-		   const ElfW(Sym) *defsym, DL_FIXUP_VALUE_TYPE *value,
+-		   lookup_t result)
++		   const void *reloc, const ElfW(Sym) *defsym,
++		   DL_FIXUP_VALUE_TYPE *value, lookup_t result, bool lazy)
+ {
+   bool for_jmp_slot = reloc_result == NULL;
+ 
+@@ -259,7 +259,7 @@ _dl_audit_symbind (struct link_map *l, struct reloc_result *reloc_result,
+     }
+ 
+   if (flags & LA_SYMB_ALTVALUE)
+-    DL_FIXUP_BINDNOW_RELOC (value, new_value, sym.st_value);
++    DL_FIXUP_BINDNOW_RELOC (l, reloc, value, new_value, sym.st_value, lazy);
+ }
+ 
+ void
 diff --git a/elf/dl-find_object.c b/elf/dl-find_object.c
 index 2ced2f3510..934e77e11f 100644
 --- a/elf/dl-find_object.c
@@ -149,6 +174,29 @@ index 2ced2f3510..934e77e11f 100644
          }
  
    /* Object not found.  */
+diff --git a/elf/dl-runtime.c b/elf/dl-runtime.c
+index d35a725415..32a8bfcf74 100644
+--- a/elf/dl-runtime.c
++++ b/elf/dl-runtime.c
+@@ -139,7 +139,7 @@ _dl_fixup (
+       unsigned int init = atomic_load_acquire (&reloc_result->init);
+       if (init == 0)
+ 	{
+-	  _dl_audit_symbind (l, reloc_result, sym, &value, result);
++	  _dl_audit_symbind (l, reloc_result, reloc, sym, &value, result, true);
+ 
+ 	  /* Store the result for later runs.  */
+ 	  if (__glibc_likely (! GLRO(dl_bind_not)))
+@@ -314,7 +314,8 @@ _dl_profile_fixup (
+ 	 auditing libraries the possibility to change the value and
+ 	 tell us whether further auditing is wanted.  */
+       if (defsym != NULL && GLRO(dl_naudit) > 0)
+-	_dl_audit_symbind (l, reloc_result, defsym, &value, result);
++	_dl_audit_symbind (l, reloc_result, reloc, defsym, &value, result,
++			   true);
+ #endif
+ 
+       /* Store the result for later runs.  */
 diff --git a/elf/dl-tunables.list b/elf/dl-tunables.list
 index a685f5cdbc..695ba7192e 100644
 --- a/elf/dl-tunables.list
@@ -171,6 +219,30 @@ index a685f5cdbc..695ba7192e 100644
 +    }
 +  }
  }
+diff --git a/elf/do-rel.h b/elf/do-rel.h
+index 7e1cc4452a..ea973b155a 100644
+--- a/elf/do-rel.h
++++ b/elf/do-rel.h
+@@ -154,7 +154,8 @@ elf_dynamic_do_Rel (struct link_map *map, struct r_scope_elem *scope[],
+ 		    = RESOLVE_MAP (map, scope, &sym, rversion,
+ 				   ELF_MACHINE_JMP_SLOT);
+ 		  if (sym != NULL)
+-		    _dl_audit_symbind (map, NULL, sym, r_addr_arg, sym_map);
++		    _dl_audit_symbind (map, NULL, r, sym, r_addr_arg, sym_map,
++				       false);
+ 		}
+ #endif
+ 	    }
+@@ -200,7 +201,8 @@ elf_dynamic_do_Rel (struct link_map *map, struct r_scope_elem *scope[],
+ 				   (struct r_found_version *) NULL,
+ 				   ELF_MACHINE_JMP_SLOT);
+ 		  if (sym != NULL)
+-		    _dl_audit_symbind (map, NULL , sym,r_addr_arg, sym_map);
++		    _dl_audit_symbind (map, NULL, r, sym,r_addr_arg, sym_map,
++				       false);
+ 		}
+ # endif
+ 	    }
 diff --git a/elf/elf.h b/elf/elf.h
 index b6a75c13a8..4bc0e4299c 100644
 --- a/elf/elf.h
@@ -1733,6 +1805,17 @@ index 77b1e4e8d6..9559836d4c 100644
  #endif
  
  /* Check that the timespec on the left represents a time before the
+diff --git a/sysdeps/generic/dl-lookupcfg.h b/sysdeps/generic/dl-lookupcfg.h
+index cc5e9d619b..e4f6358f88 100644
+--- a/sysdeps/generic/dl-lookupcfg.h
++++ b/sysdeps/generic/dl-lookupcfg.h
+@@ -27,5 +27,5 @@
+ #define DL_FIXUP_VALUE_ADDR(value) (value)
+ #define DL_FIXUP_ADDR_VALUE(addr) (addr)
+ #define DL_FIXUP_BINDNOW_ADDR_VALUE(addr) (addr)
+-#define DL_FIXUP_BINDNOW_RELOC(value, new_value, st_value) \
++#define DL_FIXUP_BINDNOW_RELOC(l, reloc, value, new_value, st_value, lazy) \
+   (*value) = st_value;
 diff --git a/sysdeps/generic/ldconfig.h b/sysdeps/generic/ldconfig.h
 index 0e1a9a9515..e9e9e19d0f 100644
 --- a/sysdeps/generic/ldconfig.h
@@ -1746,6 +1829,43 @@ index 0e1a9a9515..e9e9e19d0f 100644
  /* Declared in readelflib.c.  */
  extern int process_elf_file (const char *file_name, const char *lib,
  			     int *flag, unsigned int *isa_level, char **soname,
+diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+index c99dad77cc..877c60ba89 100644
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -1377,8 +1377,8 @@ void _dl_audit_preinit (struct link_map *l);
+    the flags with LA_SYMB_NOPLTENTER | LA_SYMB_NOPLTEXIT prior calling
+    la_symbind{32,64}.  */
+ void _dl_audit_symbind (struct link_map *l, struct reloc_result *reloc_result,
+-			const ElfW(Sym) *defsym, DL_FIXUP_VALUE_TYPE *value,
+-			lookup_t result)
++			const void *reloc, const ElfW(Sym) *defsym,
++			DL_FIXUP_VALUE_TYPE *value, lookup_t result, bool lazy)
+   attribute_hidden;
+ /* Same as _dl_audit_symbind, but also sets LA_SYMB_DLSYM flag.  */
+ void _dl_audit_symbind_alt (struct link_map *l, const ElfW(Sym) *ref,
+diff --git a/sysdeps/hppa/dl-lookupcfg.h b/sysdeps/hppa/dl-lookupcfg.h
+index 66b3ff9763..28daf3f89b 100644
+--- a/sysdeps/hppa/dl-lookupcfg.h
++++ b/sysdeps/hppa/dl-lookupcfg.h
+@@ -84,5 +84,5 @@ void attribute_hidden _dl_unmap (struct link_map *map);
+ #define DL_FIXUP_ADDR_VALUE(addr) \
+   (*(DL_FIXUP_VALUE_TYPE *) ((uintptr_t) (addr) & ~2))
+ #define DL_FIXUP_BINDNOW_ADDR_VALUE(addr) (addr)
+-#define DL_FIXUP_BINDNOW_RELOC(value, new_value, st_value)	\
++#define DL_FIXUP_BINDNOW_RELOC(l, reloc, value, new_value, st_value, lazy) \
+   *(value) = *(DL_FIXUP_VALUE_TYPE *) ((uintptr_t) (new_value) & ~2)
+diff --git a/sysdeps/ia64/dl-lookupcfg.h b/sysdeps/ia64/dl-lookupcfg.h
+index 0e47e529fe..64218fa7bb 100644
+--- a/sysdeps/ia64/dl-lookupcfg.h
++++ b/sysdeps/ia64/dl-lookupcfg.h
+@@ -75,5 +75,5 @@ extern void attribute_hidden _dl_unmap (struct link_map *map);
+ #define DL_FIXUP_VALUE_ADDR(value) ((uintptr_t) &(value))
+ #define DL_FIXUP_ADDR_VALUE(addr) (*(struct fdesc *) (addr))
+ #define DL_FIXUP_BINDNOW_ADDR_VALUE(addr) (addr)
+-#define DL_FIXUP_BINDNOW_RELOC(value, new_value, st_value) \
++#define DL_FIXUP_BINDNOW_RELOC(l, reloc, value, new_value, st_value, lazy) \
+   (*value) = *(struct fdesc *) (st_value)
 diff --git a/sysdeps/posix/system.c b/sysdeps/posix/system.c
 index 2335a99184..d77720a625 100644
 --- a/sysdeps/posix/system.c
@@ -1770,6 +1890,27 @@ index 2335a99184..d77720a625 100644
  
    if (ret != 0)
      __set_errno (ret);
+diff --git a/sysdeps/powerpc/dl-lookupcfg.h b/sysdeps/powerpc/dl-lookupcfg.h
+index db0869bd33..0d6dcb8e25 100644
+--- a/sysdeps/powerpc/dl-lookupcfg.h
++++ b/sysdeps/powerpc/dl-lookupcfg.h
+@@ -25,7 +25,7 @@
+ /* We need to correctly set the audit modules value for bind-now.  */
+ # define DL_FIXUP_BINDNOW_ADDR_VALUE(addr) \
+  (((Elf64_FuncDesc *)(addr))->fd_func)
+-# define DL_FIXUP_BINDNOW_RELOC(value, new_value, st_value)	\
++# define DL_FIXUP_BINDNOW_RELOC(l, reloc, value, new_value, st_value, lazy) \
+  ({								\
+     Elf64_FuncDesc *opd = (Elf64_FuncDesc *) (value);		\
+     opd->fd_func = (st_value);					\
+@@ -34,6 +34,6 @@
+   })
+ #else
+ # define DL_FIXUP_BINDNOW_ADDR_VALUE(addr) (addr)
+-# define DL_FIXUP_BINDNOW_RELOC(value, new_value, st_value)	\
++# define DL_FIXUP_BINDNOW_RELOC(l, reloc, value, new_value, st_value, lazy) \
+   (*value) = st_value;
+ #endif
 diff --git a/sysdeps/pthread/tst-cancel30.c b/sysdeps/pthread/tst-cancel30.c
 index 6eb4eb5b42..ff803386be 100644
 --- a/sysdeps/pthread/tst-cancel30.c
@@ -1785,6 +1926,61 @@ index 6eb4eb5b42..ff803386be 100644
  # ifndef SYS_ppoll_time64
  #  define SYS_ppoll_time64 SYS_ppoll
  # endif
+diff --git a/sysdeps/sparc/dl-lookupcfg.h b/sysdeps/sparc/dl-lookupcfg.h
+new file mode 100644
+index 0000000000..3a5a5c1d8c
+--- /dev/null
++++ b/sysdeps/sparc/dl-lookupcfg.h
+@@ -0,0 +1,49 @@
++/* Configuration of lookup functions.  SPARC64 version.
++   Copyright (C) 2023 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* The type of the return value of fixup/profile_fixup.  */
++#define DL_FIXUP_VALUE_TYPE ElfW(Addr)
++/* Construct a value of type DL_FIXUP_VALUE_TYPE from a code address
++   and a link map.  */
++#define DL_FIXUP_MAKE_VALUE(map, addr) (addr)
++/* Extract the code address from a value of type DL_FIXUP_MAKE_VALUE.
++ */
++#define DL_FIXUP_VALUE_CODE_ADDR(value) (value)
++#define DL_FIXUP_VALUE_ADDR(value) (value)
++#define DL_FIXUP_ADDR_VALUE(addr) (addr)
++#define DL_FIXUP_BINDNOW_ADDR_VALUE(addr) (addr)
++/* For bindnow, _dl_audit_symbind will be responsible to setup the final value
++   while for lazy binding _dl_fixup/_dl_profile_fixup will call the audit
++   callbacks and tail cail elf_machine_fixup_plt.  */
++#ifdef __arch64__
++# define DL_SPARC_FIXUP(l, r, value, new_value)                              \
++  sparc64_fixup_plt (l, r, value, new_value, (r)->r_addend, 0)
++#else
++# define DL_SPARC_FIXUP(l, r, value, new_value)                              \
++  sparc_fixup_plt (r, value, new_value, 0, 1)
++#endif
++#define DL_FIXUP_BINDNOW_RELOC(l, reloc, value, new_value, st_value, lazy)   \
++  ({                                                                         \
++     if (lazy)                                                               \
++       (*value) = st_value;                                                  \
++     else                                                                    \
++       {                                                                     \
++         const PLTREL *__r = (reloc);                                        \
++         DL_SPARC_FIXUP (l, __r, value, new_value);                          \
++       }                                                                     \
++  })
 diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
 index f298878e8f..94747b37a6 100644
 --- a/sysdeps/unix/sysv/linux/Makefile
