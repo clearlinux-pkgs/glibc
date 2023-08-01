@@ -467,7 +467,6 @@ pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3
 cp math/libm.so %{buildroot}//usr/lib64/glibc-hwcaps/x86-64-v3/libm.so.6
 cp mathvec/libmvec.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libmvec.so.1
-cp crypt/libcrypt.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libcrypt.so.1
 cp libc.so  %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libc.so.6
 popd
 
@@ -965,7 +964,6 @@ popd
 /usr/lib32/libBrokenLocale.so.1
 /usr/lib32/libanl.so.1
 /usr/lib32/libc.so.6
-/usr/lib32/libcrypt.so.1
 /usr/lib32/libdl.so.2
 /usr/lib32/libm.so.6
 /usr/lib32/libnsl.so.1
