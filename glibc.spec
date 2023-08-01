@@ -410,6 +410,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
     --exec_prefix=/usr \
     --bindir=/usr/bin \
     --sbindir=/usr/bin \
+    --enable-crypt \
     --libexecdir=/usr/lib32/glibc \
     --datadir=/usr/share \
     --sysconfdir=%{_sysconfdir} \
@@ -965,6 +966,7 @@ popd
 /usr/lib32/libanl.so.1
 /usr/lib32/libc.so.6
 /usr/lib32/libdl.so.2
+/usr/lib32/libcrypt.so.1
 /usr/lib32/libm.so.6
 /usr/lib32/libnsl.so.1
 /usr/lib32/libnss_db.so.2
