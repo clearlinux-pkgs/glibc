@@ -18,8 +18,8 @@ Signed-off-by: Ikey Doherty <michael.i.doherty@intel.com>
 
 diff --git a/sysdeps/unix/sysv/linux/x86_64/dl-cache.h b/sysdeps/unix/sysv/linux/x86_64/dl-cache.h
 index 01a20cb..5921979 100644
---- a/sysdeps/unix/sysv/linux/x86_64/dl-cache.h
-+++ b/sysdeps/unix/sysv/linux/x86_64/dl-cache.h
+--- a/sysdeps/x86_64/dl-cache.h
++++ b/sysdeps/x86_64/dl-cache.h
 @@ -32,10 +32,10 @@
  	  len -= 2;						\
  	  path[len] = '\0';					\
