@@ -46,7 +46,6 @@ Patch53: 	nostackshrink.patch
 Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
 Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
-Patch57:	glibc-backport.patch
 
 Patch62:	limit-avx512-freq-damage.patch
 
@@ -231,7 +230,6 @@ GNU C library extra components.
 %patch54 -p1
 %patch55 -p1
 %patch56 -p1
-#%patch57 -p1
 %patch62 -p1
 %patch63 -p1
 
