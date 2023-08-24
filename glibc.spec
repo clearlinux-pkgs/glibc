@@ -28,7 +28,6 @@ Patch10:	ld-so-cache-in-var.patch
 Patch12:	mkdir-ldconfig.patch
 Patch13:	locale-var-cache.patch
 Patch14:	nonscd.patch
-Patch17:	alternate_trim.patch
 Patch20:	tzselect-proper-zone-file.patch
 Patch23:	use_madv_free.patch
 Patch24:	malloc_tune.patch
@@ -216,7 +215,6 @@ GNU C library extra components.
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
-%patch17 -p1
 %patch20 -p1
 %patch24 -p1
 #%patch25 -p1
