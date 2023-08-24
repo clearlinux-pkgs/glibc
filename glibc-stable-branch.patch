@@ -14,6 +14,11 @@ Noah Goldstein (1):
 Sajan Karumanchi (1):
       x86: Fix for cache computation on AMD legacy cpus.
 
+Sam James (3):
+      sysdeps: tst-bz21269: fix test parameter
+      sysdeps: tst-bz21269: handle ENOSYS & skip appropriately
+      sysdeps: tst-bz21269: fix -Wreturn-type
+
 diff --git a/NEWS b/NEWS
 index 872bc8907b..c339cb444e 100644
 --- a/NEWS
@@ -765,6 +770,26 @@ index 2b0b8b6368..3aa6a00348 100644
    return __nscd_get_nl_timestamp ();
  #else
    return 0;
+diff --git a/sysdeps/unix/sysv/linux/i386/tst-bz21269.c b/sysdeps/unix/sysv/linux/i386/tst-bz21269.c
+index 51d4a1b082..822c41fceb 100644
+--- a/sysdeps/unix/sysv/linux/i386/tst-bz21269.c
++++ b/sysdeps/unix/sysv/linux/i386/tst-bz21269.c
+@@ -52,7 +52,14 @@ xset_thread_area (struct user_desc *u_info)
+ static void
+ xmodify_ldt (int func, const void *ptr, unsigned long bytecount)
+ {
+-  TEST_VERIFY_EXIT (syscall (SYS_modify_ldt, 1, ptr, bytecount) == 0);
++  long ret = syscall (SYS_modify_ldt, func, ptr, bytecount);
++
++  if (ret == -1)
++    {
++      if (errno == ENOSYS)
++	FAIL_UNSUPPORTED ("modify_ldt not supported");
++      FAIL_EXIT1 ("modify_ldt failed (errno=%d)", errno);
++    }
+ }
+ 
+ static int
 diff --git a/sysdeps/x86/dl-cacheinfo.h b/sysdeps/x86/dl-cacheinfo.h
 index cd4d0351ae..5ddb35c9d9 100644
 --- a/sysdeps/x86/dl-cacheinfo.h
