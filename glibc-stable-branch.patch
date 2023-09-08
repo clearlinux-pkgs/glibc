@@ -2,6 +2,9 @@ Adhemerval Zanella (2):
       x86_64: Fix build with --disable-multiarch (BZ 30721)
       i686: Fix build with --disable-multiarch
 
+Aurelien Jarno (1):
+      io: Fix record locking contants for powerpc64 with __USE_FILE_OFFSET64
+
 Florian Weimer (4):
       stdlib: Improve tst-realpath compatibility with source fortification
       nscd: Do not rebuild getaddrinfo (bug 30709)
@@ -20,14 +23,16 @@ Sam James (3):
       sysdeps: tst-bz21269: fix -Wreturn-type
 
 diff --git a/NEWS b/NEWS
-index 872bc8907b..c339cb444e 100644
+index 872bc8907b..8156572cdf 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -132,6 +132,7 @@ The following bugs are resolved with this release:
+@@ -132,6 +132,9 @@ The following bugs are resolved with this release:
    [30555] string: strerror can incorrectly return NULL
    [30579] malloc: trim_threshold in realloc lead to high memory usage
    [30662] nscd: Group and password cache use errno in place of errval
 +  [30723] posix_memalign repeatedly scans long bin lists
++  [30804] F_GETLK, F_SETLK, and F_SETLKW value change for powerpc64 with
++    -D_FILE_OFFSET_BITS=64
  
  Version 2.37
  
@@ -62,6 +67,26 @@ index 5310c99121..6d1475920f 100644
 -  return 0;
 -}
 -#endif
+diff --git a/io/Makefile b/io/Makefile
+index 6ccc0e8691..8a3c83a3bb 100644
+--- a/io/Makefile
++++ b/io/Makefile
+@@ -192,6 +192,7 @@ tests := \
+   tst-fchownat \
+   tst-fcntl \
+   tst-fcntl-lock \
++  tst-fcntl-lock-lfs \
+   tst-fstatat \
+   tst-fts \
+   tst-fts-lfs \
+diff --git a/io/tst-fcntl-lock-lfs.c b/io/tst-fcntl-lock-lfs.c
+new file mode 100644
+index 0000000000..f2a909fb02
+--- /dev/null
++++ b/io/tst-fcntl-lock-lfs.c
+@@ -0,0 +1,2 @@
++#define _FILE_OFFSET_BITS 64
++#include <io/tst-fcntl-lock.c>
 diff --git a/malloc/malloc.c b/malloc/malloc.c
 index e2f1a615a4..d0bbbf3710 100644
 --- a/malloc/malloc.c
@@ -790,6 +815,19 @@ index 51d4a1b082..822c41fceb 100644
  }
  
  static int
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h b/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
+index f7615a447e..d8a291a331 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
+@@ -33,7 +33,7 @@
+ # define __O_LARGEFILE	0200000
+ #endif
+ 
+-#if __WORDSIZE == 64
++#if __WORDSIZE == 64 && !defined __USE_FILE_OFFSET64
+ # define F_GETLK	5
+ # define F_SETLK	6
+ # define F_SETLKW	7
 diff --git a/sysdeps/x86/dl-cacheinfo.h b/sysdeps/x86/dl-cacheinfo.h
 index cd4d0351ae..5ddb35c9d9 100644
 --- a/sysdeps/x86/dl-cacheinfo.h
