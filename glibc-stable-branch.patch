@@ -1,9 +1,10 @@
 Adam Jackson (1):
       libio: Fix oversized __io_vtables
 
-Adhemerval Zanella (2):
+Adhemerval Zanella (3):
       x86_64: Fix build with --disable-multiarch (BZ 30721)
       i686: Fix build with --disable-multiarch
+      elf: Fix wrong break removal from 8ee878592c
 
 Andreas Schwab (1):
       iconv: restore verbosity with unrecognized encoding names (bug 30694)
@@ -157,6 +158,18 @@ index 62b7332d95..cae67efa0a 100644
  }
  
  /* Enable the glibc.malloc.check tunable in SETUID/SETGID programs only when
+diff --git a/elf/readelflib.c b/elf/readelflib.c
+index f5b8c80e38..64f1d662a9 100644
+--- a/elf/readelflib.c
++++ b/elf/readelflib.c
+@@ -107,6 +107,7 @@ process_elf_file (const char *file_name, const char *lib, int *flag,
+ 	case PT_INTERP:
+ 	  program_interpreter = (char *) (file_contents + segment->p_offset);
+ 	  check_ptr (program_interpreter);
++	  break;
+ 
+ 	case PT_GNU_PROPERTY:
+ 	  /* The NT_GNU_PROPERTY_TYPE_0 note must be aligned to 4 bytes
 diff --git a/elf/tst-env-setuid-tunables.c b/elf/tst-env-setuid-tunables.c
 index 7dfb0e073a..f0b92c97e7 100644
 --- a/elf/tst-env-setuid-tunables.c
