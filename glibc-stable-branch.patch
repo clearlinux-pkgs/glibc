@@ -27,6 +27,12 @@ Florian Weimer (13):
       Revert "elf: Always call destructors in reverse constructor order (bug 30785)"
       Revert "elf: Move l_init_called_next to old place of l_text_end in link map"
 
+H.J. Lu (4):
+      x86-64: Fix the dtv field load for x32 [BZ #31184]
+      x86-64: Fix the tcb field load for x32 [BZ #31185]
+      NEWS: Mention bug fixes for 29039/30694/30709/30721
+      NEWS: Mention bug fixes for 30745/30843
+
 Hector Martin (1):
       elf: Fix TLS modid reuse generation assignment (BZ 29039)
 
@@ -66,10 +72,10 @@ caiyinyu (1):
       LoongArch: Delete excessively allocated memory.
 
 diff --git a/NEWS b/NEWS
-index 872bc8907b..5ac488bf9b 100644
+index 872bc8907b..905230b838 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,40 @@ See the end for copying conditions.
+@@ -4,6 +4,48 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -100,12 +106,20 @@ index 872bc8907b..5ac488bf9b 100644
 +
 +The following bugs are resolved with this release:
 +
++  [29039] Corrupt DTV after reuse of a TLS module ID following dlclose with unused TLS
++  [30694] The iconv program no longer tells the user which given encoding name was wrong
++  [30709] nscd fails to build with cleanup handler if built with -fexceptions
++  [30721] x86_64: Fix build with --disable-multiarch
 +  [30723] posix_memalign repeatedly scans long bin lists
++  [30745] Slight bug in cache info codes for x86
 +  [30789] sem_open will fail on multithreaded scenarios when semaphore
 +    file doesn't exist (O_CREAT)
 +  [30804] F_GETLK, F_SETLK, and F_SETLKW value change for powerpc64 with
 +    -D_FILE_OFFSET_BITS=64
 +  [30842] Stack read overflow in getaddrinfo in no-aaaa mode (CVE-2023-4527)
++  [30843] potential use-after-free in getcanonname (CVE-2023-4806)
++  [31184] FAIL: elf/tst-tlsgap
++  [31185] Incorrect thread point access in _dl_tlsdesc_undefweak and _dl_tlsdesc_dynamic
 +
  
  Version 2.38
@@ -2264,6 +2278,37 @@ index cd4d0351ae..5ddb35c9d9 100644
      }
  
    cpu_features->level1_icache_size = level1_icache_size;
+diff --git a/sysdeps/x86_64/dl-tlsdesc.S b/sysdeps/x86_64/dl-tlsdesc.S
+index 5593897e29..4579424bf7 100644
+--- a/sysdeps/x86_64/dl-tlsdesc.S
++++ b/sysdeps/x86_64/dl-tlsdesc.S
+@@ -61,7 +61,7 @@ _dl_tlsdesc_return:
+ _dl_tlsdesc_undefweak:
+ 	_CET_ENDBR
+ 	movq	8(%rax), %rax
+-	subq	%fs:0, %rax
++	sub	%fs:0, %RAX_LP
+ 	ret
+ 	cfi_endproc
+ 	.size	_dl_tlsdesc_undefweak, .-_dl_tlsdesc_undefweak
+@@ -102,7 +102,7 @@ _dl_tlsdesc_dynamic:
+ 	/* Preserve call-clobbered registers that we modify.
+ 	   We need two scratch regs anyway.  */
+ 	movq	%rsi, -16(%rsp)
+-	movq	%fs:DTV_OFFSET, %rsi
++	mov	%fs:DTV_OFFSET, %RSI_LP
+ 	movq	%rdi, -8(%rsp)
+ 	movq	TLSDESC_ARG(%rax), %rdi
+ 	movq	(%rsi), %rax
+@@ -116,7 +116,7 @@ _dl_tlsdesc_dynamic:
+ 	addq	TLSDESC_MODOFF(%rdi), %rax
+ .Lret:
+ 	movq	-16(%rsp), %rsi
+-	subq	%fs:0, %rax
++	sub	%fs:0, %RAX_LP
+ 	movq	-8(%rsp), %rdi
+ 	ret
+ .Lslow:
 diff --git a/sysdeps/x86_64/memcpy.S b/sysdeps/x86_64/memcpy.S
 index d98500a78a..4922cba657 100644
 --- a/sysdeps/x86_64/memcpy.S
