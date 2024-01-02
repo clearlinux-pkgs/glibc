@@ -6,13 +6,14 @@ Adhemerval Zanella (3):
       i686: Fix build with --disable-multiarch
       elf: Fix wrong break removal from 8ee878592c
 
-Andreas Schwab (1):
+Andreas Schwab (2):
       iconv: restore verbosity with unrecognized encoding names (bug 30694)
+      getaddrinfo: translate ENOMEM to EAI_MEMORY (bug 31163)
 
 Aurelien Jarno (1):
       io: Fix record locking contants for powerpc64 with __USE_FILE_OFFSET64
 
-Florian Weimer (13):
+Florian Weimer (14):
       stdlib: Improve tst-realpath compatibility with source fortification
       nscd: Do not rebuild getaddrinfo (bug 30709)
       malloc: Enable merging of remainders in memalign (bug 30723)
@@ -26,6 +27,7 @@ Florian Weimer (13):
       Revert "elf: Remove unused l_text_end field from struct link_map"
       Revert "elf: Always call destructors in reverse constructor order (bug 30785)"
       Revert "elf: Move l_init_called_next to old place of l_text_end in link map"
+      libio: Check remaining buffer size in _IO_wdo_write (bug 31183)
 
 H.J. Lu (4):
       x86-64: Fix the dtv field load for x32 [BZ #31184]
@@ -72,10 +74,10 @@ caiyinyu (1):
       LoongArch: Delete excessively allocated memory.
 
 diff --git a/NEWS b/NEWS
-index 872bc8907b..905230b838 100644
+index 872bc8907b..6768c2da6f 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -4,6 +4,48 @@ See the end for copying conditions.
+@@ -4,6 +4,49 @@ See the end for copying conditions.
  
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
@@ -118,6 +120,7 @@ index 872bc8907b..905230b838 100644
 +    -D_FILE_OFFSET_BITS=64
 +  [30842] Stack read overflow in getaddrinfo in no-aaaa mode (CVE-2023-4527)
 +  [30843] potential use-after-free in getcanonname (CVE-2023-4806)
++  [31183] Wide stream buffer size reduced MB_LEN_MAX bytes after bug 17522 fix
 +  [31184] FAIL: elf/tst-tlsgap
 +  [31185] Incorrect thread point access in _dl_tlsdesc_undefweak and _dl_tlsdesc_dynamic
 +
@@ -564,6 +567,19 @@ index 1d8ad612e9..34f7e15f1c 100644
  
  #ifdef SHARED
  
+diff --git a/libio/wfileops.c b/libio/wfileops.c
+index f16f6db1c3..9ab8f2e7f3 100644
+--- a/libio/wfileops.c
++++ b/libio/wfileops.c
+@@ -55,7 +55,7 @@ _IO_wdo_write (FILE *fp, const wchar_t *data, size_t to_do)
+ 	  char mb_buf[MB_LEN_MAX];
+ 	  char *write_base, *write_ptr, *buf_end;
+ 
+-	  if (fp->_IO_write_ptr - fp->_IO_write_base < sizeof (mb_buf))
++	  if (fp->_IO_buf_end - fp->_IO_write_ptr < sizeof (mb_buf))
+ 	    {
+ 	      /* Make sure we have room for at least one multibyte
+ 		 character.  */
 diff --git a/malloc/malloc.c b/malloc/malloc.c
 index e2f1a615a4..d0bbbf3710 100644
 --- a/malloc/malloc.c
@@ -1798,7 +1814,7 @@ index 02375286f8..99fcacab76 100644
  	FREG_L	fa0, sp, 9*SZREG + 0*SZFREG
  	FREG_L	fa1, sp, 9*SZREG + 1*SZFREG
 diff --git a/sysdeps/posix/getaddrinfo.c b/sysdeps/posix/getaddrinfo.c
-index 0356b622be..13082305d3 100644
+index 0356b622be..da573bea24 100644
 --- a/sysdeps/posix/getaddrinfo.c
 +++ b/sysdeps/posix/getaddrinfo.c
 @@ -120,6 +120,7 @@ struct gaih_result
@@ -1872,7 +1888,23 @@ index 0356b622be..13082305d3 100644
  	/* If the canonical name cannot be determined, use the passed
  	   string.  */
  	s = (char *) name;
-@@ -771,7 +780,7 @@ get_nss_addresses (const char *name, const struct addrinfo *req,
+@@ -607,7 +616,14 @@ get_nss_addresses (const char *name, const struct addrinfo *req,
+      function variant.  */
+   res_ctx = __resolv_context_get ();
+   if (res_ctx == NULL)
+-    no_more = 1;
++    {
++      if (errno == ENOMEM)
++	{
++	  result = -EAI_MEMORY;
++	  goto out;
++	}
++      no_more = 1;
++    }
+ 
+   while (!no_more)
+     {
+@@ -771,7 +787,7 @@ get_nss_addresses (const char *name, const struct addrinfo *req,
  		  if ((req->ai_flags & AI_CANONNAME) != 0
  		      && res->canon == NULL)
  		    {
@@ -1881,7 +1913,7 @@ index 0356b622be..13082305d3 100644
  		      if (canonbuf == NULL)
  			{
  			  __resolv_context_put (res_ctx);
-@@ -1187,9 +1196,7 @@ free_and_return:
+@@ -1187,9 +1203,7 @@ free_and_return:
    if (malloc_name)
      free ((char *) name);
    free (addrmem);
