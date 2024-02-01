@@ -2,7 +2,7 @@
 set -e -o pipefail
 
 GLIBC_GIT=~/git/glibc
-GLIBC_VER=2.38
+GLIBC_VER=2.39
 
 GLIBC_TAG=glibc-"${GLIBC_VER}"
 GLIBC_BRANCH=origin/release/"${GLIBC_VER}"/master
