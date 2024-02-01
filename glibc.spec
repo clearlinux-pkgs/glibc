@@ -35,13 +35,11 @@ Patch25:        calloc.patch
 Patch26:	0001-misc-Support-fallback-stateless-shells-path-in-absen.patch
 Patch28:	stateless.patch
 #Patch29:	nsswitch-altfiles-bugfix.patch
-Patch32:	mathlto.patch
 Patch36:	populate.patch
 # backports of libm work
 Patch38:        0001-x86-64-Remove-sysdeps-x86_64-fpu-s_sinf.S.patch
 Patch39: 	tune_adaptive_spin.patch
 Patch51:        gcc-8-fix.patch
-Patch53: 	nostackshrink.patch
 Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
 Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
@@ -220,11 +218,9 @@ GNU C library extra components.
 #%patch25 -p1
 %patch26 -p1
 %patch28 -p1
-%patch32 -p1
 %patch39 -p1
 #%patch36 -p1
 #%patch51 -p1
-%patch53 -p1
 %patch54 -p1
 %patch55 -p1
 %patch56 -p1
