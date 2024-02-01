@@ -534,9 +534,7 @@ mv %{buildroot}/usr/sbin/iconvconfig %{buildroot}/usr/bin/iconvconfig
 mv %{buildroot}/usr/sbin/* %{buildroot}/usr/bin/
 
 # swup compatibility hack 
-cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.33.so
 cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.39.so
-cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.33.so
 cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.39.so
 rm %{buildroot}/usr/lib64/libc.so.6
 rm %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
@@ -714,13 +712,11 @@ popd
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/ld-2.33.so
 /usr/lib64/ld-2.39.so
 /usr/lib64/libBrokenLocale.so.1
 #/usr/lib64/libSegFault.so
 /usr/lib64/libanl.so.1
 /usr/lib64/libc.so.6
-/usr/lib64/libc-2.33.so
 /usr/lib64/libc-2.39.so
 /usr/lib64/libdl.so.2
 /usr/lib64/libm.so.6
