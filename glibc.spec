@@ -461,7 +461,7 @@ pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/V3//usr/lib64/
 cp math/libm.so %{buildroot}/V3/usr/lib64/libm.so.6
 cp mathvec/libmvec.so %{buildroot}/V3/usr/lib64/libmvec.so.1
-cp libc.so  %{buildroot}/V3//usr/lib64/libc.so.6
+cp libc.so  %{buildroot}/V3//usr/lib64/libc-2.39.so
 popd
 
 pushd ../glibc-buildroot-avx512
