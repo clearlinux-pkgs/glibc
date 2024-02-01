@@ -153,6 +153,7 @@ License:        GPL-2.0
 Summary:        GNU C library
 Group:          devel
 Requires:	rpcsvc-proto-dev
+Requires:	libxcrypt-dev
 
 %description dev
 GNU C library.
