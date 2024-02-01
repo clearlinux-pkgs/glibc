@@ -72,6 +72,12 @@ Siddhesh Poyarekar (4):
       Propagate GLIBC_TUNABLES in setxid binaries
       tunables: Terminate if end of input is reached (CVE-2023-4911)
 
+Stefan Liebler (1):
+      S390: Fix building with --disable-mutli-arch [BZ #31196]
+
+Sunil K Pandey (1):
+      x86_64: Optimize ffsll function code size.
+
 Szabolcs Nagy (1):
       elf: Add TLS modid reuse test for bug 29039
 
@@ -2182,6 +2188,36 @@ index e5db929d20..0e331a7445 100644
  	  if (fd == -1)
  	    {
  	      if (errno == EEXIST)
+diff --git a/sysdeps/s390/memrchr-c.c b/sysdeps/s390/memrchr-c.c
+index bdf3c7bbe0..fadd63087a 100644
+--- a/sysdeps/s390/memrchr-c.c
++++ b/sysdeps/s390/memrchr-c.c
+@@ -25,7 +25,9 @@
+ 
+ # include <string/memrchr.c>
+ 
+-# if defined SHARED && IS_IN (libc)
++# if HAVE_MEMRCHR_IFUNC
++#  if defined SHARED && IS_IN (libc)
+ __hidden_ver1 (__memrchr_c, __GI___memrchr, __memrchr_c);
++#  endif
+ # endif
+ #endif
+diff --git a/sysdeps/s390/strchrnul-c.c b/sysdeps/s390/strchrnul-c.c
+index f6f5bae311..97fbc16edb 100644
+--- a/sysdeps/s390/strchrnul-c.c
++++ b/sysdeps/s390/strchrnul-c.c
+@@ -24,7 +24,9 @@
+ # endif
+ 
+ # include <string/strchrnul.c>
+-# if defined SHARED && IS_IN (libc)
++# if HAVE_STRCHRNUL_IFUNC
++#  if defined SHARED && IS_IN (libc)
+ __hidden_ver1 (__strchrnul_c, __GI___strchrnul, __strchrnul_c);
++#  endif
+ # endif
+ #endif
 diff --git a/sysdeps/unix/sysv/linux/check_pf.c b/sysdeps/unix/sysv/linux/check_pf.c
 index 2b0b8b6368..3aa6a00348 100644
 --- a/sysdeps/unix/sysv/linux/check_pf.c
@@ -2559,6 +2595,29 @@ index 5593897e29..4579424bf7 100644
  	movq	-8(%rsp), %rdi
  	ret
  .Lslow:
+diff --git a/sysdeps/x86_64/ffsll.c b/sysdeps/x86_64/ffsll.c
+index a1c13d4906..0c6680735c 100644
+--- a/sysdeps/x86_64/ffsll.c
++++ b/sysdeps/x86_64/ffsll.c
+@@ -26,13 +26,13 @@ int
+ ffsll (long long int x)
+ {
+   long long int cnt;
+-  long long int tmp;
+ 
+-  asm ("bsfq %2,%0\n"		/* Count low bits in X and store in %1.  */
+-       "cmoveq %1,%0\n"		/* If number was zero, use -1 as result.  */
+-       : "=&r" (cnt), "=r" (tmp) : "rm" (x), "1" (-1));
++  asm ("mov $-1,%k0\n"	/* Initialize cnt to -1.  */
++       "bsf %1,%0\n"	/* Count low bits in x and store in cnt.  */
++       "inc %k0\n"	/* Increment cnt by 1.  */
++       : "=&r" (cnt) : "r" (x));
+ 
+-  return cnt + 1;
++  return cnt;
+ }
+ 
+ #ifndef __ILP32__
 diff --git a/sysdeps/x86_64/memcpy.S b/sysdeps/x86_64/memcpy.S
 index d98500a78a..4922cba657 100644
 --- a/sysdeps/x86_64/memcpy.S
