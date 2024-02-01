@@ -457,16 +457,16 @@ make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 popd
 
 pushd ../glibc-buildroot-avx2
-mkdir -p %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3
-cp math/libm.so %{buildroot}//usr/lib64/glibc-hwcaps/x86-64-v3/libm.so.6
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libmvec.so.1
-cp libc.so  %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v3/libc.so.6
+mkdir -p %{buildroot}/V3//usr/lib64/
+cp math/libm.so %{buildroot}/V3/usr/lib64/libm.so.6
+cp mathvec/libmvec.so %{buildroot}/V3/usr/lib64/libmvec.so.1
+cp libc.so  %{buildroot}/V3//usr/lib64/libc.so.6
 popd
 
 pushd ../glibc-buildroot-avx512
-mkdir -p %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v4
-cp math/libm.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v4/libm.so.6
-cp mathvec/libmvec.so %{buildroot}/usr/lib64/glibc-hwcaps/x86-64-v4/libmvec.so.1
+mkdir -p %{buildroot}/V4/usr/lib64/
+cp math/libm.so %{buildroot}/V4/usr/lib64/libm.so.6
+cp mathvec/libmvec.so %{buildroot}/V4/usr/lib64/libmvec.so.1
 popd
 
 
@@ -721,7 +721,6 @@ popd
 /usr/lib64/libc.so.6
 /usr/lib64/libc-2.33.so
 /usr/lib64/libc-2.39.so
-/usr/lib64/libcrypt.so.1
 /usr/lib64/libdl.so.2
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
@@ -742,12 +741,13 @@ popd
 %{_datadir}/defaults/etc/rpc
 
 /usr/lib64/libm.so.6
+/V3/usr/lib64/
+/V4/usr/lib64/
 
 /usr/bin/ldconfig
 %exclude /var/cache/ldconfig
 
 %files lib-avx2
-/usr/lib64/glibc-hwcaps/*
 
 # TODO: SPLIT!
 %files locale
@@ -930,7 +930,6 @@ popd
 /usr/lib64/libanl.so
 /usr/lib64/libc.so
 /usr/lib64/libc_nonshared.a
-/usr/lib64/libcrypt.so
 /usr/lib64/libm.so
 #/usr/lib64/libnsl.so
 /usr/lib64/libresolv.so
