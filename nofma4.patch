@@ -1,0 +1,55 @@
+fma4 (deprecated) conflicts with APX for now so disable
+
+--- glibc-2.39/sysdeps/x86_64/fpu/multiarch/Makefile~	2024-01-31 00:34:58.000000000 +0000
++++ glibc-2.39/sysdeps/x86_64/fpu/multiarch/Makefile	2024-02-04 14:44:32.729526535 +0000
+@@ -83,27 +83,6 @@
+ CFLAGS-s_cosf-fma.c = -mfma -mavx2
+ CFLAGS-s_sincosf-fma.c = -mfma -mavx2
+ 
+-libm-sysdep_routines += \
+-  e_exp-fma4 \
+-  e_log-fma4 \
+-  e_pow-fma4 \
+-  e_asin-fma4 \
+-  s_atan-fma4 \
+-  e_atan2-fma4 \
+-  s_sin-fma4 \
+-  s_sincos-fma4 \
+-  s_tan-fma4 \
+-# libm-sysdep_routines
+-
+-CFLAGS-e_asin-fma4.c = -mfma4
+-CFLAGS-e_atan2-fma4.c = -mfma4
+-CFLAGS-e_exp-fma4.c = -mfma4
+-CFLAGS-e_log-fma4.c = -mfma4
+-CFLAGS-e_pow-fma4.c = -mfma4
+-CFLAGS-s_atan-fma4.c = -mfma4
+-CFLAGS-s_sin-fma4.c = -mfma4
+-CFLAGS-s_tan-fma4.c = -mfma4
+-CFLAGS-s_sincos-fma4.c = -mfma4
+ 
+ libm-sysdep_routines += \
+   e_exp-avx \
+--- glibc-2.39/sysdeps/x86_64/fpu/multiarch/ifunc-fma4.h~	2024-01-31 00:34:58.000000000 +0000
++++ glibc-2.39/sysdeps/x86_64/fpu/multiarch/ifunc-fma4.h	2024-02-04 14:55:50.011204977 +0000
+@@ -32,8 +32,5 @@
+       && CPU_FEATURE_USABLE_P (cpu_features, AVX2))
+     return OPTIMIZE (fma);
+ 
+-  if (CPU_FEATURE_USABLE_P (cpu_features, FMA4))
+-    return OPTIMIZE (fma4);
+-
+   return OPTIMIZE (sse2);
+ }
+--- glibc-2.39/sysdeps/x86_64/fpu/multiarch/ifunc-avx-fma4.h~	2024-01-31 00:34:58.000000000 +0000
++++ glibc-2.39/sysdeps/x86_64/fpu/multiarch/ifunc-avx-fma4.h	2024-02-04 15:00:18.362059104 +0000
+@@ -33,9 +33,6 @@
+       && CPU_FEATURE_USABLE_P (cpu_features, AVX2))
+     return OPTIMIZE (fma);
+ 
+-  if (CPU_FEATURE_USABLE_P (cpu_features, FMA4))
+-    return OPTIMIZE (fma4);
+-
+   if (CPU_FEATURE_USABLE_P (cpu_features, AVX))
+     return OPTIMIZE (avx);
+ 

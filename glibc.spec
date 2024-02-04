@@ -43,6 +43,7 @@ Patch51:        gcc-8-fix.patch
 Patch54: 	0001-Set-vector-width-and-alignment-to-fix-GCC-AVX-issue.patch
 Patch55: 	disable-vectorization-even-more.patch
 Patch56:	0001-Force-ffsll-to-be-64-bytes-aligned.patch
+Patch57:        nofma4.patch
 
 Patch62:	limit-avx512-freq-damage.patch
 
@@ -58,6 +59,8 @@ BuildRequires:	bison
 BuildRequires:	gcc-dev32 gcc-libgcc32 gcc-libstdc++32
 BuildRequires:	python3-dev
 BuildRequires:	util-linux
+
+BuildRequires:  gcc14 gcc14-dev
 #BuildRequires:  rpcsvc-proto-dev
 
 
@@ -225,6 +228,8 @@ GNU C library extra components.
 %patch54 -p1
 %patch55 -p1
 %patch56 -p1
+%patch57 -p1
+
 %patch62 -p1
 %patch63 -p1
 
@@ -443,6 +448,59 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 make %{?_smp_mflags}
 popd
 
+mkdir ../glibc-buildrootapx
+pushd ../glibc-buildrootapx
+
+unset ASFLAGS
+unset LDFLAGS
+export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz -mapxf -mavx10.1"
+export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
+export CC=/usr/bin/gcc-14
+
+../glibc-2.39/configure \
+    --prefix=/usr \
+    --disable-werror \
+    --exec_prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/bin \
+    --libexecdir=/usr/lib64/glibc \
+    --datadir=/usr/share \
+    --sysconfdir=%{_sysconfdir} \
+    --sharedstatedir=%{_localstatedir}/lib \
+    --localstatedir=%{_localstatedir} \
+    --libdir=/usr/lib64 \
+    --localedir=/usr/share/locale \
+    --infodir=/usr/share/info \
+    --mandir=/usr/share/man \
+    --disable-silent-rules \
+    --disable-dependency-tracking \
+    --enable-kernel=6.1 \
+    --without-cvs \
+    --disable-profile \
+    --disable-debug \
+    --without-gd  \
+    --enable-clocale=gnu \
+    --enable-add-ons \
+    --without-selinux \
+    --enable-obsolete-rpc \
+    --build=%{glibc_target} \
+    --host=%{glibc_target} \
+    --with-pkgversion='Clear Linux Software for Intel Architecture' \
+    --enable-lock-elision=no \
+    --enable-bind-now  \
+    --enable-tunables \
+    --enable-obsolete-nsl \
+    --disable-cet \
+    --enable-static-pie \
+    libc_cv_slibdir=/usr/lib64 \
+    libc_cv_complocaledir=/usr/share/locale
+
+
+make %{?_smp_mflags}
+popd
+
+
 %install
 export SOURCE_DATE_EPOCH=1484361909
 export GCC_IGNORE_WERROR=1
@@ -458,16 +516,22 @@ make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 popd
 
 pushd ../glibc-buildroot-avx2
-mkdir -p %{buildroot}/V3//usr/lib64/
+mkdir -p %{buildroot}/V3/usr/lib64/
 cp math/libm.so %{buildroot}/V3/usr/lib64/libm.so.6
 cp mathvec/libmvec.so %{buildroot}/V3/usr/lib64/libmvec.so.1
-cp libc.so  %{buildroot}/V3//usr/lib64/libc-2.39.so
+cp libc.so  %{buildroot}/V3/usr/lib64/libc-2.39.so
 popd
 
 pushd ../glibc-buildroot-avx512
 mkdir -p %{buildroot}/V4/usr/lib64/
 cp math/libm.so %{buildroot}/V4/usr/lib64/libm.so.6
 cp mathvec/libmvec.so %{buildroot}/V4/usr/lib64/libmvec.so.1
+popd
+
+pushd ../glibc-buildrootapx
+mkdir -p %{buildroot}/VA//usr/lib64/
+cp math/libm.so %{buildroot}/VA/usr/lib64/libm.so.6
+cp libc.so  %{buildroot}/VA/usr/lib64/libc-2.39.so
 popd
 
 
@@ -740,6 +804,7 @@ popd
 /usr/lib64/libm.so.6
 /V3/usr/lib64/
 /V4/usr/lib64/
+/VA/usr/lib64/
 
 /usr/bin/ldconfig
 %exclude /var/cache/ldconfig
