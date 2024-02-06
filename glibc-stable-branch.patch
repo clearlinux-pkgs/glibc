@@ -1,3 +1,6 @@
+Adhemerval Zanella (1):
+      arm: Remove wrong ldr from _dl_start_user (BZ 31339)
+
 Andreas K. Hüttel (1):
       Replace advisories directory
 
@@ -257,3 +260,15 @@ index 94e68b1350..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/sysdeps/arm/dl-machine.h b/sysdeps/arm/dl-machine.h
+index b857bbc868..dd1a0f6b6e 100644
+--- a/sysdeps/arm/dl-machine.h
++++ b/sysdeps/arm/dl-machine.h
+@@ -139,7 +139,6 @@ _start:\n\
+ _dl_start_user:\n\
+ 	adr	r6, .L_GET_GOT\n\
+ 	add	sl, sl, r6\n\
+-	ldr	r4, [sl, r4]\n\
+ 	@ save the entry point in another register\n\
+ 	mov	r6, r0\n\
+ 	@ get the original arg count\n\
