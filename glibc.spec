@@ -529,9 +529,9 @@ cp mathvec/libmvec.so %{buildroot}/V4/usr/lib64/libmvec.so.1
 popd
 
 pushd ../glibc-buildrootapx
-mkdir -p %{buildroot}/VA//usr/lib64/
-cp math/libm.so %{buildroot}/VA/usr/lib64/libm.so.6
-cp libc.so  %{buildroot}/VA/usr/lib64/libc-2.39.so
+#mkdir -p %{buildroot}/VA//usr/lib64/
+#cp math/libm.so %{buildroot}/VA/usr/lib64/libm.so.6
+#cp libc.so  %{buildroot}/VA/usr/lib64/libc-2.39.so
 popd
 
 
@@ -804,7 +804,7 @@ popd
 /usr/lib64/libm.so.6
 /V3/usr/lib64/
 /V4/usr/lib64/
-/VA/usr/lib64/
+#/VA/usr/lib64/
 
 /usr/bin/ldconfig
 %exclude /var/cache/ldconfig
