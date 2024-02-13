@@ -2,3 +2,4 @@ nss-altfiles
 nss-pam-ldapd
 coreutils
 systemd
+clr-elf-replace
