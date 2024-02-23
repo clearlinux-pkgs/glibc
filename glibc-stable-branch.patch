@@ -5,6 +5,9 @@ Adhemerval Zanella (2):
 Andreas K. Hüttel (1):
       Replace advisories directory
 
+Xi Ruoyao (1):
+      math: Update mips64 ulps
+
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
 index 0000000000..d4e33f2df3
@@ -273,6 +276,39 @@ index b857bbc868..dd1a0f6b6e 100644
  	@ save the entry point in another register\n\
  	mov	r6, r0\n\
  	@ get the original arg count\n\
+diff --git a/sysdeps/mips/mips64/libm-test-ulps b/sysdeps/mips/mips64/libm-test-ulps
+index 78969745b2..933aba4735 100644
+--- a/sysdeps/mips/mips64/libm-test-ulps
++++ b/sysdeps/mips/mips64/libm-test-ulps
+@@ -1066,17 +1066,17 @@ double: 1
+ ldouble: 1
+ 
+ Function: "j0":
+-double: 2
++double: 3
+ float: 9
+ ldouble: 2
+ 
+ Function: "j0_downward":
+-double: 5
++double: 6
+ float: 9
+ ldouble: 9
+ 
+ Function: "j0_towardzero":
+-double: 6
++double: 7
+ float: 9
+ ldouble: 9
+ 
+@@ -1146,6 +1146,7 @@ float: 6
+ ldouble: 8
+ 
+ Function: "log":
++double: 1
+ float: 1
+ ldouble: 1
+ 
 diff --git a/sysdeps/unix/sysv/linux/mips/clone3.S b/sysdeps/unix/sysv/linux/mips/clone3.S
 index e9fec2fa47..481b8ae963 100644
 --- a/sysdeps/unix/sysv/linux/mips/clone3.S
