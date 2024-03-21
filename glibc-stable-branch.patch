@@ -2,6 +2,9 @@ Adhemerval Zanella (2):
       arm: Remove wrong ldr from _dl_start_user (BZ 31339)
       mips: FIx clone3 implementation (BZ 31325)
 
+Amrita H S (1):
+      ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
+
 Andreas K. Hüttel (1):
       Replace advisories directory
 
@@ -10,6 +13,9 @@ Florian Weimer (1):
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
+
+Manjunath Matti (1):
+      ﻿powerpc: Add HWCAP3/HWCAP4 data to TCB for Power Architecture.
 
 Stefan Liebler (1):
       S390: Do not clobber r7 in clone [BZ #31402]
@@ -273,6 +279,47 @@ index 94e68b1350..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/elf/dl-diagnostics.c b/elf/dl-diagnostics.c
+index 7345ebc4e5..aaf67b87e8 100644
+--- a/elf/dl-diagnostics.c
++++ b/elf/dl-diagnostics.c
+@@ -235,6 +235,8 @@ _dl_print_diagnostics (char **environ)
+   _dl_diagnostics_print_labeled_value ("dl_hwcap", GLRO (dl_hwcap));
+   _dl_diagnostics_print_labeled_value ("dl_hwcap_important", HWCAP_IMPORTANT);
+   _dl_diagnostics_print_labeled_value ("dl_hwcap2", GLRO (dl_hwcap2));
++  _dl_diagnostics_print_labeled_value ("dl_hwcap3", GLRO (dl_hwcap3));
++  _dl_diagnostics_print_labeled_value ("dl_hwcap4", GLRO (dl_hwcap4));
+   _dl_diagnostics_print_labeled_string
+     ("dl_hwcaps_subdirs", _dl_hwcaps_subdirs);
+   _dl_diagnostics_print_labeled_value
+diff --git a/elf/dl-support.c b/elf/dl-support.c
+index 2f502c8b0d..451932dd03 100644
+--- a/elf/dl-support.c
++++ b/elf/dl-support.c
+@@ -158,6 +158,8 @@ const ElfW(Phdr) *_dl_phdr;
+ size_t _dl_phnum;
+ uint64_t _dl_hwcap;
+ uint64_t _dl_hwcap2;
++uint64_t _dl_hwcap3;
++uint64_t _dl_hwcap4;
+ 
+ enum dso_sort_algorithm _dl_dso_sort_algo;
+ 
+diff --git a/elf/elf.h b/elf/elf.h
+index 455731663c..1c394c64cd 100644
+--- a/elf/elf.h
++++ b/elf/elf.h
+@@ -1234,6 +1234,10 @@ typedef struct
+ #define AT_RSEQ_FEATURE_SIZE	27	/* rseq supported feature size.  */
+ #define AT_RSEQ_ALIGN	28		/* rseq allocation alignment.  */
+ 
++/* More machine-dependent hints about processor capabilities.  */
++#define AT_HWCAP3	29		/* extension of AT_HWCAP.  */
++#define AT_HWCAP4	30		/* extension of AT_HWCAP.  */
++
+ #define AT_EXECFN	31		/* Filename of executable.  */
+ 
+ /* Pointer to the global system page used for system calls and other
 diff --git a/manual/stdbit.texi b/manual/stdbit.texi
 index fe41c671d8..6c75ed9a20 100644
 --- a/manual/stdbit.texi
@@ -1315,6 +1362,19 @@ index b857bbc868..dd1a0f6b6e 100644
  	@ save the entry point in another register\n\
  	mov	r6, r0\n\
  	@ get the original arg count\n\
+diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+index 117c901ccc..50f58a60e3 100644
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -646,6 +646,8 @@ struct rtld_global_ro
+   /* Mask for more hardware capabilities that are available on some
+      platforms.  */
+   EXTERN uint64_t _dl_hwcap2;
++  EXTERN uint64_t _dl_hwcap3;
++  EXTERN uint64_t _dl_hwcap4;
+ 
+   EXTERN enum dso_sort_algorithm _dl_dso_sort_algo;
+ 
 diff --git a/sysdeps/mips/mips64/libm-test-ulps b/sysdeps/mips/mips64/libm-test-ulps
 index 78969745b2..933aba4735 100644
 --- a/sysdeps/mips/mips64/libm-test-ulps
@@ -1348,6 +1408,328 @@ index 78969745b2..933aba4735 100644
  float: 1
  ldouble: 1
  
+diff --git a/sysdeps/powerpc/dl-procinfo.c b/sysdeps/powerpc/dl-procinfo.c
+index a76bb6e5b0..8cf00aa7e3 100644
+--- a/sysdeps/powerpc/dl-procinfo.c
++++ b/sysdeps/powerpc/dl-procinfo.c
+@@ -38,6 +38,10 @@
+        needed.
+   */
+ 
++/* The total number of available bits (including those prior to
++   _DL_HWCAP_FIRST).  Some of these bits might not be used.  */
++#define _DL_HWCAP_COUNT         128
++
+ #ifndef PROCINFO_CLASS
+ # define PROCINFO_CLASS
+ #endif
+@@ -61,7 +65,7 @@ PROCINFO_CLASS struct cpu_features _dl_powerpc_cpu_features
+ #if !defined PROCINFO_DECL && defined SHARED
+   ._dl_powerpc_cap_flags
+ #else
+-PROCINFO_CLASS const char _dl_powerpc_cap_flags[64][15]
++PROCINFO_CLASS const char _dl_powerpc_cap_flags[_DL_HWCAP_COUNT][15]
+ #endif
+ #ifndef PROCINFO_DECL
+ = {
+diff --git a/sysdeps/powerpc/dl-procinfo.h b/sysdeps/powerpc/dl-procinfo.h
+index 68f4241095..b36697ba44 100644
+--- a/sysdeps/powerpc/dl-procinfo.h
++++ b/sysdeps/powerpc/dl-procinfo.h
+@@ -22,22 +22,23 @@
+ #include <ldsodefs.h>
+ #include <sysdep.h>	/* This defines the PPC_FEATURE[2]_* macros.  */
+ 
+-/* The total number of available bits (including those prior to
+-   _DL_HWCAP_FIRST).  Some of these bits might not be used.  */
+-#define _DL_HWCAP_COUNT		64
++/* Feature masks are all 32-bits in size.  */
++#define _DL_HWCAP_SIZE		32
+ 
+-/* Features started at bit 31 and decremented as new features were added.  */
+-#define _DL_HWCAP_LAST		31
++/* AT_HWCAP2 feature strings follow the AT_HWCAP feature strings.  */
++#define _DL_HWCAP2_OFFSET	_DL_HWCAP_SIZE
+ 
+-/* AT_HWCAP2 features started at bit 31 and decremented as new features were
+-   added.  HWCAP2 feature bits start at bit 0.  */
+-#define _DL_HWCAP2_LAST		31
++/* AT_HWCAP3 feature strings follow the AT_HWCAP2 feature strings.  */
++#define _DL_HWCAP3_OFFSET	(_DL_HWCAP2_OFFSET + _DL_HWCAP_SIZE)
++
++/* AT_HWCAP4 feature strings follow the AT_HWCAP3 feature strings.  */
++#define _DL_HWCAP4_OFFSET	(_DL_HWCAP3_OFFSET + _DL_HWCAP_SIZE)
+ 
+ /* These bits influence library search.  */
+ #define HWCAP_IMPORTANT		(PPC_FEATURE_HAS_ALTIVEC \
+ 				+ PPC_FEATURE_HAS_DFP)
+ 
+-#define _DL_PLATFORMS_COUNT	16
++#define _DL_PLATFORMS_COUNT	17
+ 
+ #define _DL_FIRST_PLATFORM	32
+ /* Mask to filter out platforms.  */
+@@ -61,6 +62,7 @@
+ #define PPC_PLATFORM_POWER8		13
+ #define PPC_PLATFORM_POWER9		14
+ #define PPC_PLATFORM_POWER10		15
++#define PPC_PLATFORM_POWER11		16
+ 
+ static inline const char *
+ __attribute__ ((unused))
+@@ -88,6 +90,11 @@ _dl_string_platform (const char *str)
+ 	      ret = _DL_FIRST_PLATFORM + PPC_PLATFORM_POWER10;
+ 	      str++;
+ 	    }
++	  else if (str[1] == '1')
++	    {
++	      ret = _DL_FIRST_PLATFORM + PPC_PLATFORM_POWER11;
++	      str++;
++	    }
+ 	  else
+ 	    return -1;
+ 	  break;
+@@ -187,21 +194,42 @@ _dl_procinfo (unsigned int type, unsigned long int word)
+     case AT_HWCAP:
+       _dl_printf ("AT_HWCAP:            ");
+ 
+-      for (int i = 0; i <= _DL_HWCAP_LAST; ++i)
++      for (int i = 0; i < _DL_HWCAP_SIZE; ++i)
+        if (word & (1 << i))
+          _dl_printf (" %s", _dl_hwcap_string (i));
+       break;
+     case AT_HWCAP2:
+       {
+-       unsigned int offset = _DL_HWCAP_LAST + 1;
+ 
+        _dl_printf ("AT_HWCAP2:           ");
+ 
+-        /* We have to go through them all because the kernel added the
+-          AT_HWCAP2 features starting with the high bits.  */
+-       for (int i = 0; i <= _DL_HWCAP2_LAST; ++i)
+-         if (word & (1 << i))
+-           _dl_printf (" %s", _dl_hwcap_string (offset + i));
++       /* We have to go through them all because the kernel added the
++	  AT_HWCAP2 features starting with the high bits.  */
++       for (int i = 0; i < _DL_HWCAP_SIZE; ++i)
++	 if (word & (1 << i))
++	   _dl_printf (" %s", _dl_hwcap_string (_DL_HWCAP2_OFFSET + i));
++       break;
++      }
++    case AT_HWCAP3:
++      {
++       _dl_printf ("AT_HWCAP3:           ");
++
++       /* We have to go through them all because the kernel added the
++	  AT_HWCAP3 features starting with the high bits.  */
++       for (int i = 0; i < _DL_HWCAP_SIZE; ++i)
++	 if (word & (1 << i))
++	   _dl_printf (" %s", _dl_hwcap_string (_DL_HWCAP3_OFFSET + i));
++       break;
++      }
++    case AT_HWCAP4:
++      {
++       _dl_printf ("AT_HWCAP4:           ");
++
++       /* We have to go through them all because the kernel added the
++	  AT_HWCAP4 features starting with the high bits.  */
++       for (int i = 0; i <= _DL_HWCAP_SIZE; ++i)
++	 if (word & (1 << i))
++	   _dl_printf (" %s", _dl_hwcap_string (_DL_HWCAP4_OFFSET + i));
+        break;
+       }
+     case AT_L1I_CACHEGEOMETRY:
+diff --git a/sysdeps/powerpc/hwcapinfo.c b/sysdeps/powerpc/hwcapinfo.c
+index 76344f285a..f6fede15a7 100644
+--- a/sysdeps/powerpc/hwcapinfo.c
++++ b/sysdeps/powerpc/hwcapinfo.c
+@@ -31,7 +31,7 @@ void
+ __tcb_parse_hwcap_and_convert_at_platform (void)
+ {
+ 
+-  uint64_t h1, h2;
++  uint64_t h1, h2, h3, h4;
+ 
+   /* Read AT_PLATFORM string from auxv and convert it to a number.  */
+   __tcb.at_platform = _dl_string_platform (GLRO (dl_platform));
+@@ -39,6 +39,8 @@ __tcb_parse_hwcap_and_convert_at_platform (void)
+   /* Read HWCAP and HWCAP2 from auxv.  */
+   h1 = GLRO (dl_hwcap);
+   h2 = GLRO (dl_hwcap2);
++  h3 = GLRO (dl_hwcap3);
++  h4 = GLRO (dl_hwcap4);
+ 
+   /* hwcap contains only the latest supported ISA, the code checks which is
+      and fills the previous supported ones.  */
+@@ -64,13 +66,16 @@ __tcb_parse_hwcap_and_convert_at_platform (void)
+   else if (h1 & PPC_FEATURE_POWER5)
+     h1 |= PPC_FEATURE_POWER4;
+ 
+-  uint64_t array_hwcaps[] = { h1, h2 };
++  uint64_t array_hwcaps[] = { h1, h2, h3, h4 };
+   init_cpu_features (&GLRO(dl_powerpc_cpu_features), array_hwcaps);
+ 
+   /* Consolidate both HWCAP and HWCAP2 into a single doubleword so that
+      we can read both in a single load later.  */
+   __tcb.hwcap = (h1 << 32) | (h2 & 0xffffffff);
+-  __tcb.hwcap_extn = 0x0;
++
++  /* Consolidate both HWCAP3 and HWCAP4 into a single doubleword so that
++     we can read both in a single load later.  */
++  __tcb.hwcap_extn = (h3 << 32) | (h4 & 0xffffffff);
+ 
+ }
+ #if IS_IN (rtld)
+diff --git a/sysdeps/powerpc/powerpc32/power11/Implies b/sysdeps/powerpc/powerpc32/power11/Implies
+new file mode 100644
+index 0000000000..051cbe0f79
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc32/power11/Implies
+@@ -0,0 +1,2 @@
++powerpc/powerpc32/power10/fpu
++powerpc/powerpc32/power10
+diff --git a/sysdeps/powerpc/powerpc32/power11/fpu/multiarch/Implies b/sysdeps/powerpc/powerpc32/power11/fpu/multiarch/Implies
+new file mode 100644
+index 0000000000..58edb2861d
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc32/power11/fpu/multiarch/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc32/power10/fpu/multiarch
+diff --git a/sysdeps/powerpc/powerpc32/power11/multiarch/Implies b/sysdeps/powerpc/powerpc32/power11/multiarch/Implies
+new file mode 100644
+index 0000000000..c70f0428ba
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc32/power11/multiarch/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc32/power10/multiarch
+diff --git a/sysdeps/powerpc/powerpc64/be/power11/Implies b/sysdeps/powerpc/powerpc64/be/power11/Implies
+new file mode 100644
+index 0000000000..de481d1c13
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/be/power11/Implies
+@@ -0,0 +1,2 @@
++powerpc/powerpc64/be/power10/fpu
++powerpc/powerpc64/be/power10
+diff --git a/sysdeps/powerpc/powerpc64/be/power11/fpu/Implies b/sysdeps/powerpc/powerpc64/be/power11/fpu/Implies
+new file mode 100644
+index 0000000000..dff0e13064
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/be/power11/fpu/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc64/be/power10/fpu
+diff --git a/sysdeps/powerpc/powerpc64/be/power11/fpu/multiarch/Implies b/sysdeps/powerpc/powerpc64/be/power11/fpu/multiarch/Implies
+new file mode 100644
+index 0000000000..c3f259e009
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/be/power11/fpu/multiarch/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc64/be/power10/fpu/multiarch
+diff --git a/sysdeps/powerpc/powerpc64/be/power11/multiarch/Implies b/sysdeps/powerpc/powerpc64/be/power11/multiarch/Implies
+new file mode 100644
+index 0000000000..9491a394c9
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/be/power11/multiarch/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc64/be/power10/multiarch
+diff --git a/sysdeps/powerpc/powerpc64/le/power11/Implies b/sysdeps/powerpc/powerpc64/le/power11/Implies
+new file mode 100644
+index 0000000000..e18182dcc1
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/le/power11/Implies
+@@ -0,0 +1,2 @@
++powerpc/powerpc64/le/power10/fpu
++powerpc/powerpc64/le/power10
+diff --git a/sysdeps/powerpc/powerpc64/le/power11/fpu/Implies b/sysdeps/powerpc/powerpc64/le/power11/fpu/Implies
+new file mode 100644
+index 0000000000..e41bd55684
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/le/power11/fpu/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc64/le/power10/fpu
+diff --git a/sysdeps/powerpc/powerpc64/le/power11/fpu/multiarch/Implies b/sysdeps/powerpc/powerpc64/le/power11/fpu/multiarch/Implies
+new file mode 100644
+index 0000000000..c838d50931
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/le/power11/fpu/multiarch/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc64/le/power10/fpu/multiarch
+diff --git a/sysdeps/powerpc/powerpc64/le/power11/multiarch/Implies b/sysdeps/powerpc/powerpc64/le/power11/multiarch/Implies
+new file mode 100644
+index 0000000000..687248c3c2
+--- /dev/null
++++ b/sysdeps/powerpc/powerpc64/le/power11/multiarch/Implies
+@@ -0,0 +1 @@
++powerpc/powerpc64/le/power10/multiarch
+diff --git a/sysdeps/powerpc/powerpc64/le/tst-glibc-hwcaps.c b/sysdeps/powerpc/powerpc64/le/tst-glibc-hwcaps.c
+index 77465d9133..65d3e69303 100644
+--- a/sysdeps/powerpc/powerpc64/le/tst-glibc-hwcaps.c
++++ b/sysdeps/powerpc/powerpc64/le/tst-glibc-hwcaps.c
+@@ -36,9 +36,11 @@ compute_level (void)
+     return 9;
+   if (strcmp (platform, "power10") == 0)
+     return 10;
++  if (strcmp (platform, "power11") == 0)
++    return 11;
+   printf ("warning: unrecognized AT_PLATFORM value: %s\n", platform);
+-  /* Assume that the new platform supports POWER10.  */
+-  return 10;
++  /* Assume that the new platform supports POWER11.  */
++  return 11;
+ }
+ 
+ static int
+diff --git a/sysdeps/powerpc/preconfigure b/sysdeps/powerpc/preconfigure
+index 4de94089a3..9e5a07ab6d 100644
+--- a/sysdeps/powerpc/preconfigure
++++ b/sysdeps/powerpc/preconfigure
+@@ -58,7 +58,7 @@ fi
+ 
+     ;;
+ 
+-  a2|970|power[4-9]|power5x|power6+|power10)
++  a2|970|power[4-9]|power5x|power6+|power10|power11)
+     submachine=${archcpu}
+     if test ${libc_cv_cc_submachine+y}
+ then :
+diff --git a/sysdeps/powerpc/preconfigure.ac b/sysdeps/powerpc/preconfigure.ac
+index 6c63bd8257..14b6dafd4a 100644
+--- a/sysdeps/powerpc/preconfigure.ac
++++ b/sysdeps/powerpc/preconfigure.ac
+@@ -46,7 +46,7 @@ case "${machine}:${submachine}" in
+     AC_CACHE_VAL(libc_cv_cc_submachine,libc_cv_cc_submachine="")
+     ;;
+ 
+-  a2|970|power[[4-9]]|power5x|power6+|power10)
++  a2|970|power[[4-9]]|power5x|power6+|power10|power11)
+     submachine=${archcpu}
+     AC_CACHE_VAL(libc_cv_cc_submachine,libc_cv_cc_submachine="")
+     ;;
+diff --git a/sysdeps/unix/sysv/linux/dl-parse_auxv.h b/sysdeps/unix/sysv/linux/dl-parse_auxv.h
+index e3d758b163..ea2a58ecb1 100644
+--- a/sysdeps/unix/sysv/linux/dl-parse_auxv.h
++++ b/sysdeps/unix/sysv/linux/dl-parse_auxv.h
+@@ -47,6 +47,8 @@ void _dl_parse_auxv (ElfW(auxv_t) *av, dl_parse_auxv_t auxv_values)
+   GLRO(dl_platform) = (void *) auxv_values[AT_PLATFORM];
+   GLRO(dl_hwcap) = auxv_values[AT_HWCAP];
+   GLRO(dl_hwcap2) = auxv_values[AT_HWCAP2];
++  GLRO(dl_hwcap3) = auxv_values[AT_HWCAP3];
++  GLRO(dl_hwcap4) = auxv_values[AT_HWCAP4];
+   GLRO(dl_clktck) = auxv_values[AT_CLKTCK];
+   GLRO(dl_fpu_control) = auxv_values[AT_FPUCW];
+   _dl_random = (void *) auxv_values[AT_RANDOM];
+diff --git a/sysdeps/unix/sysv/linux/dl-sysdep.c b/sysdeps/unix/sysv/linux/dl-sysdep.c
+index ad3692d738..e1b14e9eb3 100644
+--- a/sysdeps/unix/sysv/linux/dl-sysdep.c
++++ b/sysdeps/unix/sysv/linux/dl-sysdep.c
+@@ -197,6 +197,8 @@ _dl_show_auxv (void)
+ 	  [AT_SYSINFO_EHDR - 2] =	{ "SYSINFO_EHDR:      0x", hex },
+ 	  [AT_RANDOM - 2] =		{ "RANDOM:            0x", hex },
+ 	  [AT_HWCAP2 - 2] =		{ "HWCAP2:            0x", hex },
++	  [AT_HWCAP3 - 2] =		{ "HWCAP3:            0x", hex },
++	  [AT_HWCAP4 - 2] =		{ "HWCAP4:            0x", hex },
+ 	  [AT_MINSIGSTKSZ - 2] =	{ "MINSIGSTKSZ:       ", dec },
+ 	  [AT_L1I_CACHESIZE - 2] =	{ "L1I_CACHESIZE:     ", dec },
+ 	  [AT_L1I_CACHEGEOMETRY - 2] =	{ "L1I_CACHEGEOMETRY: 0x", hex },
 diff --git a/sysdeps/unix/sysv/linux/mips/clone3.S b/sysdeps/unix/sysv/linux/mips/clone3.S
 index e9fec2fa47..481b8ae963 100644
 --- a/sysdeps/unix/sysv/linux/mips/clone3.S
@@ -1408,6 +1790,49 @@ index e9fec2fa47..481b8ae963 100644
  
  	/* Call the user's function.  */
  	jal		t9
+diff --git a/sysdeps/unix/sysv/linux/powerpc/cpu-features.c b/sysdeps/unix/sysv/linux/powerpc/cpu-features.c
+index 8e8a5ec2ea..a947d62db6 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/cpu-features.c
++++ b/sysdeps/unix/sysv/linux/powerpc/cpu-features.c
+@@ -94,6 +94,8 @@ init_cpu_features (struct cpu_features *cpu_features, uint64_t hwcaps[])
+      which are set by __tcb_parse_hwcap_and_convert_at_platform.  */
+   cpu_features->hwcap = hwcaps[0];
+   cpu_features->hwcap2 = hwcaps[1];
++  cpu_features->hwcap3 = hwcaps[2];
++  cpu_features->hwcap4 = hwcaps[3];
+   /* Default is to use aligned memory access on optimized function unless
+      tunables is enable, since for this case user can explicit disable
+      unaligned optimizations.  */
+diff --git a/sysdeps/unix/sysv/linux/powerpc/cpu-features.h b/sysdeps/unix/sysv/linux/powerpc/cpu-features.h
+index 1294f0b601..e9eb6a13c8 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/cpu-features.h
++++ b/sysdeps/unix/sysv/linux/powerpc/cpu-features.h
+@@ -26,6 +26,8 @@ struct cpu_features
+   bool use_cached_memopt;
+   unsigned long int hwcap;
+   unsigned long int hwcap2;
++  unsigned long int hwcap3;
++  unsigned long int hwcap4;
+ };
+ 
+ static const char hwcap_names[] = {
+diff --git a/sysdeps/unix/sysv/linux/powerpc/libc-start.c b/sysdeps/unix/sysv/linux/powerpc/libc-start.c
+index a4705daf1c..6a00cd88cd 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/libc-start.c
++++ b/sysdeps/unix/sysv/linux/powerpc/libc-start.c
+@@ -87,6 +87,12 @@ __libc_start_main_impl (int argc, char **argv,
+       case AT_HWCAP2:
+ 	_dl_hwcap2 = (unsigned long int) av->a_un.a_val;
+ 	break;
++      case AT_HWCAP3:
++	_dl_hwcap3 = (unsigned long int) av->a_un.a_val;
++	break;
++      case AT_HWCAP4:
++	_dl_hwcap4 = (unsigned long int) av->a_un.a_val;
++	break;
+       case AT_PLATFORM:
+ 	_dl_platform = (void *) av->a_un.a_val;
+ 	break;
 diff --git a/sysdeps/unix/sysv/linux/s390/s390-32/clone.S b/sysdeps/unix/sysv/linux/s390/s390-32/clone.S
 index 4c882ef2ee..a7a863242c 100644
 --- a/sysdeps/unix/sysv/linux/s390/s390-32/clone.S
