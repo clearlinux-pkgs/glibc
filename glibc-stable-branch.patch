@@ -23,6 +23,9 @@ Stefan Liebler (1):
 Xi Ruoyao (1):
       math: Update mips64 ulps
 
+caiyinyu (1):
+      LoongArch: Correct {__ieee754, _}_scalb -> {__ieee754, _}_scalbf
+
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
 index 0000000000..d4e33f2df3
@@ -1375,6 +1378,16 @@ index 117c901ccc..50f58a60e3 100644
  
    EXTERN enum dso_sort_algorithm _dl_dso_sort_algo;
  
+diff --git a/sysdeps/loongarch/fpu/e_scalbf.c b/sysdeps/loongarch/fpu/e_scalbf.c
+index 9f05485236..7c0395fbb5 100644
+--- a/sysdeps/loongarch/fpu/e_scalbf.c
++++ b/sysdeps/loongarch/fpu/e_scalbf.c
+@@ -57,4 +57,4 @@ __ieee754_scalbf (float x, float fn)
+ 
+   return x;
+ }
+-libm_alias_finite (__ieee754_scalb, __scalb)
++libm_alias_finite (__ieee754_scalbf, __scalbf)
 diff --git a/sysdeps/mips/mips64/libm-test-ulps b/sysdeps/mips/mips64/libm-test-ulps
 index 78969745b2..933aba4735 100644
 --- a/sysdeps/mips/mips64/libm-test-ulps
