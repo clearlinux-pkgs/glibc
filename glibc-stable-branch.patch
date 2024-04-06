@@ -17,8 +17,9 @@ Andreas K. Hüttel (1):
 Andreas Schwab (1):
       Add tst-gnu2-tls2mod1 to test-internal-extras
 
-Florian Weimer (1):
+Florian Weimer (2):
       linux: Use rseq area unconditionally in sched_getcpu (bug 31479)
+      i386: Use generic memrchr in libc (bug 31316)
 
 H.J. Lu (4):
       x86-64: Save APX registers in ld.so trampoline
@@ -2574,6 +2575,25 @@ index 90d93caa0c..f002feee56 100644
 +# undef _dl_tlsdesc_dynamic
 +# undef USE_XSAVEC
  #endif /* SHARED */
+diff --git a/sysdeps/i386/i686/multiarch/memrchr-c.c b/sysdeps/i386/i686/multiarch/memrchr-c.c
+index ef7bbbe792..20bfdf3af3 100644
+--- a/sysdeps/i386/i686/multiarch/memrchr-c.c
++++ b/sysdeps/i386/i686/multiarch/memrchr-c.c
+@@ -5,3 +5,4 @@ extern void *__memrchr_ia32 (const void *, int, size_t);
+ #endif
+ 
+ #include "string/memrchr.c"
++strong_alias (__memrchr_ia32, __GI___memrchr)
+diff --git a/sysdeps/i386/i686/multiarch/memrchr-sse2.S b/sysdeps/i386/i686/multiarch/memrchr-sse2.S
+index d9dae04171..e123f87435 100644
+--- a/sysdeps/i386/i686/multiarch/memrchr-sse2.S
++++ b/sysdeps/i386/i686/multiarch/memrchr-sse2.S
+@@ -720,5 +720,4 @@ L(ret_null):
+ 	ret
+ 
+ END (__memrchr_sse2)
+-strong_alias (__memrchr_sse2, __GI___memrchr)
+ #endif
 diff --git a/sysdeps/loongarch/fpu/e_scalbf.c b/sysdeps/loongarch/fpu/e_scalbf.c
 index 9f05485236..7c0395fbb5 100644
 --- a/sysdeps/loongarch/fpu/e_scalbf.c
