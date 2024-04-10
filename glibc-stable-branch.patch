@@ -30,11 +30,20 @@ H.J. Lu (4):
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
 
+Joe Ramsay (1):
+      aarch64/fpu: Sync libmvec routines from 2.39 and before with AOR
+
 Manjunath Matti (1):
       ﻿powerpc: Add HWCAP3/HWCAP4 data to TCB for Power Architecture.
 
 Stefan Liebler (1):
       S390: Do not clobber r7 in clone [BZ #31402]
+
+Szabolcs Nagy (1):
+      aarch64: fix check for SVE support in assembler
+
+Wilco Dijkstra (1):
+      AArch64: Check kernel version for SVE ifuncs
 
 Xi Ruoyao (1):
       math: Update mips64 ulps
@@ -1863,6 +1872,748 @@ index 0000000000..536841ca8a
 +#endif
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/aarch64/configure b/sysdeps/aarch64/configure
+old mode 100644
+new mode 100755
+index ca57edce47..9606137e8d
+--- a/sysdeps/aarch64/configure
++++ b/sysdeps/aarch64/configure
+@@ -325,9 +325,10 @@ then :
+   printf %s "(cached) " >&6
+ else $as_nop
+   cat > conftest.s <<\EOF
+-        ptrue p0.b
++	.arch armv8.2-a+sve
++	ptrue p0.b
+ EOF
+-if { ac_try='${CC-cc} -c -march=armv8.2-a+sve conftest.s 1>&5'
++if { ac_try='${CC-cc} -c conftest.s 1>&5'
+   { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+diff --git a/sysdeps/aarch64/configure.ac b/sysdeps/aarch64/configure.ac
+index 27874eceb4..56d12d661d 100644
+--- a/sysdeps/aarch64/configure.ac
++++ b/sysdeps/aarch64/configure.ac
+@@ -90,9 +90,10 @@ LIBC_CONFIG_VAR([aarch64-variant-pcs], [$libc_cv_aarch64_variant_pcs])
+ # Check if asm support armv8.2-a+sve
+ AC_CACHE_CHECK([for SVE support in assembler], [libc_cv_aarch64_sve_asm], [dnl
+ cat > conftest.s <<\EOF
+-        ptrue p0.b
++	.arch armv8.2-a+sve
++	ptrue p0.b
+ EOF
+-if AC_TRY_COMMAND(${CC-cc} -c -march=armv8.2-a+sve conftest.s 1>&AS_MESSAGE_LOG_FD); then
++if AC_TRY_COMMAND(${CC-cc} -c conftest.s 1>&AS_MESSAGE_LOG_FD); then
+   libc_cv_aarch64_sve_asm=yes
+ else
+   libc_cv_aarch64_sve_asm=no
+diff --git a/sysdeps/aarch64/cpu-features.h b/sysdeps/aarch64/cpu-features.h
+index 77a782422a..5f2da91ebb 100644
+--- a/sysdeps/aarch64/cpu-features.h
++++ b/sysdeps/aarch64/cpu-features.h
+@@ -71,6 +71,7 @@ struct cpu_features
+   /* Currently, the GLIBC memory tagging tunable only defines 8 bits.  */
+   uint8_t mte_state;
+   bool sve;
++  bool prefer_sve_ifuncs;
+   bool mops;
+ };
+ 
+diff --git a/sysdeps/aarch64/fpu/acos_advsimd.c b/sysdeps/aarch64/fpu/acos_advsimd.c
+index a8eabb5e71..0a86c9823a 100644
+--- a/sysdeps/aarch64/fpu/acos_advsimd.c
++++ b/sysdeps/aarch64/fpu/acos_advsimd.c
+@@ -40,8 +40,8 @@ static const struct data
+ };
+ 
+ #define AllMask v_u64 (0xffffffffffffffff)
+-#define Oneu (0x3ff0000000000000)
+-#define Small (0x3e50000000000000) /* 2^-53.  */
++#define Oneu 0x3ff0000000000000
++#define Small 0x3e50000000000000 /* 2^-53.  */
+ 
+ #if WANT_SIMD_EXCEPT
+ static float64x2_t VPCS_ATTR NOINLINE
+diff --git a/sysdeps/aarch64/fpu/asin_advsimd.c b/sysdeps/aarch64/fpu/asin_advsimd.c
+index 141646e954..2de6eff407 100644
+--- a/sysdeps/aarch64/fpu/asin_advsimd.c
++++ b/sysdeps/aarch64/fpu/asin_advsimd.c
+@@ -39,8 +39,8 @@ static const struct data
+ };
+ 
+ #define AllMask v_u64 (0xffffffffffffffff)
+-#define One (0x3ff0000000000000)
+-#define Small (0x3e50000000000000) /* 2^-12.  */
++#define One 0x3ff0000000000000
++#define Small 0x3e50000000000000 /* 2^-12.  */
+ 
+ #if WANT_SIMD_EXCEPT
+ static float64x2_t VPCS_ATTR NOINLINE
+diff --git a/sysdeps/aarch64/fpu/atan2_sve.c b/sysdeps/aarch64/fpu/atan2_sve.c
+index 09a4c559b8..04fa71fa37 100644
+--- a/sysdeps/aarch64/fpu/atan2_sve.c
++++ b/sysdeps/aarch64/fpu/atan2_sve.c
+@@ -37,9 +37,6 @@ static const struct data
+   .pi_over_2 = 0x1.921fb54442d18p+0,
+ };
+ 
+-/* Useful constants.  */
+-#define SignMask sv_u64 (0x8000000000000000)
+-
+ /* Special cases i.e. 0, infinity, nan (fall back to scalar calls).  */
+ static svfloat64_t NOINLINE
+ special_case (svfloat64_t y, svfloat64_t x, svfloat64_t ret,
+@@ -72,14 +69,15 @@ svfloat64_t SV_NAME_D2 (atan2) (svfloat64_t y, svfloat64_t x, const svbool_t pg)
+   svbool_t cmp_y = zeroinfnan (iy, pg);
+   svbool_t cmp_xy = svorr_z (pg, cmp_x, cmp_y);
+ 
+-  svuint64_t sign_x = svand_x (pg, ix, SignMask);
+-  svuint64_t sign_y = svand_x (pg, iy, SignMask);
+-  svuint64_t sign_xy = sveor_x (pg, sign_x, sign_y);
+-
+   svfloat64_t ax = svabs_x (pg, x);
+   svfloat64_t ay = svabs_x (pg, y);
++  svuint64_t iax = svreinterpret_u64 (ax);
++  svuint64_t iay = svreinterpret_u64 (ay);
++
++  svuint64_t sign_x = sveor_x (pg, ix, iax);
++  svuint64_t sign_y = sveor_x (pg, iy, iay);
++  svuint64_t sign_xy = sveor_x (pg, sign_x, sign_y);
+ 
+-  svbool_t pred_xlt0 = svcmplt (pg, x, 0.0);
+   svbool_t pred_aygtax = svcmpgt (pg, ay, ax);
+ 
+   /* Set up z for call to atan.  */
+@@ -88,8 +86,9 @@ svfloat64_t SV_NAME_D2 (atan2) (svfloat64_t y, svfloat64_t x, const svbool_t pg)
+   svfloat64_t z = svdiv_x (pg, n, d);
+ 
+   /* Work out the correct shift.  */
+-  svfloat64_t shift = svsel (pred_xlt0, sv_f64 (-2.0), sv_f64 (0.0));
+-  shift = svsel (pred_aygtax, svadd_x (pg, shift, 1.0), shift);
++  svfloat64_t shift = svreinterpret_f64 (svlsr_x (pg, sign_x, 1));
++  shift = svsel (pred_aygtax, sv_f64 (1.0), shift);
++  shift = svreinterpret_f64 (svorr_x (pg, sign_x, svreinterpret_u64 (shift)));
+   shift = svmul_x (pg, shift, data_ptr->pi_over_2);
+ 
+   /* Use split Estrin scheme for P(z^2) with deg(P)=19.  */
+@@ -109,10 +108,10 @@ svfloat64_t SV_NAME_D2 (atan2) (svfloat64_t y, svfloat64_t x, const svbool_t pg)
+   ret = svadd_m (pg, ret, shift);
+ 
+   /* Account for the sign of x and y.  */
+-  ret = svreinterpret_f64 (sveor_x (pg, svreinterpret_u64 (ret), sign_xy));
+-
+   if (__glibc_unlikely (svptest_any (pg, cmp_xy)))
+-    return special_case (y, x, ret, cmp_xy);
+-
+-  return ret;
++    return special_case (
++	y, x,
++	svreinterpret_f64 (sveor_x (pg, svreinterpret_u64 (ret), sign_xy)),
++	cmp_xy);
++  return svreinterpret_f64 (sveor_x (pg, svreinterpret_u64 (ret), sign_xy));
+ }
+diff --git a/sysdeps/aarch64/fpu/atan2f_sve.c b/sysdeps/aarch64/fpu/atan2f_sve.c
+index b92f83cdea..9ea197147c 100644
+--- a/sysdeps/aarch64/fpu/atan2f_sve.c
++++ b/sysdeps/aarch64/fpu/atan2f_sve.c
+@@ -32,10 +32,8 @@ static const struct data
+   .pi_over_2 = 0x1.921fb6p+0f,
+ };
+ 
+-#define SignMask sv_u32 (0x80000000)
+-
+ /* Special cases i.e. 0, infinity, nan (fall back to scalar calls).  */
+-static inline svfloat32_t
++static svfloat32_t NOINLINE
+ special_case (svfloat32_t y, svfloat32_t x, svfloat32_t ret,
+ 	      const svbool_t cmp)
+ {
+@@ -67,14 +65,15 @@ svfloat32_t SV_NAME_F2 (atan2) (svfloat32_t y, svfloat32_t x, const svbool_t pg)
+   svbool_t cmp_y = zeroinfnan (iy, pg);
+   svbool_t cmp_xy = svorr_z (pg, cmp_x, cmp_y);
+ 
+-  svuint32_t sign_x = svand_x (pg, ix, SignMask);
+-  svuint32_t sign_y = svand_x (pg, iy, SignMask);
+-  svuint32_t sign_xy = sveor_x (pg, sign_x, sign_y);
+-
+   svfloat32_t ax = svabs_x (pg, x);
+   svfloat32_t ay = svabs_x (pg, y);
++  svuint32_t iax = svreinterpret_u32 (ax);
++  svuint32_t iay = svreinterpret_u32 (ay);
++
++  svuint32_t sign_x = sveor_x (pg, ix, iax);
++  svuint32_t sign_y = sveor_x (pg, iy, iay);
++  svuint32_t sign_xy = sveor_x (pg, sign_x, sign_y);
+ 
+-  svbool_t pred_xlt0 = svcmplt (pg, x, 0.0);
+   svbool_t pred_aygtax = svcmpgt (pg, ay, ax);
+ 
+   /* Set up z for call to atan.  */
+@@ -83,11 +82,12 @@ svfloat32_t SV_NAME_F2 (atan2) (svfloat32_t y, svfloat32_t x, const svbool_t pg)
+   svfloat32_t z = svdiv_x (pg, n, d);
+ 
+   /* Work out the correct shift.  */
+-  svfloat32_t shift = svsel (pred_xlt0, sv_f32 (-2.0), sv_f32 (0.0));
+-  shift = svsel (pred_aygtax, svadd_x (pg, shift, 1.0), shift);
++  svfloat32_t shift = svreinterpret_f32 (svlsr_x (pg, sign_x, 1));
++  shift = svsel (pred_aygtax, sv_f32 (1.0), shift);
++  shift = svreinterpret_f32 (svorr_x (pg, sign_x, svreinterpret_u32 (shift)));
+   shift = svmul_x (pg, shift, sv_f32 (data_ptr->pi_over_2));
+ 
+-  /* Use split Estrin scheme for P(z^2) with deg(P)=7.  */
++  /* Use pure Estrin scheme for P(z^2) with deg(P)=7.  */
+   svfloat32_t z2 = svmul_x (pg, z, z);
+   svfloat32_t z4 = svmul_x (pg, z2, z2);
+   svfloat32_t z8 = svmul_x (pg, z4, z4);
+@@ -101,10 +101,12 @@ svfloat32_t SV_NAME_F2 (atan2) (svfloat32_t y, svfloat32_t x, const svbool_t pg)
+   ret = svadd_m (pg, ret, shift);
+ 
+   /* Account for the sign of x and y.  */
+-  ret = svreinterpret_f32 (sveor_x (pg, svreinterpret_u32 (ret), sign_xy));
+ 
+   if (__glibc_unlikely (svptest_any (pg, cmp_xy)))
+-    return special_case (y, x, ret, cmp_xy);
++    return special_case (
++	y, x,
++	svreinterpret_f32 (sveor_x (pg, svreinterpret_u32 (ret), sign_xy)),
++	cmp_xy);
+ 
+-  return ret;
++  return svreinterpret_f32 (sveor_x (pg, svreinterpret_u32 (ret), sign_xy));
+ }
+diff --git a/sysdeps/aarch64/fpu/cos_advsimd.c b/sysdeps/aarch64/fpu/cos_advsimd.c
+index 2897e8b909..3924c9ce44 100644
+--- a/sysdeps/aarch64/fpu/cos_advsimd.c
++++ b/sysdeps/aarch64/fpu/cos_advsimd.c
+@@ -63,8 +63,7 @@ float64x2_t VPCS_ATTR V_NAME_D1 (cos) (float64x2_t x)
+        special-case handler later.  */
+     r = vbslq_f64 (cmp, v_f64 (1.0), r);
+ #else
+-  cmp = vcageq_f64 (d->range_val, x);
+-  cmp = vceqzq_u64 (cmp); /* cmp = ~cmp.  */
++  cmp = vcageq_f64 (x, d->range_val);
+   r = x;
+ #endif
+ 
+diff --git a/sysdeps/aarch64/fpu/cosf_advsimd.c b/sysdeps/aarch64/fpu/cosf_advsimd.c
+index 60abc8dfcf..d0c285b03a 100644
+--- a/sysdeps/aarch64/fpu/cosf_advsimd.c
++++ b/sysdeps/aarch64/fpu/cosf_advsimd.c
+@@ -64,8 +64,7 @@ float32x4_t VPCS_ATTR NOINLINE V_NAME_F1 (cos) (float32x4_t x)
+        special-case handler later.  */
+     r = vbslq_f32 (cmp, v_f32 (1.0f), r);
+ #else
+-  cmp = vcageq_f32 (d->range_val, x);
+-  cmp = vceqzq_u32 (cmp); /* cmp = ~cmp.  */
++  cmp = vcageq_f32 (x, d->range_val);
+   r = x;
+ #endif
+ 
+diff --git a/sysdeps/aarch64/fpu/exp10_advsimd.c b/sysdeps/aarch64/fpu/exp10_advsimd.c
+index fe7149b191..eeb31ca839 100644
+--- a/sysdeps/aarch64/fpu/exp10_advsimd.c
++++ b/sysdeps/aarch64/fpu/exp10_advsimd.c
+@@ -57,7 +57,7 @@ const static struct data
+ # define BigBound v_u64 (0x4070000000000000)  /* asuint64 (0x1p8).  */
+ # define Thres v_u64 (0x2070000000000000)     /* BigBound - TinyBound.  */
+ 
+-static inline float64x2_t VPCS_ATTR
++static float64x2_t VPCS_ATTR NOINLINE
+ special_case (float64x2_t x, float64x2_t y, uint64x2_t cmp)
+ {
+   /* If fenv exceptions are to be triggered correctly, fall back to the scalar
+@@ -72,7 +72,7 @@ special_case (float64x2_t x, float64x2_t y, uint64x2_t cmp)
+ # define SpecialBias1 v_u64 (0x7000000000000000)  /* 0x1p769.  */
+ # define SpecialBias2 v_u64 (0x3010000000000000)  /* 0x1p-254.  */
+ 
+-static float64x2_t VPCS_ATTR NOINLINE
++static inline float64x2_t VPCS_ATTR
+ special_case (float64x2_t s, float64x2_t y, float64x2_t n,
+ 	      const struct data *d)
+ {
+diff --git a/sysdeps/aarch64/fpu/exp10f_advsimd.c b/sysdeps/aarch64/fpu/exp10f_advsimd.c
+index 7ee0c90948..ab117b69da 100644
+--- a/sysdeps/aarch64/fpu/exp10f_advsimd.c
++++ b/sysdeps/aarch64/fpu/exp10f_advsimd.c
+@@ -25,7 +25,8 @@
+ static const struct data
+ {
+   float32x4_t poly[5];
+-  float32x4_t shift, log10_2, log2_10_hi, log2_10_lo;
++  float32x4_t log10_2_and_inv, shift;
++
+ #if !WANT_SIMD_EXCEPT
+   float32x4_t scale_thresh;
+ #endif
+@@ -38,9 +39,9 @@ static const struct data
+   .poly = { V4 (0x1.26bb16p+1f), V4 (0x1.5350d2p+1f), V4 (0x1.04744ap+1f),
+ 	    V4 (0x1.2d8176p+0f), V4 (0x1.12b41ap-1f) },
+   .shift = V4 (0x1.8p23f),
+-  .log10_2 = V4 (0x1.a934fp+1),
+-  .log2_10_hi = V4 (0x1.344136p-2),
+-  .log2_10_lo = V4 (-0x1.ec10cp-27),
++
++  /* Stores constants 1/log10(2), log10(2)_high, log10(2)_low, 0.  */
++  .log10_2_and_inv = { 0x1.a934fp+1, 0x1.344136p-2, -0x1.ec10cp-27, 0 },
+ #if !WANT_SIMD_EXCEPT
+   .scale_thresh = V4 (ScaleBound)
+ #endif
+@@ -98,24 +99,22 @@ float32x4_t VPCS_ATTR NOINLINE V_NAME_F1 (exp10) (float32x4_t x)
+ #if WANT_SIMD_EXCEPT
+   /* asuint(x) - TinyBound >= BigBound - TinyBound.  */
+   uint32x4_t cmp = vcgeq_u32 (
+-      vsubq_u32 (vandq_u32 (vreinterpretq_u32_f32 (x), v_u32 (0x7fffffff)),
+-		 TinyBound),
+-      Thres);
++      vsubq_u32 (vreinterpretq_u32_f32 (vabsq_f32 (x)), TinyBound), Thres);
+   float32x4_t xm = x;
+   /* If any lanes are special, mask them with 1 and retain a copy of x to allow
+      special case handler to fix special lanes later. This is only necessary if
+      fenv exceptions are to be triggered correctly.  */
+   if (__glibc_unlikely (v_any_u32 (cmp)))
+-    x = vbslq_f32 (cmp, v_f32 (1), x);
++    x = v_zerofy_f32 (x, cmp);
+ #endif
+ 
+   /* exp10(x) = 2^n * 10^r = 2^n * (1 + poly (r)),
+      with poly(r) in [1/sqrt(2), sqrt(2)] and
+      x = r + n * log10 (2), with r in [-log10(2)/2, log10(2)/2].  */
+-  float32x4_t z = vfmaq_f32 (d->shift, x, d->log10_2);
++  float32x4_t z = vfmaq_laneq_f32 (d->shift, x, d->log10_2_and_inv, 0);
+   float32x4_t n = vsubq_f32 (z, d->shift);
+-  float32x4_t r = vfmsq_f32 (x, n, d->log2_10_hi);
+-  r = vfmsq_f32 (r, n, d->log2_10_lo);
++  float32x4_t r = vfmsq_laneq_f32 (x, n, d->log10_2_and_inv, 1);
++  r = vfmsq_laneq_f32 (r, n, d->log10_2_and_inv, 2);
+   uint32x4_t e = vshlq_n_u32 (vreinterpretq_u32_f32 (z), 23);
+ 
+   float32x4_t scale = vreinterpretq_f32_u32 (vaddq_u32 (e, ExponentBias));
+diff --git a/sysdeps/aarch64/fpu/exp2_advsimd.c b/sysdeps/aarch64/fpu/exp2_advsimd.c
+index 391a93180c..ae1e63d503 100644
+--- a/sysdeps/aarch64/fpu/exp2_advsimd.c
++++ b/sysdeps/aarch64/fpu/exp2_advsimd.c
+@@ -24,6 +24,7 @@
+ #define IndexMask (N - 1)
+ #define BigBound 1022.0
+ #define UOFlowBound 1280.0
++#define TinyBound 0x2000000000000000 /* asuint64(0x1p-511).  */
+ 
+ static const struct data
+ {
+@@ -48,14 +49,13 @@ lookup_sbits (uint64x2_t i)
+ 
+ #if WANT_SIMD_EXCEPT
+ 
+-# define TinyBound 0x2000000000000000 /* asuint64(0x1p-511).  */
+ # define Thres 0x2080000000000000     /* asuint64(512.0) - TinyBound.  */
+ 
+ /* Call scalar exp2 as a fallback.  */
+ static float64x2_t VPCS_ATTR NOINLINE
+-special_case (float64x2_t x)
++special_case (float64x2_t x, float64x2_t y, uint64x2_t is_special)
+ {
+-  return v_call_f64 (exp2, x, x, v_u64 (0xffffffffffffffff));
++  return v_call_f64 (exp2, x, y, is_special);
+ }
+ 
+ #else
+@@ -65,7 +65,7 @@ special_case (float64x2_t x)
+ # define SpecialBias1 0x7000000000000000 /* 0x1p769.  */
+ # define SpecialBias2 0x3010000000000000 /* 0x1p-254.  */
+ 
+-static float64x2_t VPCS_ATTR
++static inline float64x2_t VPCS_ATTR
+ special_case (float64x2_t s, float64x2_t y, float64x2_t n,
+ 	      const struct data *d)
+ {
+@@ -94,10 +94,10 @@ float64x2_t V_NAME_D1 (exp2) (float64x2_t x)
+ #if WANT_SIMD_EXCEPT
+   uint64x2_t ia = vreinterpretq_u64_f64 (vabsq_f64 (x));
+   cmp = vcgeq_u64 (vsubq_u64 (ia, v_u64 (TinyBound)), v_u64 (Thres));
+-  /* If any special case (inf, nan, small and large x) is detected,
+-     fall back to scalar for all lanes.  */
+-  if (__glibc_unlikely (v_any_u64 (cmp)))
+-    return special_case (x);
++  /* Mask special lanes and retain a copy of x for passing to special-case
++     handler.  */
++  float64x2_t xc = x;
++  x = v_zerofy_f64 (x, cmp);
+ #else
+   cmp = vcagtq_f64 (x, d->scale_big_bound);
+ #endif
+@@ -120,9 +120,11 @@ float64x2_t V_NAME_D1 (exp2) (float64x2_t x)
+   float64x2_t y = v_pairwise_poly_3_f64 (r, r2, d->poly);
+   y = vmulq_f64 (r, y);
+ 
++  if (__glibc_unlikely (v_any_u64 (cmp)))
+ #if !WANT_SIMD_EXCEPT
+-  if (__glibc_unlikely (v_any_u64 (cmp)))
+     return special_case (s, y, n, d);
++#else
++    return special_case (xc, vfmaq_f64 (s, s, y), cmp);
+ #endif
+   return vfmaq_f64 (s, s, y);
+ }
+diff --git a/sysdeps/aarch64/fpu/exp2f_sve.c b/sysdeps/aarch64/fpu/exp2f_sve.c
+index 9a5a523a10..8a686e3e05 100644
+--- a/sysdeps/aarch64/fpu/exp2f_sve.c
++++ b/sysdeps/aarch64/fpu/exp2f_sve.c
+@@ -20,6 +20,8 @@
+ #include "sv_math.h"
+ #include "poly_sve_f32.h"
+ 
++#define Thres 0x1.5d5e2ap+6f
++
+ static const struct data
+ {
+   float poly[5];
+@@ -33,7 +35,7 @@ static const struct data
+   .shift = 0x1.903f8p17f,
+   /* Roughly 87.3. For x < -Thres, the result is subnormal and not handled
+      correctly by FEXPA.  */
+-  .thres = 0x1.5d5e2ap+6f,
++  .thres = Thres,
+ };
+ 
+ static svfloat32_t NOINLINE
+diff --git a/sysdeps/aarch64/fpu/exp_advsimd.c b/sysdeps/aarch64/fpu/exp_advsimd.c
+index fd215f1d2c..5e3a9a0d44 100644
+--- a/sysdeps/aarch64/fpu/exp_advsimd.c
++++ b/sysdeps/aarch64/fpu/exp_advsimd.c
+@@ -54,7 +54,7 @@ const static volatile struct
+ # define BigBound v_u64 (0x4080000000000000) /* asuint64 (0x1p9).  */
+ # define SpecialBound v_u64 (0x2080000000000000) /* BigBound - TinyBound.  */
+ 
+-static inline float64x2_t VPCS_ATTR
++static float64x2_t VPCS_ATTR NOINLINE
+ special_case (float64x2_t x, float64x2_t y, uint64x2_t cmp)
+ {
+   /* If fenv exceptions are to be triggered correctly, fall back to the scalar
+@@ -69,7 +69,7 @@ special_case (float64x2_t x, float64x2_t y, uint64x2_t cmp)
+ # define SpecialBias1 v_u64 (0x7000000000000000) /* 0x1p769.  */
+ # define SpecialBias2 v_u64 (0x3010000000000000) /* 0x1p-254.  */
+ 
+-static float64x2_t VPCS_ATTR NOINLINE
++static inline float64x2_t VPCS_ATTR
+ special_case (float64x2_t s, float64x2_t y, float64x2_t n)
+ {
+   /* 2^(n/N) may overflow, break it up into s1*s2.  */
+diff --git a/sysdeps/aarch64/fpu/expm1_advsimd.c b/sysdeps/aarch64/fpu/expm1_advsimd.c
+index 0b85bd06f3..3628398674 100644
+--- a/sysdeps/aarch64/fpu/expm1_advsimd.c
++++ b/sysdeps/aarch64/fpu/expm1_advsimd.c
+@@ -23,7 +23,7 @@
+ static const struct data
+ {
+   float64x2_t poly[11];
+-  float64x2_t invln2, ln2_lo, ln2_hi, shift;
++  float64x2_t invln2, ln2, shift;
+   int64x2_t exponent_bias;
+ #if WANT_SIMD_EXCEPT
+   uint64x2_t thresh, tiny_bound;
+@@ -38,8 +38,7 @@ static const struct data
+ 	    V2 (0x1.71ddf82db5bb4p-19), V2 (0x1.27e517fc0d54bp-22),
+ 	    V2 (0x1.af5eedae67435p-26), V2 (0x1.1f143d060a28ap-29) },
+   .invln2 = V2 (0x1.71547652b82fep0),
+-  .ln2_hi = V2 (0x1.62e42fefa39efp-1),
+-  .ln2_lo = V2 (0x1.abc9e3b39803fp-56),
++  .ln2 = { 0x1.62e42fefa39efp-1, 0x1.abc9e3b39803fp-56 },
+   .shift = V2 (0x1.8p52),
+   .exponent_bias = V2 (0x3ff0000000000000),
+ #if WANT_SIMD_EXCEPT
+@@ -83,7 +82,7 @@ float64x2_t VPCS_ATTR V_NAME_D1 (expm1) (float64x2_t x)
+     x = v_zerofy_f64 (x, special);
+ #else
+   /* Large input, NaNs and Infs.  */
+-  uint64x2_t special = vceqzq_u64 (vcaltq_f64 (x, d->oflow_bound));
++  uint64x2_t special = vcageq_f64 (x, d->oflow_bound);
+ #endif
+ 
+   /* Reduce argument to smaller range:
+@@ -93,8 +92,8 @@ float64x2_t VPCS_ATTR V_NAME_D1 (expm1) (float64x2_t x)
+      where 2^i is exact because i is an integer.  */
+   float64x2_t n = vsubq_f64 (vfmaq_f64 (d->shift, d->invln2, x), d->shift);
+   int64x2_t i = vcvtq_s64_f64 (n);
+-  float64x2_t f = vfmsq_f64 (x, n, d->ln2_hi);
+-  f = vfmsq_f64 (f, n, d->ln2_lo);
++  float64x2_t f = vfmsq_laneq_f64 (x, n, d->ln2, 0);
++  f = vfmsq_laneq_f64 (f, n, d->ln2, 1);
+ 
+   /* Approximate expm1(f) using polynomial.
+      Taylor expansion for expm1(x) has the form:
+diff --git a/sysdeps/aarch64/fpu/expm1f_advsimd.c b/sysdeps/aarch64/fpu/expm1f_advsimd.c
+index 8d4c9a2193..93db200f61 100644
+--- a/sysdeps/aarch64/fpu/expm1f_advsimd.c
++++ b/sysdeps/aarch64/fpu/expm1f_advsimd.c
+@@ -23,7 +23,8 @@
+ static const struct data
+ {
+   float32x4_t poly[5];
+-  float32x4_t invln2, ln2_lo, ln2_hi, shift;
++  float32x4_t invln2_and_ln2;
++  float32x4_t shift;
+   int32x4_t exponent_bias;
+ #if WANT_SIMD_EXCEPT
+   uint32x4_t thresh;
+@@ -34,9 +35,8 @@ static const struct data
+   /* Generated using fpminimax with degree=5 in [-log(2)/2, log(2)/2].  */
+   .poly = { V4 (0x1.fffffep-2), V4 (0x1.5554aep-3), V4 (0x1.555736p-5),
+ 	    V4 (0x1.12287cp-7), V4 (0x1.6b55a2p-10) },
+-  .invln2 = V4 (0x1.715476p+0f),
+-  .ln2_hi = V4 (0x1.62e4p-1f),
+-  .ln2_lo = V4 (0x1.7f7d1cp-20f),
++  /* Stores constants: invln2, ln2_hi, ln2_lo, 0.  */
++  .invln2_and_ln2 = { 0x1.715476p+0f, 0x1.62e4p-1f, 0x1.7f7d1cp-20f, 0 },
+   .shift = V4 (0x1.8p23f),
+   .exponent_bias = V4 (0x3f800000),
+ #if !WANT_SIMD_EXCEPT
+@@ -80,7 +80,7 @@ float32x4_t VPCS_ATTR NOINLINE V_NAME_F1 (expm1) (float32x4_t x)
+     x = v_zerofy_f32 (x, special);
+ #else
+   /* Handles very large values (+ve and -ve), +/-NaN, +/-Inf.  */
+-  uint32x4_t special = vceqzq_u32 (vcaltq_f32 (x, d->oflow_bound));
++  uint32x4_t special = vcagtq_f32 (x, d->oflow_bound);
+ #endif
+ 
+   /* Reduce argument to smaller range:
+@@ -88,10 +88,11 @@ float32x4_t VPCS_ATTR NOINLINE V_NAME_F1 (expm1) (float32x4_t x)
+      and f = x - i * ln2, then f is in [-ln2/2, ln2/2].
+      exp(x) - 1 = 2^i * (expm1(f) + 1) - 1
+      where 2^i is exact because i is an integer.  */
+-  float32x4_t j = vsubq_f32 (vfmaq_f32 (d->shift, d->invln2, x), d->shift);
++  float32x4_t j = vsubq_f32 (
++      vfmaq_laneq_f32 (d->shift, x, d->invln2_and_ln2, 0), d->shift);
+   int32x4_t i = vcvtq_s32_f32 (j);
+-  float32x4_t f = vfmsq_f32 (x, j, d->ln2_hi);
+-  f = vfmsq_f32 (f, j, d->ln2_lo);
++  float32x4_t f = vfmsq_laneq_f32 (x, j, d->invln2_and_ln2, 1);
++  f = vfmsq_laneq_f32 (f, j, d->invln2_and_ln2, 2);
+ 
+   /* Approximate expm1(f) using polynomial.
+      Taylor expansion for expm1(x) has the form:
+diff --git a/sysdeps/aarch64/fpu/log_advsimd.c b/sysdeps/aarch64/fpu/log_advsimd.c
+index 067ae79613..21df61728c 100644
+--- a/sysdeps/aarch64/fpu/log_advsimd.c
++++ b/sysdeps/aarch64/fpu/log_advsimd.c
+@@ -58,8 +58,13 @@ lookup (uint64x2_t i)
+   uint64_t i1 = (i[1] >> (52 - V_LOG_TABLE_BITS)) & IndexMask;
+   float64x2_t e0 = vld1q_f64 (&__v_log_data.table[i0].invc);
+   float64x2_t e1 = vld1q_f64 (&__v_log_data.table[i1].invc);
++#if __BYTE_ORDER == __LITTLE_ENDIAN
+   e.invc = vuzp1q_f64 (e0, e1);
+   e.logc = vuzp2q_f64 (e0, e1);
++#else
++  e.invc = vuzp1q_f64 (e1, e0);
++  e.logc = vuzp2q_f64 (e1, e0);
++#endif
+   return e;
+ }
+ 
+diff --git a/sysdeps/aarch64/fpu/sin_advsimd.c b/sysdeps/aarch64/fpu/sin_advsimd.c
+index efce183e86..a0d9d3b819 100644
+--- a/sysdeps/aarch64/fpu/sin_advsimd.c
++++ b/sysdeps/aarch64/fpu/sin_advsimd.c
+@@ -75,8 +75,7 @@ float64x2_t VPCS_ATTR V_NAME_D1 (sin) (float64x2_t x)
+   r = vbslq_f64 (cmp, vreinterpretq_f64_u64 (cmp), x);
+ #else
+   r = x;
+-  cmp = vcageq_f64 (d->range_val, x);
+-  cmp = vceqzq_u64 (cmp); /* cmp = ~cmp.  */
++  cmp = vcageq_f64 (x, d->range_val);
+ #endif
+ 
+   /* n = rint(|x|/pi).  */
+diff --git a/sysdeps/aarch64/fpu/sinf_advsimd.c b/sysdeps/aarch64/fpu/sinf_advsimd.c
+index 60cf3f2ca1..375dfc3331 100644
+--- a/sysdeps/aarch64/fpu/sinf_advsimd.c
++++ b/sysdeps/aarch64/fpu/sinf_advsimd.c
+@@ -67,8 +67,7 @@ float32x4_t VPCS_ATTR NOINLINE V_NAME_F1 (sin) (float32x4_t x)
+   r = vbslq_f32 (cmp, vreinterpretq_f32_u32 (cmp), x);
+ #else
+   r = x;
+-  cmp = vcageq_f32 (d->range_val, x);
+-  cmp = vceqzq_u32 (cmp); /* cmp = ~cmp.  */
++  cmp = vcageq_f32 (x, d->range_val);
+ #endif
+ 
+   /* n = rint(|x|/pi) */
+diff --git a/sysdeps/aarch64/fpu/tan_advsimd.c b/sysdeps/aarch64/fpu/tan_advsimd.c
+index d7e5ba7b1a..0459821ab2 100644
+--- a/sysdeps/aarch64/fpu/tan_advsimd.c
++++ b/sysdeps/aarch64/fpu/tan_advsimd.c
+@@ -23,7 +23,7 @@
+ static const struct data
+ {
+   float64x2_t poly[9];
+-  float64x2_t half_pi_hi, half_pi_lo, two_over_pi, shift;
++  float64x2_t half_pi, two_over_pi, shift;
+ #if !WANT_SIMD_EXCEPT
+   float64x2_t range_val;
+ #endif
+@@ -34,8 +34,7 @@ static const struct data
+ 	    V2 (0x1.226e5e5ecdfa3p-7), V2 (0x1.d6c7ddbf87047p-9),
+ 	    V2 (0x1.7ea75d05b583ep-10), V2 (0x1.289f22964a03cp-11),
+ 	    V2 (0x1.4e4fd14147622p-12) },
+-  .half_pi_hi = V2 (0x1.921fb54442d18p0),
+-  .half_pi_lo = V2 (0x1.1a62633145c07p-54),
++  .half_pi = { 0x1.921fb54442d18p0, 0x1.1a62633145c07p-54 },
+   .two_over_pi = V2 (0x1.45f306dc9c883p-1),
+   .shift = V2 (0x1.8p52),
+ #if !WANT_SIMD_EXCEPT
+@@ -56,15 +55,15 @@ special_case (float64x2_t x)
+ 
+ /* Vector approximation for double-precision tan.
+    Maximum measured error is 3.48 ULP:
+-   __v_tan(0x1.4457047ef78d8p+20) got -0x1.f6ccd8ecf7dedp+37
+-				 want -0x1.f6ccd8ecf7deap+37.   */
++   _ZGVnN2v_tan(0x1.4457047ef78d8p+20) got -0x1.f6ccd8ecf7dedp+37
++				      want -0x1.f6ccd8ecf7deap+37.  */
+ float64x2_t VPCS_ATTR V_NAME_D1 (tan) (float64x2_t x)
+ {
+   const struct data *dat = ptr_barrier (&data);
+-  /* Our argument reduction cannot calculate q with sufficient accuracy for very
+-     large inputs. Fall back to scalar routine for all lanes if any are too
+-     large, or Inf/NaN. If fenv exceptions are expected, also fall back for tiny
+-     input to avoid underflow.  */
++  /* Our argument reduction cannot calculate q with sufficient accuracy for
++     very large inputs. Fall back to scalar routine for all lanes if any are
++     too large, or Inf/NaN. If fenv exceptions are expected, also fall back for
++     tiny input to avoid underflow.  */
+ #if WANT_SIMD_EXCEPT
+   uint64x2_t iax = vreinterpretq_u64_f64 (vabsq_f64 (x));
+   /* iax - tiny_bound > range_val - tiny_bound.  */
+@@ -82,8 +81,8 @@ float64x2_t VPCS_ATTR V_NAME_D1 (tan) (float64x2_t x)
+   /* Use q to reduce x to r in [-pi/4, pi/4], by:
+      r = x - q * pi/2, in extended precision.  */
+   float64x2_t r = x;
+-  r = vfmsq_f64 (r, q, dat->half_pi_hi);
+-  r = vfmsq_f64 (r, q, dat->half_pi_lo);
++  r = vfmsq_laneq_f64 (r, q, dat->half_pi, 0);
++  r = vfmsq_laneq_f64 (r, q, dat->half_pi, 1);
+   /* Further reduce r to [-pi/8, pi/8], to be reconstructed using double angle
+      formula.  */
+   r = vmulq_n_f64 (r, 0.5);
+@@ -106,14 +105,15 @@ float64x2_t VPCS_ATTR V_NAME_D1 (tan) (float64x2_t x)
+      and reciprocity around pi/2:
+      tan(x) = 1 / (tan(pi/2 - x))
+      to assemble result using change-of-sign and conditional selection of
+-     numerator/denominator, dependent on odd/even-ness of q (hence quadrant). */
++     numerator/denominator, dependent on odd/even-ness of q (hence quadrant).
++   */
+   float64x2_t n = vfmaq_f64 (v_f64 (-1), p, p);
+   float64x2_t d = vaddq_f64 (p, p);
+ 
+   uint64x2_t no_recip = vtstq_u64 (vreinterpretq_u64_s64 (qi), v_u64 (1));
+ 
+ #if !WANT_SIMD_EXCEPT
+-  uint64x2_t special = vceqzq_u64 (vcaleq_f64 (x, dat->range_val));
++  uint64x2_t special = vcageq_f64 (x, dat->range_val);
+   if (__glibc_unlikely (v_any_u64 (special)))
+     return special_case (x);
+ #endif
+diff --git a/sysdeps/aarch64/fpu/tanf_advsimd.c b/sysdeps/aarch64/fpu/tanf_advsimd.c
+index 1f16103f8a..5a7489390a 100644
+--- a/sysdeps/aarch64/fpu/tanf_advsimd.c
++++ b/sysdeps/aarch64/fpu/tanf_advsimd.c
+@@ -23,7 +23,8 @@
+ static const struct data
+ {
+   float32x4_t poly[6];
+-  float32x4_t neg_half_pi_1, neg_half_pi_2, neg_half_pi_3, two_over_pi, shift;
++  float32x4_t pi_consts;
++  float32x4_t shift;
+ #if !WANT_SIMD_EXCEPT
+   float32x4_t range_val;
+ #endif
+@@ -31,10 +32,9 @@ static const struct data
+   /* Coefficients generated using FPMinimax.  */
+   .poly = { V4 (0x1.55555p-2f), V4 (0x1.11166p-3f), V4 (0x1.b88a78p-5f),
+ 	    V4 (0x1.7b5756p-6f), V4 (0x1.4ef4cep-8f), V4 (0x1.0e1e74p-7f) },
+-  .neg_half_pi_1 = V4 (-0x1.921fb6p+0f),
+-  .neg_half_pi_2 = V4 (0x1.777a5cp-25f),
+-  .neg_half_pi_3 = V4 (0x1.ee59dap-50f),
+-  .two_over_pi = V4 (0x1.45f306p-1f),
++  /* Stores constants: (-pi/2)_high, (-pi/2)_mid, (-pi/2)_low, and 2/pi.  */
++  .pi_consts
++  = { -0x1.921fb6p+0f, 0x1.777a5cp-25f, 0x1.ee59dap-50f, 0x1.45f306p-1f },
+   .shift = V4 (0x1.8p+23f),
+ #if !WANT_SIMD_EXCEPT
+   .range_val = V4 (0x1p15f),
+@@ -58,10 +58,11 @@ eval_poly (float32x4_t z, const struct data *d)
+ {
+   float32x4_t z2 = vmulq_f32 (z, z);
+ #if WANT_SIMD_EXCEPT
+-  /* Tiny z (<= 0x1p-31) will underflow when calculating z^4. If fp exceptions
+-     are to be triggered correctly, sidestep this by fixing such lanes to 0.  */
++  /* Tiny z (<= 0x1p-31) will underflow when calculating z^4.
++     If fp exceptions are to be triggered correctly,
++     sidestep this by fixing such lanes to 0.  */
+   uint32x4_t will_uflow
+-    = vcleq_u32 (vreinterpretq_u32_f32 (vabsq_f32 (z)), TinyBound);
++      = vcleq_u32 (vreinterpretq_u32_f32 (vabsq_f32 (z)), TinyBound);
+   if (__glibc_unlikely (v_any_u32 (will_uflow)))
+     z2 = vbslq_f32 (will_uflow, v_f32 (0), z2);
+ #endif
+@@ -94,16 +95,16 @@ float32x4_t VPCS_ATTR NOINLINE V_NAME_F1 (tan) (float32x4_t x)
+ #endif
+ 
+   /* n = rint(x/(pi/2)).  */
+-  float32x4_t q = vfmaq_f32 (d->shift, d->two_over_pi, x);
++  float32x4_t q = vfmaq_laneq_f32 (d->shift, x, d->pi_consts, 3);
+   float32x4_t n = vsubq_f32 (q, d->shift);
+   /* Determine if x lives in an interval, where |tan(x)| grows to infinity.  */
+   uint32x4_t pred_alt = vtstq_u32 (vreinterpretq_u32_f32 (q), v_u32 (1));
+ 
+   /* r = x - n * (pi/2)  (range reduction into -pi./4 .. pi/4).  */
+   float32x4_t r;
+-  r = vfmaq_f32 (x, d->neg_half_pi_1, n);
+-  r = vfmaq_f32 (r, d->neg_half_pi_2, n);
+-  r = vfmaq_f32 (r, d->neg_half_pi_3, n);
++  r = vfmaq_laneq_f32 (x, n, d->pi_consts, 0);
++  r = vfmaq_laneq_f32 (r, n, d->pi_consts, 1);
++  r = vfmaq_laneq_f32 (r, n, d->pi_consts, 2);
+ 
+   /* If x lives in an interval, where |tan(x)|
+      - is finite, then use a polynomial approximation of the form
+diff --git a/sysdeps/aarch64/multiarch/init-arch.h b/sysdeps/aarch64/multiarch/init-arch.h
+index c52860efb2..61dc40088f 100644
+--- a/sysdeps/aarch64/multiarch/init-arch.h
++++ b/sysdeps/aarch64/multiarch/init-arch.h
+@@ -36,5 +36,7 @@
+     MTE_ENABLED ();							      \
+   bool __attribute__((unused)) sve =					      \
+     GLRO(dl_aarch64_cpu_features).sve;					      \
++  bool __attribute__((unused)) prefer_sve_ifuncs =			      \
++    GLRO(dl_aarch64_cpu_features).prefer_sve_ifuncs;			      \
+   bool __attribute__((unused)) mops =					      \
+     GLRO(dl_aarch64_cpu_features).mops;
+diff --git a/sysdeps/aarch64/multiarch/memcpy.c b/sysdeps/aarch64/multiarch/memcpy.c
+index d12eccfca5..ce53567dab 100644
+--- a/sysdeps/aarch64/multiarch/memcpy.c
++++ b/sysdeps/aarch64/multiarch/memcpy.c
+@@ -47,7 +47,7 @@ select_memcpy_ifunc (void)
+     {
+       if (IS_A64FX (midr))
+ 	return __memcpy_a64fx;
+-      return __memcpy_sve;
++      return prefer_sve_ifuncs ? __memcpy_sve : __memcpy_generic;
+     }
+ 
+   if (IS_THUNDERX (midr))
+diff --git a/sysdeps/aarch64/multiarch/memmove.c b/sysdeps/aarch64/multiarch/memmove.c
+index 2081eeb4d4..fe95037be3 100644
+--- a/sysdeps/aarch64/multiarch/memmove.c
++++ b/sysdeps/aarch64/multiarch/memmove.c
+@@ -47,7 +47,7 @@ select_memmove_ifunc (void)
+     {
+       if (IS_A64FX (midr))
+ 	return __memmove_a64fx;
+-      return __memmove_sve;
++      return prefer_sve_ifuncs ? __memmove_sve : __memmove_generic;
+     }
+ 
+   if (IS_THUNDERX (midr))
 diff --git a/sysdeps/aarch64/preconfigure b/sysdeps/aarch64/preconfigure
 index d9bd1f8558..19657b627b 100644
 --- a/sysdeps/aarch64/preconfigure
@@ -2933,6 +3684,79 @@ index 6c63bd8257..14b6dafd4a 100644
      submachine=${archcpu}
      AC_CACHE_VAL(libc_cv_cc_submachine,libc_cv_cc_submachine="")
      ;;
+diff --git a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c b/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
+index b1a3f673f0..c0b047bc0d 100644
+--- a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
++++ b/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
+@@ -21,6 +21,7 @@
+ #include <sys/auxv.h>
+ #include <elf/dl-hwcaps.h>
+ #include <sys/prctl.h>
++#include <sys/utsname.h>
+ #include <dl-tunables-parse.h>
+ 
+ #define DCZID_DZP_MASK (1 << 4)
+@@ -62,6 +63,46 @@ get_midr_from_mcpu (const struct tunable_str_t *mcpu)
+   return UINT64_MAX;
+ }
+ 
++#if __LINUX_KERNEL_VERSION < 0x060200
++
++/* Return true if we prefer using SVE in string ifuncs.  Old kernels disable
++   SVE after every system call which results in unnecessary traps if memcpy
++   uses SVE.  This is true for kernels between 4.15.0 and before 6.2.0, except
++   for 5.14.0 which was patched.  For these versions return false to avoid using
++   SVE ifuncs.
++   Parse the kernel version into a 24-bit kernel.major.minor value without
++   calling any library functions.  If uname() is not supported or if the version
++   format is not recognized, assume the kernel is modern and return true.  */
++
++static inline bool
++prefer_sve_ifuncs (void)
++{
++  struct utsname buf;
++  const char *p = &buf.release[0];
++  int kernel = 0;
++  int val;
++
++  if (__uname (&buf) < 0)
++    return true;
++
++  for (int shift = 16; shift >= 0; shift -= 8)
++    {
++      for (val = 0; *p >= '0' && *p <= '9'; p++)
++	val = val * 10 + *p - '0';
++      kernel |= (val & 255) << shift;
++      if (*p++ != '.')
++	break;
++    }
++
++  if (kernel >= 0x060200 || kernel == 0x050e00)
++    return true;
++  if (kernel >= 0x040f00)
++    return false;
++  return true;
++}
++
++#endif
++
+ static inline void
+ init_cpu_features (struct cpu_features *cpu_features)
+ {
+@@ -126,6 +167,13 @@ init_cpu_features (struct cpu_features *cpu_features)
+   /* Check if SVE is supported.  */
+   cpu_features->sve = GLRO (dl_hwcap) & HWCAP_SVE;
+ 
++  cpu_features->prefer_sve_ifuncs = cpu_features->sve;
++
++#if __LINUX_KERNEL_VERSION < 0x060200
++  if (cpu_features->sve)
++    cpu_features->prefer_sve_ifuncs = prefer_sve_ifuncs ();
++#endif
++
+   /* Check if MOPS is supported.  */
+   cpu_features->mops = GLRO (dl_hwcap2) & HWCAP2_MOPS;
+ }
 diff --git a/sysdeps/unix/sysv/linux/dl-parse_auxv.h b/sysdeps/unix/sysv/linux/dl-parse_auxv.h
 index e3d758b163..ea2a58ecb1 100644
 --- a/sysdeps/unix/sysv/linux/dl-parse_auxv.h
