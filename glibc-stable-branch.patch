@@ -21,11 +21,12 @@ Florian Weimer (2):
       linux: Use rseq area unconditionally in sched_getcpu (bug 31479)
       i386: Use generic memrchr in libc (bug 31316)
 
-H.J. Lu (4):
+H.J. Lu (5):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
       x86-64: Update _dl_tlsdesc_dynamic to preserve AMX registers
       x86-64: Allocate state buffer space for RDI, RSI and RBX
+      x86-64: Don't use SSE resolvers for ISA level 3 or above
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
@@ -38,6 +39,9 @@ Manjunath Matti (1):
 
 Stefan Liebler (1):
       S390: Do not clobber r7 in clone [BZ #31402]
+
+Sunil K Pandey (1):
+      x86-64: Simplify minimum ISA check ifdef conditional with if
 
 Szabolcs Nagy (1):
       aarch64: fix check for SVE support in assembler
@@ -4299,10 +4303,18 @@ index 6a8fd29813..21fc88d651 100644
  XSAVE_STATE_SIZE_OFFSET	offsetof (struct cpu_features, xsave_state_size)
 +XSAVE_STATE_FULL_SIZE_OFFSET offsetof (struct cpu_features, xsave_state_full_size)
 diff --git a/sysdeps/x86/cpu-features.c b/sysdeps/x86/cpu-features.c
-index 25e6622a79..6fe1b728c6 100644
+index 25e6622a79..3d7c2819d7 100644
 --- a/sysdeps/x86/cpu-features.c
 +++ b/sysdeps/x86/cpu-features.c
-@@ -27,8 +27,13 @@
+@@ -18,6 +18,7 @@
+ 
+ #include <dl-hwcap.h>
+ #include <libc-pointer-arith.h>
++#include <isa-level.h>
+ #include <get-isa-level.h>
+ #include <cacheinfo.h>
+ #include <dl-cacheinfo.h>
+@@ -27,8 +28,13 @@
  extern void TUNABLE_CALLBACK (set_hwcaps) (tunable_val_t *)
    attribute_hidden;
  
@@ -4318,7 +4330,7 @@ index 25e6622a79..6fe1b728c6 100644
  
  static void
  TUNABLE_CALLBACK (set_plt_rewrite) (tunable_val_t *valp)
-@@ -47,6 +52,15 @@ TUNABLE_CALLBACK (set_plt_rewrite) (tunable_val_t *valp)
+@@ -47,6 +53,15 @@ TUNABLE_CALLBACK (set_plt_rewrite) (tunable_val_t *valp)
  		 : plt_rewrite_jmp);
      }
  }
@@ -4334,7 +4346,7 @@ index 25e6622a79..6fe1b728c6 100644
  #endif
  
  #ifdef __LP64__
-@@ -293,8 +307,10 @@ update_active (struct cpu_features *cpu_features)
+@@ -293,8 +308,10 @@ update_active (struct cpu_features *cpu_features)
  	  __cpuid_count (0xd, 0, eax, ebx, ecx, edx);
  	  if (ebx != 0)
  	    {
@@ -4346,7 +4358,7 @@ index 25e6622a79..6fe1b728c6 100644
  
  	      cpu_features->xsave_state_size
  		= xsave_state_full_size;
-@@ -306,6 +322,11 @@ update_active (struct cpu_features *cpu_features)
+@@ -306,6 +323,11 @@ update_active (struct cpu_features *cpu_features)
  		{
  		  unsigned int xstate_comp_offsets[32];
  		  unsigned int xstate_comp_sizes[32];
@@ -4358,7 +4370,7 @@ index 25e6622a79..6fe1b728c6 100644
  		  unsigned int i;
  
  		  xstate_comp_offsets[0] = 0;
-@@ -313,16 +334,39 @@ update_active (struct cpu_features *cpu_features)
+@@ -313,16 +335,39 @@ update_active (struct cpu_features *cpu_features)
  		  xstate_comp_offsets[2] = 576;
  		  xstate_comp_sizes[0] = 160;
  		  xstate_comp_sizes[1] = 256;
@@ -4400,7 +4412,7 @@ index 25e6622a79..6fe1b728c6 100644
  			  ecx = 0;
  			  xstate_comp_sizes[i] = 0;
  			}
-@@ -335,6 +379,15 @@ update_active (struct cpu_features *cpu_features)
+@@ -335,6 +380,15 @@ update_active (struct cpu_features *cpu_features)
  			  if ((ecx & (1 << 1)) != 0)
  			    xstate_comp_offsets[i]
  			      = ALIGN_UP (xstate_comp_offsets[i], 64);
@@ -4416,7 +4428,7 @@ index 25e6622a79..6fe1b728c6 100644
  			}
  		    }
  
-@@ -343,8 +396,23 @@ update_active (struct cpu_features *cpu_features)
+@@ -343,8 +397,23 @@ update_active (struct cpu_features *cpu_features)
  		    = xstate_comp_offsets[31] + xstate_comp_sizes[31];
  		  if (size)
  		    {
@@ -4441,11 +4453,12 @@ index 25e6622a79..6fe1b728c6 100644
  		      CPU_FEATURE_SET (cpu_features, XSAVEC);
  		    }
  		}
-@@ -1130,6 +1198,44 @@ no_cpuid:
+@@ -1130,6 +1199,45 @@ no_cpuid:
  	       TUNABLE_CALLBACK (set_x86_shstk));
  #endif
  
-+  if (GLRO(dl_x86_cpu_features).xsave_state_size != 0)
++  if (MINIMUM_X86_ISA_LEVEL >= AVX_X86_ISA_LEVEL
++      || (GLRO(dl_x86_cpu_features).xsave_state_size != 0))
 +    {
 +      if (CPU_FEATURE_USABLE_P (cpu_features, XSAVEC))
 +	{
@@ -5170,15 +5183,16 @@ index 0000000000..9f02cfc3eb
 +
 +#undef STATE_SAVE_ALIGNMENT
 diff --git a/sysdeps/x86_64/dl-tlsdesc.S b/sysdeps/x86_64/dl-tlsdesc.S
-index f748af2ece..ea69f5223a 100644
+index f748af2ece..057a10862a 100644
 --- a/sysdeps/x86_64/dl-tlsdesc.S
 +++ b/sysdeps/x86_64/dl-tlsdesc.S
-@@ -18,7 +18,19 @@
+@@ -18,7 +18,20 @@
  
  #include <sysdep.h>
  #include <tls.h>
 +#include <cpu-features-offsets.h>
 +#include <features-offsets.h>
++#include <isa-level.h>
  #include "tlsdesc.h"
 +#include "dl-trampoline-save.h"
 +
@@ -5193,19 +5207,21 @@ index f748af2ece..ea69f5223a 100644
  
  	.text
  
-@@ -67,80 +79,24 @@ _dl_tlsdesc_undefweak:
+@@ -67,80 +80,26 @@ _dl_tlsdesc_undefweak:
  	.size	_dl_tlsdesc_undefweak, .-_dl_tlsdesc_undefweak
  
  #ifdef SHARED
 -	.hidden _dl_tlsdesc_dynamic
 -	.global	_dl_tlsdesc_dynamic
 -	.type	_dl_tlsdesc_dynamic,@function
-+# define USE_FXSAVE
-+# define STATE_SAVE_ALIGNMENT	16
-+# define _dl_tlsdesc_dynamic	_dl_tlsdesc_dynamic_fxsave
-+# include "dl-tlsdesc-dynamic.h"
-+# undef _dl_tlsdesc_dynamic
-+# undef USE_FXSAVE
++# if MINIMUM_X86_ISA_LEVEL < AVX_X86_ISA_LEVEL
++#  define USE_FXSAVE
++#  define STATE_SAVE_ALIGNMENT	16
++#  define _dl_tlsdesc_dynamic	_dl_tlsdesc_dynamic_fxsave
++#  include "dl-tlsdesc-dynamic.h"
++#  undef _dl_tlsdesc_dynamic
++#  undef USE_FXSAVE
++# endif
  
 -     /* %rax points to the TLS descriptor, such that 0(%rax) points to
 -	_dl_tlsdesc_dynamic itself, and 8(%rax) points to a struct
