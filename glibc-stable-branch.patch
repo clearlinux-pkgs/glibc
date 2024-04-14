@@ -17,16 +17,18 @@ Andreas K. Hüttel (1):
 Andreas Schwab (1):
       Add tst-gnu2-tls2mod1 to test-internal-extras
 
-Florian Weimer (2):
+Florian Weimer (3):
       linux: Use rseq area unconditionally in sched_getcpu (bug 31479)
       i386: Use generic memrchr in libc (bug 31316)
+      powerpc: Fix ld.so address determination for PCREL mode (bug 31640)
 
-H.J. Lu (5):
+H.J. Lu (6):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
       x86-64: Update _dl_tlsdesc_dynamic to preserve AMX registers
       x86-64: Allocate state buffer space for RDI, RSI and RBX
       x86-64: Don't use SSE resolvers for ISA level 3 or above
+      Apply the Makefile sorting fix
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
@@ -40,8 +42,9 @@ Manjunath Matti (1):
 Stefan Liebler (1):
       S390: Do not clobber r7 in clone [BZ #31402]
 
-Sunil K Pandey (1):
+Sunil K Pandey (2):
       x86-64: Simplify minimum ISA check ifdef conditional with if
+      x86_64: Exclude SSE, AVX and FMA4 variants in libm multiarch
 
 Szabolcs Nagy (1):
       aarch64: fix check for SVE support in assembler
@@ -3359,6 +3362,103 @@ index 9f05485236..7c0395fbb5 100644
  }
 -libm_alias_finite (__ieee754_scalb, __scalb)
 +libm_alias_finite (__ieee754_scalbf, __scalbf)
+diff --git a/sysdeps/loongarch/lp64/multiarch/Makefile b/sysdeps/loongarch/lp64/multiarch/Makefile
+index fe863e1ba4..01762ef526 100644
+--- a/sysdeps/loongarch/lp64/multiarch/Makefile
++++ b/sysdeps/loongarch/lp64/multiarch/Makefile
+@@ -1,52 +1,52 @@
+ ifeq ($(subdir),string)
+ sysdep_routines += \
+-  strlen-aligned \
+-  strlen-lsx \
+-  strlen-lasx \
+-  strnlen-aligned \
+-  strnlen-lsx \
+-  strnlen-lasx \
++  memchr-aligned \
++  memchr-lasx \
++  memchr-lsx \
++  memcmp-aligned \
++  memcmp-lasx \
++  memcmp-lsx \
++  memcpy-aligned \
++  memcpy-unaligned \
++  memmove-lasx \
++  memmove-lsx \
++  memmove-unaligned \
++  memrchr-generic \
++  memrchr-lasx \
++  memrchr-lsx \
++  memset-aligned \
++  memset-lasx \
++  memset-lsx \
++  memset-unaligned \
++  rawmemchr-aligned \
++  rawmemchr-lasx \
++  rawmemchr-lsx \
++  stpcpy-aligned \
++  stpcpy-lasx \
++  stpcpy-lsx \
++  stpcpy-unaligned \
+   strchr-aligned \
+-  strchr-lsx \
+   strchr-lasx \
+-  strrchr-aligned \
+-  strrchr-lsx \
+-  strrchr-lasx \
++  strchr-lsx \
+   strchrnul-aligned \
+-  strchrnul-lsx \
+   strchrnul-lasx \
++  strchrnul-lsx \
+   strcmp-aligned \
+   strcmp-lsx \
+-  strncmp-aligned \
+-  strncmp-lsx \
+   strcpy-aligned \
+-  strcpy-unaligned \
+-  strcpy-lsx \
+   strcpy-lasx \
+-  stpcpy-aligned \
+-  stpcpy-unaligned \
+-  stpcpy-lsx \
+-  stpcpy-lasx \
+-  memcpy-aligned \
+-  memcpy-unaligned \
+-  memmove-unaligned \
+-  memmove-lsx \
+-  memmove-lasx \
+-  rawmemchr-aligned \
+-  rawmemchr-lsx \
+-  rawmemchr-lasx \
+-  memchr-aligned \
+-  memchr-lsx \
+-  memchr-lasx \
+-  memrchr-generic \
+-  memrchr-lsx \
+-  memrchr-lasx \
+-  memset-aligned \
+-  memset-unaligned \
+-  memset-lsx \
+-  memset-lasx \
+-  memcmp-aligned \
+-  memcmp-lsx \
+-  memcmp-lasx \
++  strcpy-lsx \
++  strcpy-unaligned \
++  strlen-aligned \
++  strlen-lasx \
++  strlen-lsx \
++  strncmp-aligned \
++  strncmp-lsx \
++  strnlen-aligned \
++  strnlen-lasx \
++  strnlen-lsx \
++  strrchr-aligned \
++  strrchr-lasx \
++  strrchr-lsx \
+ # sysdep_routines
+ endif
 diff --git a/sysdeps/mips/mips64/libm-test-ulps b/sysdeps/mips/mips64/libm-test-ulps
 index 78969745b2..933aba4735 100644
 --- a/sysdeps/mips/mips64/libm-test-ulps
@@ -3615,6 +3715,43 @@ index 0000000000..9491a394c9
 +++ b/sysdeps/powerpc/powerpc64/be/power11/multiarch/Implies
 @@ -0,0 +1 @@
 +powerpc/powerpc64/be/power10/multiarch
+diff --git a/sysdeps/powerpc/powerpc64/dl-machine.h b/sysdeps/powerpc/powerpc64/dl-machine.h
+index c6682f3445..2b6f5d2b08 100644
+--- a/sysdeps/powerpc/powerpc64/dl-machine.h
++++ b/sysdeps/powerpc/powerpc64/dl-machine.h
+@@ -78,6 +78,7 @@ elf_host_tolerates_class (const Elf64_Ehdr *ehdr)
+ static inline Elf64_Addr
+ elf_machine_load_address (void) __attribute__ ((const));
+ 
++#ifndef __PCREL__
+ static inline Elf64_Addr
+ elf_machine_load_address (void)
+ {
+@@ -105,6 +106,24 @@ elf_machine_dynamic (void)
+   /* Then subtract off the load address offset.  */
+   return runtime_dynamic - elf_machine_load_address() ;
+ }
++#else /* __PCREL__ */
++/* In PCREL mode, r2 may have been clobbered.  Rely on relative
++   relocations instead.  */
++
++static inline ElfW(Addr)
++elf_machine_load_address (void)
++{
++  extern const ElfW(Ehdr) __ehdr_start attribute_hidden;
++  return (ElfW(Addr)) &__ehdr_start;
++}
++
++static inline ElfW(Addr)
++elf_machine_dynamic (void)
++{
++  extern ElfW(Dyn) _DYNAMIC[] attribute_hidden;
++  return (ElfW(Addr)) _DYNAMIC - elf_machine_load_address ();
++}
++#endif /* __PCREL__ */
+ 
+ /* The PLT uses Elf64_Rela relocs.  */
+ #define elf_machine_relplt elf_machine_rela
 diff --git a/sysdeps/powerpc/powerpc64/le/power11/Implies b/sysdeps/powerpc/powerpc64/le/power11/Implies
 new file mode 100644
 index 0000000000..e18182dcc1
@@ -4271,7 +4408,7 @@ index 0000000000..1845a3caba
 +  _tile_release ();						\
 +  TEST_VERIFY_EXIT (memcmp (src, res, sizeof (res)) == 0);
 diff --git a/sysdeps/x86/Makefile b/sysdeps/x86/Makefile
-index 4d50b327b5..992aabe43e 100644
+index 4d50b327b5..5311b594af 100644
 --- a/sysdeps/x86/Makefile
 +++ b/sysdeps/x86/Makefile
 @@ -1,5 +1,5 @@
@@ -4281,6 +4418,28 @@ index 4d50b327b5..992aabe43e 100644
  endif
  
  ifeq ($(subdir),elf)
+@@ -15,18 +15,18 @@ CFLAGS-dl-get-cpu-features.os += $(rtld-early-cflags)
+ CFLAGS-get-cpuid-feature-leaf.o += $(no-stack-protector)
+ 
+ tests += \
+-  tst-get-cpu-features \
+-  tst-get-cpu-features-static \
+   tst-cpu-features-cpuinfo \
+   tst-cpu-features-cpuinfo-static \
+   tst-cpu-features-supports \
+   tst-cpu-features-supports-static \
++  tst-get-cpu-features \
++  tst-get-cpu-features-static \
+   tst-hwcap-tunables \
+ # tests
+ tests-static += \
+-  tst-get-cpu-features-static \
+   tst-cpu-features-cpuinfo-static \
+   tst-cpu-features-supports-static \
++  tst-get-cpu-features-static \
+ # tests-static
+ ifeq (yes,$(have-ifunc))
+ ifeq (yes,$(have-gcc-ifunc))
 @@ -86,6 +86,11 @@ endif
  tst-ifunc-isa-2-ENV = GLIBC_TUNABLES=glibc.cpu.hwcaps=-SSE4_2,-AVX,-AVX2,-AVX512F
  tst-ifunc-isa-2-static-ENV = $(tst-ifunc-isa-2-ENV)
@@ -4293,6 +4452,103 @@ index 4d50b327b5..992aabe43e 100644
  endif
  
  ifeq ($(subdir),math)
+diff --git a/sysdeps/x86/configure b/sysdeps/x86/configure
+index 1f4c2d67fd..2a5421bb31 100644
+--- a/sysdeps/x86/configure
++++ b/sysdeps/x86/configure
+@@ -98,6 +98,7 @@ printf "%s\n" "$libc_cv_have_x86_lahf_sahf" >&6; }
+   if test $libc_cv_have_x86_lahf_sahf = yes; then
+     printf "%s\n" "#define HAVE_X86_LAHF_SAHF 1" >>confdefs.h
+ 
++    ISAFLAG="-DHAVE_X86_LAHF_SAHF"
+   fi
+   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for MOVBE instruction support" >&5
+ printf %s "checking for MOVBE instruction support... " >&6; }
+@@ -120,8 +121,40 @@ printf "%s\n" "$libc_cv_have_x86_movbe" >&6; }
+   if test $libc_cv_have_x86_movbe = yes; then
+     printf "%s\n" "#define HAVE_X86_MOVBE 1" >>confdefs.h
+ 
++    ISAFLAG="$ISAFLAG -DHAVE_X86_MOVBE"
+   fi
++
++  # Check for ISA level support.
++  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for ISA level support" >&5
++printf %s "checking for ISA level support... " >&6; }
++if test ${libc_cv_have_x86_isa_level+y}
++then :
++  printf %s "(cached) " >&6
++else $as_nop
++  cat > conftest.c <<EOF
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL >= 4
++libc_cv_have_x86_isa_level=4
++#elif MINIMUM_X86_ISA_LEVEL == 3
++libc_cv_have_x86_isa_level=3
++#elif MINIMUM_X86_ISA_LEVEL == 2
++libc_cv_have_x86_isa_level=2
++#else
++libc_cv_have_x86_isa_level=baseline
++#endif
++EOF
++		 eval `${CC-cc} $CFLAGS $CPPFLAGS $ISAFLAG -I$srcdir -E conftest.c | grep libc_cv_have_x86_isa_level`
++		 rm -rf conftest*
+ fi
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $libc_cv_have_x86_isa_level" >&5
++printf "%s\n" "$libc_cv_have_x86_isa_level" >&6; }
++else
++  libc_cv_have_x86_isa_level=baseline
++fi
++config_vars="$config_vars
++have-x86-isa-level = $libc_cv_have_x86_isa_level"
++config_vars="$config_vars
++x86-isa-level-3-or-above = 3 4"
+ config_vars="$config_vars
+ enable-x86-isa-level = $libc_cv_include_x86_isa_level"
+ 
+diff --git a/sysdeps/x86/configure.ac b/sysdeps/x86/configure.ac
+index 437a50623b..78ff7c8f41 100644
+--- a/sysdeps/x86/configure.ac
++++ b/sysdeps/x86/configure.ac
+@@ -72,6 +72,7 @@ if test $libc_cv_include_x86_isa_level = yes; then
+     fi])
+   if test $libc_cv_have_x86_lahf_sahf = yes; then
+     AC_DEFINE(HAVE_X86_LAHF_SAHF)
++    ISAFLAG="-DHAVE_X86_LAHF_SAHF"
+   fi
+   AC_CACHE_CHECK([for MOVBE instruction support],
+ 		 libc_cv_have_x86_movbe, [dnl
+@@ -81,8 +82,31 @@ if test $libc_cv_include_x86_isa_level = yes; then
+     fi])
+   if test $libc_cv_have_x86_movbe = yes; then
+     AC_DEFINE(HAVE_X86_MOVBE)
++    ISAFLAG="$ISAFLAG -DHAVE_X86_MOVBE"
+   fi
++
++  # Check for ISA level support.
++  AC_CACHE_CHECK([for ISA level support],
++		 libc_cv_have_x86_isa_level, [dnl
++cat > conftest.c <<EOF
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL >= 4
++libc_cv_have_x86_isa_level=4
++#elif MINIMUM_X86_ISA_LEVEL == 3
++libc_cv_have_x86_isa_level=3
++#elif MINIMUM_X86_ISA_LEVEL == 2
++libc_cv_have_x86_isa_level=2
++#else
++libc_cv_have_x86_isa_level=baseline
++#endif
++EOF
++		 eval `${CC-cc} $CFLAGS $CPPFLAGS $ISAFLAG -I$srcdir -E conftest.c | grep libc_cv_have_x86_isa_level`
++		 rm -rf conftest*])
++else
++  libc_cv_have_x86_isa_level=baseline
+ fi
++LIBC_CONFIG_VAR([have-x86-isa-level], [$libc_cv_have_x86_isa_level])
++LIBC_CONFIG_VAR([x86-isa-level-3-or-above], [3 4])
+ LIBC_CONFIG_VAR([enable-x86-isa-level], [$libc_cv_include_x86_isa_level])
+ 
+ dnl Static PIE is supported.
 diff --git a/sysdeps/x86/cpu-features-offsets.sym b/sysdeps/x86/cpu-features-offsets.sym
 index 6a8fd29813..21fc88d651 100644
 --- a/sysdeps/x86/cpu-features-offsets.sym
@@ -4841,7 +5097,7 @@ index 0000000000..de900a423b
 +
 +#include <elf/tst-gnu2-tls2.c>
 diff --git a/sysdeps/x86_64/Makefile b/sysdeps/x86_64/Makefile
-index 90f4ecfd26..9d374a3299 100644
+index 90f4ecfd26..0ede447405 100644
 --- a/sysdeps/x86_64/Makefile
 +++ b/sysdeps/x86_64/Makefile
 @@ -10,7 +10,7 @@ LDFLAGS-rtld += -Wl,-z,nomark-plt
@@ -4862,6 +5118,35 @@ index 90f4ecfd26..9d374a3299 100644
  endif # $(subdir) == elf
  
  ifeq ($(subdir),csu)
+@@ -250,6 +252,10 @@ sysdep-dl-routines += dl-cet
+ 
+ tests += \
+   tst-cet-legacy-1 \
++  tst-cet-legacy-10 \
++  tst-cet-legacy-10-static \
++  tst-cet-legacy-10a \
++  tst-cet-legacy-10a-static \
+   tst-cet-legacy-1a \
+   tst-cet-legacy-2 \
+   tst-cet-legacy-2a \
+@@ -261,15 +267,11 @@ tests += \
+   tst-cet-legacy-8 \
+   tst-cet-legacy-9 \
+   tst-cet-legacy-9-static \
+-  tst-cet-legacy-10 \
+-  tst-cet-legacy-10-static \
+-  tst-cet-legacy-10a \
+-  tst-cet-legacy-10a-static \
+ # tests
+ tests-static += \
++  tst-cet-legacy-10-static \
++  tst-cet-legacy-10a-static \
+   tst-cet-legacy-9-static \
+-  tst-cet-legacy-10-static \
+-  tst-cet-legacy-10a-static \
+ # tests-static
+ tst-cet-legacy-1a-ARGS = -- $(host-test-program-cmd)
+ 
 diff --git a/sysdeps/x86_64/configure b/sysdeps/x86_64/configure
 index 418cc4a9b8..04a534fa12 100755
 --- a/sysdeps/x86_64/configure
@@ -5481,6 +5766,2053 @@ index f55c6ea040..d9ccfb40d4 100644
  
  	.globl _dl_runtime_resolve
  	.hidden _dl_runtime_resolve
+diff --git a/sysdeps/x86_64/fpu/multiarch/Makefile b/sysdeps/x86_64/fpu/multiarch/Makefile
+index ea81753b70..6ddd50240c 100644
+--- a/sysdeps/x86_64/fpu/multiarch/Makefile
++++ b/sysdeps/x86_64/fpu/multiarch/Makefile
+@@ -1,49 +1,4 @@
+ ifeq ($(subdir),math)
+-libm-sysdep_routines += \
+-  s_ceil-c \
+-  s_ceilf-c \
+-  s_floor-c \
+-  s_floorf-c \
+-  s_rint-c \
+-  s_rintf-c \
+-  s_nearbyint-c \
+-  s_nearbyintf-c \
+-  s_roundeven-c \
+-  s_roundevenf-c \
+-  s_trunc-c \
+-  s_truncf-c \
+-# libm-sysdep_routines
+-
+-libm-sysdep_routines += \
+-  s_ceil-sse4_1 \
+-  s_ceilf-sse4_1 \
+-  s_floor-sse4_1 \
+-  s_floorf-sse4_1 \
+-  s_nearbyint-sse4_1 \
+-  s_nearbyintf-sse4_1 \
+-  s_roundeven-sse4_1 \
+-  s_roundevenf-sse4_1 \
+-  s_rint-sse4_1 \
+-  s_rintf-sse4_1 \
+-  s_trunc-sse4_1 \
+-  s_truncf-sse4_1 \
+-# libm-sysdep_routines
+-
+-libm-sysdep_routines += \
+-  e_asin-fma \
+-  e_atan2-fma \
+-  e_exp-fma \
+-  e_log-fma \
+-  e_log2-fma \
+-  e_pow-fma \
+-  s_atan-fma \
+-  s_expm1-fma \
+-  s_log1p-fma \
+-  s_sin-fma \
+-  s_sincos-fma \
+-  s_tan-fma \
+-# libm-sysdep_routines
+-
+ CFLAGS-e_asin-fma.c = -mfma -mavx2
+ CFLAGS-e_atan2-fma.c = -mfma -mavx2
+ CFLAGS-e_exp-fma.c = -mfma -mavx2
+@@ -57,23 +12,6 @@ CFLAGS-s_sin-fma.c = -mfma -mavx2
+ CFLAGS-s_tan-fma.c = -mfma -mavx2
+ CFLAGS-s_sincos-fma.c = -mfma -mavx2
+ 
+-libm-sysdep_routines += \
+-  s_cosf-sse2 \
+-  s_sincosf-sse2 \
+-  s_sinf-sse2 \
+-# libm-sysdep_routines
+-
+-libm-sysdep_routines += \
+-  e_exp2f-fma \
+-  e_expf-fma \
+-  e_log2f-fma \
+-  e_logf-fma \
+-  e_powf-fma \
+-  s_cosf-fma \
+-  s_sincosf-fma \
+-  s_sinf-fma \
+-# libm-sysdep_routines
+-
+ CFLAGS-e_exp2f-fma.c = -mfma -mavx2
+ CFLAGS-e_expf-fma.c = -mfma -mavx2
+ CFLAGS-e_log2f-fma.c = -mfma -mavx2
+@@ -83,17 +21,93 @@ CFLAGS-s_sinf-fma.c = -mfma -mavx2
+ CFLAGS-s_cosf-fma.c = -mfma -mavx2
+ CFLAGS-s_sincosf-fma.c = -mfma -mavx2
+ 
++# Check if ISA level is 3 or above.
++ifneq (,$(filter $(have-x86-isa-level),$(x86-isa-level-3-or-above)))
+ libm-sysdep_routines += \
++  s_ceil-avx \
++  s_ceilf-avx \
++  s_floor-avx \
++  s_floorf-avx \
++  s_nearbyint-avx \
++  s_nearbyintf-avx \
++  s_rint-avx \
++  s_rintf-avx \
++  s_roundeven-avx \
++  s_roundevenf-avx \
++  s_trunc-avx \
++  s_truncf-avx \
++# libm-sysdep_routines
++else
++libm-sysdep_routines += \
++  e_asin-fma \
++  e_asin-fma4 \
++  e_atan2-avx \
++  e_atan2-fma \
++  e_atan2-fma4 \
++  e_exp-avx \
++  e_exp-fma \
+   e_exp-fma4 \
++  e_exp2f-fma \
++  e_expf-fma \
++  e_log-avx \
++  e_log-fma \
+   e_log-fma4 \
++  e_log2-fma \
++  e_log2f-fma \
++  e_logf-fma \
++  e_pow-fma \
+   e_pow-fma4 \
+-  e_asin-fma4 \
++  e_powf-fma \
++  s_atan-avx \
++  s_atan-fma \
+   s_atan-fma4 \
+-  e_atan2-fma4 \
++  s_ceil-sse4_1 \
++  s_ceilf-sse4_1 \
++  s_cosf-fma \
++  s_cosf-sse2 \
++  s_expm1-fma \
++  s_floor-sse4_1 \
++  s_floorf-sse4_1 \
++  s_log1p-fma \
++  s_nearbyint-sse4_1 \
++  s_nearbyintf-sse4_1 \
++  s_rint-sse4_1 \
++  s_rintf-sse4_1 \
++  s_roundeven-sse4_1 \
++  s_roundevenf-sse4_1 \
++  s_sin-avx \
++  s_sin-fma \
+   s_sin-fma4 \
++  s_sincos-avx \
++  s_sincos-fma \
+   s_sincos-fma4 \
++  s_sincosf-fma \
++  s_sincosf-sse2 \
++  s_sinf-fma \
++  s_sinf-sse2 \
++  s_tan-avx \
++  s_tan-fma \
+   s_tan-fma4 \
++  s_trunc-sse4_1 \
++  s_truncf-sse4_1 \
+ # libm-sysdep_routines
++ifeq ($(have-x86-isa-level),baseline)
++libm-sysdep_routines += \
++  s_ceil-c \
++  s_ceilf-c \
++  s_floor-c \
++  s_floorf-c \
++  s_nearbyint-c \
++  s_nearbyintf-c \
++  s_rint-c \
++  s_rintf-c \
++  s_roundeven-c \
++  s_roundevenf-c \
++  s_trunc-c \
++  s_truncf-c \
++# libm-sysdep_routines
++endif
++endif
+ 
+ CFLAGS-e_asin-fma4.c = -mfma4
+ CFLAGS-e_atan2-fma4.c = -mfma4
+@@ -105,16 +119,6 @@ CFLAGS-s_sin-fma4.c = -mfma4
+ CFLAGS-s_tan-fma4.c = -mfma4
+ CFLAGS-s_sincos-fma4.c = -mfma4
+ 
+-libm-sysdep_routines += \
+-  e_exp-avx \
+-  e_log-avx \
+-  s_atan-avx \
+-  e_atan2-avx \
+-  s_sin-avx \
+-  s_sincos-avx \
+-  s_tan-avx \
+-# libm-sysdep_routines
+-
+ CFLAGS-e_atan2-avx.c = -msse2avx -DSSE2AVX
+ CFLAGS-e_exp-avx.c = -msse2avx -DSSE2AVX
+ CFLAGS-e_log-avx.c = -msse2avx -DSSE2AVX
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_asin.c b/sysdeps/x86_64/fpu/multiarch/e_asin.c
+index 2eaa6c2c04..d64fca2586 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_asin.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_asin.c
+@@ -16,26 +16,29 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-finite.h>
+ 
+ extern double __redirect_ieee754_asin (double);
+ extern double __redirect_ieee754_acos (double);
+ 
+-#define SYMBOL_NAME ieee754_asin
+-#include "ifunc-fma4.h"
++# define SYMBOL_NAME ieee754_asin
++# include "ifunc-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_ieee754_asin, __ieee754_asin,
+ 		       IFUNC_SELECTOR ());
+ libm_alias_finite (__ieee754_asin, __asin)
+ 
+-#undef SYMBOL_NAME
+-#define SYMBOL_NAME ieee754_acos
+-#include "ifunc-fma4.h"
++# undef SYMBOL_NAME
++# define SYMBOL_NAME ieee754_acos
++# include "ifunc-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_ieee754_acos, __ieee754_acos,
+ 		       IFUNC_SELECTOR ());
+ libm_alias_finite (__ieee754_acos, __acos)
+ 
+-#define __ieee754_acos __ieee754_acos_sse2
+-#define __ieee754_asin __ieee754_asin_sse2
++# define __ieee754_acos __ieee754_acos_sse2
++# define __ieee754_asin __ieee754_asin_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/e_asin.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_atan2.c b/sysdeps/x86_64/fpu/multiarch/e_atan2.c
+index 17ee4f3c36..8a86c14ded 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_atan2.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_atan2.c
+@@ -16,16 +16,19 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-finite.h>
+ 
+ extern double __redirect_ieee754_atan2 (double, double);
+ 
+-#define SYMBOL_NAME ieee754_atan2
+-#include "ifunc-avx-fma4.h"
++# define SYMBOL_NAME ieee754_atan2
++# include "ifunc-avx-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_ieee754_atan2,
+ 		       __ieee754_atan2, IFUNC_SELECTOR ());
+ libm_alias_finite (__ieee754_atan2, __atan2)
+ 
+-#define __ieee754_atan2 __ieee754_atan2_sse2
++# define __ieee754_atan2 __ieee754_atan2_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/e_atan2.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_exp.c b/sysdeps/x86_64/fpu/multiarch/e_exp.c
+index 406b7ebd44..d56329291a 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_exp.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_exp.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <math.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <math.h>
++# include <libm-alias-finite.h>
+ 
+ extern double __redirect_ieee754_exp (double);
+ 
+-#define SYMBOL_NAME ieee754_exp
+-#include "ifunc-avx-fma4.h"
++# define SYMBOL_NAME ieee754_exp
++# include "ifunc-avx-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_ieee754_exp, __ieee754_exp,
+ 		       IFUNC_SELECTOR ());
+ libm_alias_finite (__ieee754_exp, __exp)
+ 
+-#define __exp __ieee754_exp_sse2
++# define __exp __ieee754_exp_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/e_exp.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_exp2f.c b/sysdeps/x86_64/fpu/multiarch/e_exp2f.c
+index 804fd6be85..06fe5028d6 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_exp2f.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_exp2f.c
+@@ -16,25 +16,28 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# include <libm-alias-finite.h>
+ 
+ extern float __redirect_exp2f (float);
+ 
+-#define SYMBOL_NAME exp2f
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME exp2f
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_exp2f, __exp2f, IFUNC_SELECTOR ());
+ 
+-#ifdef SHARED
++# ifdef SHARED
+ versioned_symbol (libm, __ieee754_exp2f, exp2f, GLIBC_2_27);
+ libm_alias_float_other (__exp2, exp2)
+-#else
++# else
+ libm_alias_float (__exp2, exp2)
+-#endif
++# endif
+ 
+ strong_alias (__exp2f, __ieee754_exp2f)
+ libm_alias_finite (__exp2f, __exp2f)
+ 
+-#define __exp2f __exp2f_sse2
++# define __exp2f __exp2f_sse2
++#endif
+ #include <sysdeps/ieee754/flt-32/e_exp2f.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_expf.c b/sysdeps/x86_64/fpu/multiarch/e_expf.c
+index 4a7e2a5bce..19d767f636 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_expf.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_expf.c
+@@ -16,28 +16,31 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# include <libm-alias-finite.h>
+ 
+ extern float __redirect_expf (float);
+ 
+-#define SYMBOL_NAME expf
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME expf
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_expf, __expf, IFUNC_SELECTOR ());
+ 
+-#ifdef SHARED
++# ifdef SHARED
+ __hidden_ver1 (__expf, __GI___expf, __redirect_expf)
+   __attribute__ ((visibility ("hidden")));
+ 
+ versioned_symbol (libm, __ieee754_expf, expf, GLIBC_2_27);
+ libm_alias_float_other (__exp, exp)
+-#else
++# else
+ libm_alias_float (__exp, exp)
+-#endif
++# endif
+ 
+ strong_alias (__expf, __ieee754_expf)
+ libm_alias_finite (__expf, __expf)
+ 
+-#define __expf __expf_sse2
++# define __expf __expf_sse2
++#endif
+ #include <sysdeps/ieee754/flt-32/e_expf.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_log.c b/sysdeps/x86_64/fpu/multiarch/e_log.c
+index 067fbf58c3..d80c1b1463 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_log.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_log.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <math.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <math.h>
++# include <libm-alias-finite.h>
+ 
+ extern double __redirect_ieee754_log (double);
+ 
+-#define SYMBOL_NAME ieee754_log
+-#include "ifunc-avx-fma4.h"
++# define SYMBOL_NAME ieee754_log
++# include "ifunc-avx-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_ieee754_log, __ieee754_log,
+ 		       IFUNC_SELECTOR ());
+ libm_alias_finite (__ieee754_log, __log)
+ 
+-#define __log __ieee754_log_sse2
++# define __log __ieee754_log_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/e_log.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_log2.c b/sysdeps/x86_64/fpu/multiarch/e_log2.c
+index 9c57a2f6cc..9686782c09 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_log2.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_log2.c
+@@ -16,28 +16,31 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-double.h>
++# include <libm-alias-finite.h>
+ 
+ extern double __redirect_log2 (double);
+ 
+-#define SYMBOL_NAME log2
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME log2
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_log2, __log2, IFUNC_SELECTOR ());
+ 
+-#ifdef SHARED
++# ifdef SHARED
+ __hidden_ver1 (__log2, __GI___log2, __redirect_log2)
+   __attribute__ ((visibility ("hidden")));
+ 
+ versioned_symbol (libm, __ieee754_log2, log2, GLIBC_2_29);
+ libm_alias_double_other (__log2, log2)
+-#else
++# else
+ libm_alias_double (__log2, log2)
+-#endif
++# endif
+ 
+ strong_alias (__log2, __ieee754_log2)
+ libm_alias_finite (__log2, __log2)
+ 
+-#define __log2 __log2_sse2
++# define __log2 __log2_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/e_log2.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_log2f.c b/sysdeps/x86_64/fpu/multiarch/e_log2f.c
+index 2b45c87f38..8ada46e11e 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_log2f.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_log2f.c
+@@ -16,28 +16,31 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# include <libm-alias-finite.h>
+ 
+ extern float __redirect_log2f (float);
+ 
+-#define SYMBOL_NAME log2f
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME log2f
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_log2f, __log2f, IFUNC_SELECTOR ());
+ 
+-#ifdef SHARED
++# ifdef SHARED
+ __hidden_ver1 (__log2f, __GI___log2f, __redirect_log2f)
+   __attribute__ ((visibility ("hidden")));
+ 
+ versioned_symbol (libm, __ieee754_log2f, log2f, GLIBC_2_27);
+ libm_alias_float_other (__log2, log2)
+-#else
++# else
+ libm_alias_float (__log2, log2)
+-#endif
++# endif
+ 
+ strong_alias (__log2f, __ieee754_log2f)
+ libm_alias_finite (__log2f, __log2f)
+ 
+-#define __log2f __log2f_sse2
++# define __log2f __log2f_sse2
++#endif
+ #include <sysdeps/ieee754/flt-32/e_log2f.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_logf.c b/sysdeps/x86_64/fpu/multiarch/e_logf.c
+index 97e23c8fea..a3978d9a8e 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_logf.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_logf.c
+@@ -16,28 +16,31 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# include <libm-alias-finite.h>
+ 
+ extern float __redirect_logf (float);
+ 
+-#define SYMBOL_NAME logf
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME logf
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_logf, __logf, IFUNC_SELECTOR ());
+ 
+-#ifdef SHARED
++# ifdef SHARED
+ __hidden_ver1 (__logf, __GI___logf, __redirect_logf)
+   __attribute__ ((visibility ("hidden")));
+ 
+ versioned_symbol (libm, __ieee754_logf, logf, GLIBC_2_27);
+ libm_alias_float_other (__log, log)
+-#else
++# else
+ libm_alias_float (__log, log)
+-#endif
++# endif
+ 
+ strong_alias (__logf, __ieee754_logf)
+ libm_alias_finite (__logf, __logf)
+ 
+-#define __logf __logf_sse2
++# define __logf __logf_sse2
++#endif
+ #include <sysdeps/ieee754/flt-32/e_logf.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_pow.c b/sysdeps/x86_64/fpu/multiarch/e_pow.c
+index 42618e7112..f8f17aff9f 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_pow.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_pow.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <math.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <math.h>
++# include <libm-alias-finite.h>
+ 
+ extern double __redirect_ieee754_pow (double, double);
+ 
+-#define SYMBOL_NAME ieee754_pow
+-#include "ifunc-fma4.h"
++# define SYMBOL_NAME ieee754_pow
++# include "ifunc-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_ieee754_pow,
+ 		       __ieee754_pow, IFUNC_SELECTOR ());
+ libm_alias_finite (__ieee754_pow, __pow)
+ 
+-#define __pow __ieee754_pow_sse2
++# define __pow __ieee754_pow_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/e_pow.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_powf.c b/sysdeps/x86_64/fpu/multiarch/e_powf.c
+index 8e6ce13cc1..8b1a4c7d04 100644
+--- a/sysdeps/x86_64/fpu/multiarch/e_powf.c
++++ b/sysdeps/x86_64/fpu/multiarch/e_powf.c
+@@ -16,31 +16,34 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
+-#include <libm-alias-finite.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# include <libm-alias-finite.h>
+ 
+-#define powf __redirect_powf
+-#define __DECL_SIMD___redirect_powf
+-#include <math.h>
+-#undef powf
++# define powf __redirect_powf
++# define __DECL_SIMD___redirect_powf
++# include <math.h>
++# undef powf
+ 
+-#define SYMBOL_NAME powf
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME powf
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_powf, __powf, IFUNC_SELECTOR ());
+ 
+-#ifdef SHARED
++# ifdef SHARED
+ __hidden_ver1 (__powf, __GI___powf, __redirect_powf)
+   __attribute__ ((visibility ("hidden")));
+ 
+ versioned_symbol (libm, __ieee754_powf, powf, GLIBC_2_27);
+ libm_alias_float_other (__pow, pow)
+-#else
++# else
+ libm_alias_float (__pow, pow)
+-#endif
++# endif
+ 
+ strong_alias (__powf, __ieee754_powf)
+ libm_alias_finite (__powf, __powf)
+ 
+-#define __powf __powf_sse2
++# define __powf __powf_sse2
++#endif
+ #include <sysdeps/ieee754/flt-32/e_powf.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_atan.c b/sysdeps/x86_64/fpu/multiarch/s_atan.c
+index 71bad096a9..4d2c6ce006 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_atan.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_atan.c
+@@ -16,15 +16,18 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+ extern double __redirect_atan (double);
+ 
+-#define SYMBOL_NAME atan
+-#include "ifunc-avx-fma4.h"
++# define SYMBOL_NAME atan
++# include "ifunc-avx-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_atan, __atan, IFUNC_SELECTOR ());
+ libm_alias_double (__atan, atan)
+ 
+-#define __atan __atan_sse2
++# define __atan __atan_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/s_atan.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_ceil-avx.S b/sysdeps/x86_64/fpu/multiarch/s_ceil-avx.S
+new file mode 100644
+index 0000000000..e6c1106753
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_ceil-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of ceil function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-double.h>
++
++	.text
++ENTRY(__ceil)
++	vroundsd $10, %xmm0, %xmm0, %xmm0
++	ret
++END(__ceil)
++
++libm_alias_double (__ceil, ceil)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_ceil-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_ceil-sse4_1.S
+index 64119011ad..dba756c38f 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_ceil-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_ceil-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
++# define __ceil_sse41 __ceil
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__ceil_sse41)
+ 	roundsd	$10, %xmm0, %xmm0
+ 	ret
+ END(__ceil_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_double (__ceil, ceil)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_ceil.c b/sysdeps/x86_64/fpu/multiarch/s_ceil.c
+index cc028addee..46c8e91e19 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_ceil.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_ceil.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-double.h>
+ 
+-#define ceil __redirect_ceil
+-#define __ceil __redirect___ceil
+-#include <math.h>
+-#undef ceil
+-#undef __ceil
++# define ceil __redirect_ceil
++# define __ceil __redirect___ceil
++# include <math.h>
++# undef ceil
++# undef __ceil
+ 
+-#define SYMBOL_NAME ceil
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME ceil
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_ceil, __ceil, IFUNC_SELECTOR ());
+ libm_alias_double (__ceil, ceil)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_ceilf-avx.S b/sysdeps/x86_64/fpu/multiarch/s_ceilf-avx.S
+new file mode 100644
+index 0000000000..b4d8ac0455
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_ceilf-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of ceilf function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-float.h>
++
++	.text
++ENTRY(__ceilf)
++	vroundss $10, %xmm0, %xmm0, %xmm0
++	ret
++END(__ceilf)
++
++libm_alias_float (__ceil, ceil)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_ceilf-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_ceilf-sse4_1.S
+index dd9a9f6b71..9abc87b91a 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_ceilf-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_ceilf-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# define __ceilf_sse41 __ceilf
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__ceilf_sse41)
+ 	roundss	$10, %xmm0, %xmm0
+ 	ret
+ END(__ceilf_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_float (__ceil, ceil)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_ceilf.c b/sysdeps/x86_64/fpu/multiarch/s_ceilf.c
+index 97a0ca7d19..bb53108f73 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_ceilf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_ceilf.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-float.h>
+ 
+-#define ceilf __redirect_ceilf
+-#define __ceilf __redirect___ceilf
+-#include <math.h>
+-#undef ceilf
+-#undef __ceilf
++# define ceilf __redirect_ceilf
++# define __ceilf __redirect___ceilf
++# include <math.h>
++# undef ceilf
++# undef __ceilf
+ 
+-#define SYMBOL_NAME ceilf
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME ceilf
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_ceilf, __ceilf, IFUNC_SELECTOR ());
+ libm_alias_float (__ceil, ceil)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_cosf.c b/sysdeps/x86_64/fpu/multiarch/s_cosf.c
+index 2703c576df..8a02e04538 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_cosf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_cosf.c
+@@ -16,13 +16,18 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
+ 
+ extern float __redirect_cosf (float);
+ 
+-#define SYMBOL_NAME cosf
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME cosf
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_cosf, __cosf, IFUNC_SELECTOR ());
+ 
+ libm_alias_float (__cos, cos)
++#else
++# include <sysdeps/ieee754/flt-32/s_cosf.c>
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_expm1.c b/sysdeps/x86_64/fpu/multiarch/s_expm1.c
+index 8a2d69f9b2..d58ef3d8f5 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_expm1.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_expm1.c
+@@ -16,21 +16,24 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+ extern double __redirect_expm1 (double);
+ 
+-#define SYMBOL_NAME expm1
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME expm1
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_expm1, __expm1, IFUNC_SELECTOR ());
+ libm_alias_double (__expm1, expm1)
+ 
+-#define __expm1 __expm1_sse2
++# define __expm1 __expm1_sse2
+ 
+ /* NB: __expm1 may be expanded to __expm1_sse2 in the following
+    prototypes.  */
+ extern long double __expm1l (long double);
+ extern long double __expm1f128 (long double);
+ 
++#endif
+ #include <sysdeps/ieee754/dbl-64/s_expm1.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_floor-avx.S b/sysdeps/x86_64/fpu/multiarch/s_floor-avx.S
+new file mode 100644
+index 0000000000..ff74b5a8bf
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_floor-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of floor function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-double.h>
++
++	.text
++ENTRY(__floor)
++	vroundsd $9, %xmm0, %xmm0, %xmm0
++	ret
++END(__floor)
++
++libm_alias_double (__floor, floor)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_floor-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_floor-sse4_1.S
+index 2f7521f39f..c9b9b0639b 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_floor-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_floor-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
++# define __floor_sse41 __floor
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__floor_sse41)
+ 	roundsd	$9, %xmm0, %xmm0
+ 	ret
+ END(__floor_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_double (__floor, floor)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_floor.c b/sysdeps/x86_64/fpu/multiarch/s_floor.c
+index 8cebd48e10..2c87dd0056 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_floor.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_floor.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-double.h>
+ 
+-#define floor __redirect_floor
+-#define __floor __redirect___floor
+-#include <math.h>
+-#undef floor
+-#undef __floor
++# define floor __redirect_floor
++# define __floor __redirect___floor
++# include <math.h>
++# undef floor
++# undef __floor
+ 
+-#define SYMBOL_NAME floor
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME floor
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_floor, __floor, IFUNC_SELECTOR ());
+ libm_alias_double (__floor, floor)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_floorf-avx.S b/sysdeps/x86_64/fpu/multiarch/s_floorf-avx.S
+new file mode 100644
+index 0000000000..c378baae8e
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_floorf-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of floorf function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-float.h>
++
++	.text
++ENTRY(__floorf)
++	vroundss $9, %xmm0, %xmm0, %xmm0
++	ret
++END(__floorf)
++
++libm_alias_float (__floor, floor)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_floorf-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_floorf-sse4_1.S
+index 5f6020d27d..c2216899db 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_floorf-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_floorf-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# define __floorf_sse41 __floorf
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__floorf_sse41)
+ 	roundss	$9, %xmm0, %xmm0
+ 	ret
+ END(__floorf_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_float (__floor, floor)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_floorf.c b/sysdeps/x86_64/fpu/multiarch/s_floorf.c
+index a14e18b03c..a277802b6d 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_floorf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_floorf.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-float.h>
+ 
+-#define floorf __redirect_floorf
+-#define __floorf __redirect___floorf
+-#include <math.h>
+-#undef floorf
+-#undef __floorf
++# define floorf __redirect_floorf
++# define __floorf __redirect___floorf
++# include <math.h>
++# undef floorf
++# undef __floorf
+ 
+-#define SYMBOL_NAME floorf
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME floorf
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_floorf, __floorf, IFUNC_SELECTOR ());
+ libm_alias_float (__floor, floor)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_log1p.c b/sysdeps/x86_64/fpu/multiarch/s_log1p.c
+index a8e1a3f21b..3fa1185d81 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_log1p.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_log1p.c
+@@ -16,14 +16,17 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+ extern double __redirect_log1p (double);
+ 
+-#define SYMBOL_NAME log1p
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME log1p
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_log1p, __log1p, IFUNC_SELECTOR ());
+ 
+-#define __log1p __log1p_sse2
++# define __log1p __log1p_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/s_log1p.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_nearbyint-avx.S b/sysdeps/x86_64/fpu/multiarch/s_nearbyint-avx.S
+new file mode 100644
+index 0000000000..5bfdf73c28
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_nearbyint-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of nearbyint function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-double.h>
++
++	.text
++ENTRY(__nearbyint)
++	vroundsd $0xc, %xmm0, %xmm0, %xmm0
++	ret
++END(__nearbyint)
++
++libm_alias_double (__nearbyint, nearbyint)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_nearbyint-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_nearbyint-sse4_1.S
+index 674f7eb40a..9d84410a1f 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_nearbyint-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_nearbyint-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
++# define __nearbyint_sse41 __nearbyint
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__nearbyint_sse41)
+ 	roundsd	$0xc, %xmm0, %xmm0
+ 	ret
+ END(__nearbyint_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_double (__nearbyint, nearbyint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_nearbyint.c b/sysdeps/x86_64/fpu/multiarch/s_nearbyint.c
+index 693e42dd4e..057a7ca60f 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_nearbyint.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_nearbyint.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+-#define nearbyint __redirect_nearbyint
+-#define __nearbyint __redirect___nearbyint
+-#include <math.h>
+-#undef nearbyint
+-#undef __nearbyint
++# define nearbyint __redirect_nearbyint
++# define __nearbyint __redirect___nearbyint
++# include <math.h>
++# undef nearbyint
++# undef __nearbyint
+ 
+-#define SYMBOL_NAME nearbyint
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME nearbyint
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_nearbyint, __nearbyint,
+ 		       IFUNC_SELECTOR ());
+ libm_alias_double (__nearbyint, nearbyint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_nearbyintf-avx.S b/sysdeps/x86_64/fpu/multiarch/s_nearbyintf-avx.S
+new file mode 100644
+index 0000000000..1dbaed0324
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_nearbyintf-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implmentation of nearbyintf function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-float.h>
++
++	.text
++ENTRY(__nearbyintf)
++	vroundss $0xc, %xmm0, %xmm0, %xmm0
++	ret
++END(__nearbyintf)
++
++libm_alias_float (__nearbyint, nearbyint)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_nearbyintf-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_nearbyintf-sse4_1.S
+index 5892bd7563..3cf35f92d6 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_nearbyintf-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_nearbyintf-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# define __nearbyintf_sse41 __nearbyintf
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__nearbyintf_sse41)
+ 	roundss	$0xc, %xmm0, %xmm0
+ 	ret
+ END(__nearbyintf_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_float (__nearbyint, nearbyint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_nearbyintf.c b/sysdeps/x86_64/fpu/multiarch/s_nearbyintf.c
+index a0ac009f4b..41f374ba72 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_nearbyintf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_nearbyintf.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
+ 
+-#define nearbyintf __redirect_nearbyintf
+-#define __nearbyintf __redirect___nearbyintf
+-#include <math.h>
+-#undef nearbyintf
+-#undef __nearbyintf
++# define nearbyintf __redirect_nearbyintf
++# define __nearbyintf __redirect___nearbyintf
++# include <math.h>
++# undef nearbyintf
++# undef __nearbyintf
+ 
+-#define SYMBOL_NAME nearbyintf
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME nearbyintf
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_nearbyintf, __nearbyintf,
+ 		       IFUNC_SELECTOR ());
+ libm_alias_float (__nearbyint, nearbyint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_rint-avx.S b/sysdeps/x86_64/fpu/multiarch/s_rint-avx.S
+new file mode 100644
+index 0000000000..2b403b331f
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_rint-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of rint function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-double.h>
++
++	.text
++ENTRY(__rint)
++	vroundsd $4, %xmm0, %xmm0, %xmm0
++	ret
++END(__rint)
++
++libm_alias_double (__rint, rint)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_rint-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_rint-sse4_1.S
+index 405372991b..8cd9cf759f 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_rint-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_rint-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
++# define __rint_sse41 __rint
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__rint_sse41)
+ 	roundsd	$4, %xmm0, %xmm0
+ 	ret
+ END(__rint_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_double (__rint, rint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_rint.c b/sysdeps/x86_64/fpu/multiarch/s_rint.c
+index 754c87e004..18623b7d99 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_rint.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_rint.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-double.h>
+ 
+-#define rint __redirect_rint
+-#define __rint __redirect___rint
+-#include <math.h>
+-#undef rint
+-#undef __rint
++# define rint __redirect_rint
++# define __rint __redirect___rint
++# include <math.h>
++# undef rint
++# undef __rint
+ 
+-#define SYMBOL_NAME rint
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME rint
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_rint, __rint, IFUNC_SELECTOR ());
+ libm_alias_double (__rint, rint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_rintf-avx.S b/sysdeps/x86_64/fpu/multiarch/s_rintf-avx.S
+new file mode 100644
+index 0000000000..171c2867f4
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_rintf-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of rintf function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-float.h>
++
++	.text
++ENTRY(__rintf)
++	vroundss $4, %xmm0, %xmm0, %xmm0
++	ret
++END(__rintf)
++
++libm_alias_float (__rint, rint)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_rintf-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_rintf-sse4_1.S
+index 8ac67ce767..fc1e70f0c9 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_rintf-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_rintf-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# define __rintf_sse41 __rintf
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__rintf_sse41)
+ 	roundss	$4, %xmm0, %xmm0
+ 	ret
+ END(__rintf_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_float (__rint, rint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_rintf.c b/sysdeps/x86_64/fpu/multiarch/s_rintf.c
+index e9d6b7a5f2..e275368dec 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_rintf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_rintf.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-float.h>
+ 
+-#define rintf __redirect_rintf
+-#define __rintf __redirect___rintf
+-#include <math.h>
+-#undef rintf
+-#undef __rintf
++# define rintf __redirect_rintf
++# define __rintf __redirect___rintf
++# include <math.h>
++# undef rintf
++# undef __rintf
+ 
+-#define SYMBOL_NAME rintf
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME rintf
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_rintf, __rintf, IFUNC_SELECTOR ());
+ libm_alias_float (__rint, rint)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_roundeven-avx.S b/sysdeps/x86_64/fpu/multiarch/s_roundeven-avx.S
+new file mode 100644
+index 0000000000..576790355c
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_roundeven-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of roundeven function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-double.h>
++
++	.text
++ENTRY(__roundeven)
++	vroundsd $8, %xmm0, %xmm0, %xmm0
++	ret
++END(__roundeven)
++
++libm_alias_double (__roundeven, roundeven)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_roundeven-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_roundeven-sse4_1.S
+index 5ef102336b..f00be56c59 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_roundeven-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_roundeven-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
++# define __roundeven_sse41 __roundeven
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__roundeven_sse41)
+ 	roundsd	$8, %xmm0, %xmm0
+ 	ret
+ END(__roundeven_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_double (__roundeven, roundeven)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_roundeven.c b/sysdeps/x86_64/fpu/multiarch/s_roundeven.c
+index 8737b32e26..139aad088f 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_roundeven.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_roundeven.c
+@@ -16,16 +16,19 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+-#define roundeven __redirect_roundeven
+-#define __roundeven __redirect___roundeven
+-#include <math.h>
+-#undef roundeven
+-#undef __roundeven
++# define roundeven __redirect_roundeven
++# define __roundeven __redirect___roundeven
++# include <math.h>
++# undef roundeven
++# undef __roundeven
+ 
+-#define SYMBOL_NAME roundeven
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME roundeven
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_roundeven, __roundeven, IFUNC_SELECTOR ());
+ libm_alias_double (__roundeven, roundeven)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_roundevenf-avx.S b/sysdeps/x86_64/fpu/multiarch/s_roundevenf-avx.S
+new file mode 100644
+index 0000000000..42c359f4cd
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_roundevenf-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of roundevenf function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-float.h>
++
++	.text
++ENTRY(__roundevenf)
++	vroundss $8, %xmm0, %xmm0, %xmm0
++	ret
++END(__roundevenf)
++
++libm_alias_float (__roundeven, roundeven)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_roundevenf-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_roundevenf-sse4_1.S
+index 792c90ba07..6b148e4353 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_roundevenf-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_roundevenf-sse4_1.S
+@@ -17,8 +17,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# define __roundevenf_sse41 __roundevenf
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__roundevenf_sse41)
+ 	roundss	$8, %xmm0, %xmm0
+ 	ret
+ END(__roundevenf_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_float (__roundeven, roundeven)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_roundevenf.c b/sysdeps/x86_64/fpu/multiarch/s_roundevenf.c
+index e96016a4d5..2fb090075d 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_roundevenf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_roundevenf.c
+@@ -16,16 +16,19 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
+ 
+-#define roundevenf __redirect_roundevenf
+-#define __roundevenf __redirect___roundevenf
+-#include <math.h>
+-#undef roundevenf
+-#undef __roundevenf
++# define roundevenf __redirect_roundevenf
++# define __roundevenf __redirect___roundevenf
++# include <math.h>
++# undef roundevenf
++# undef __roundevenf
+ 
+-#define SYMBOL_NAME roundevenf
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME roundevenf
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_roundevenf, __roundevenf, IFUNC_SELECTOR ());
+ libm_alias_float (__roundeven, roundeven)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_sin.c b/sysdeps/x86_64/fpu/multiarch/s_sin.c
+index 355cc0092e..21e77943a3 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_sin.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_sin.c
+@@ -16,24 +16,27 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+ extern double __redirect_sin (double);
+ extern double __redirect_cos (double);
+ 
+-#define SYMBOL_NAME sin
+-#include "ifunc-avx-fma4.h"
++# define SYMBOL_NAME sin
++# include "ifunc-avx-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_sin, __sin, IFUNC_SELECTOR ());
+ libm_alias_double (__sin, sin)
+ 
+-#undef SYMBOL_NAME
+-#define SYMBOL_NAME cos
+-#include "ifunc-avx-fma4.h"
++# undef SYMBOL_NAME
++# define SYMBOL_NAME cos
++# include "ifunc-avx-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_cos, __cos, IFUNC_SELECTOR ());
+ libm_alias_double (__cos, cos)
+ 
+-#define __cos __cos_sse2
+-#define __sin __sin_sse2
++# define __cos __cos_sse2
++# define __sin __sin_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/s_sin.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_sincos.c b/sysdeps/x86_64/fpu/multiarch/s_sincos.c
+index 70107e999c..b35757f8de 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_sincos.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_sincos.c
+@@ -16,15 +16,18 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+ extern void __redirect_sincos (double, double *, double *);
+ 
+-#define SYMBOL_NAME sincos
+-#include "ifunc-fma4.h"
++# define SYMBOL_NAME sincos
++# include "ifunc-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_sincos, __sincos, IFUNC_SELECTOR ());
+ libm_alias_double (__sincos, sincos)
+ 
+-#define __sincos __sincos_sse2
++# define __sincos __sincos_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/s_sincos.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_sincosf.c b/sysdeps/x86_64/fpu/multiarch/s_sincosf.c
+index 80bc028451..0ea9b40e84 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_sincosf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_sincosf.c
+@@ -16,13 +16,18 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
+ 
+ extern void __redirect_sincosf (float, float *, float *);
+ 
+-#define SYMBOL_NAME sincosf
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME sincosf
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_sincosf, __sincosf, IFUNC_SELECTOR ());
+ 
+ libm_alias_float (__sincos, sincos)
++#else
++# include <sysdeps/ieee754/flt-32/s_sincosf.c>
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_sinf.c b/sysdeps/x86_64/fpu/multiarch/s_sinf.c
+index a32b9e9550..c61624e3ee 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_sinf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_sinf.c
+@@ -16,13 +16,18 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-float.h>
+ 
+ extern float __redirect_sinf (float);
+ 
+-#define SYMBOL_NAME sinf
+-#include "ifunc-fma.h"
++# define SYMBOL_NAME sinf
++# include "ifunc-fma.h"
+ 
+ libc_ifunc_redirected (__redirect_sinf, __sinf, IFUNC_SELECTOR ());
+ 
+ libm_alias_float (__sin, sin)
++#else
++# include <sysdeps/ieee754/flt-32/s_sinf.c>
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_tan.c b/sysdeps/x86_64/fpu/multiarch/s_tan.c
+index f9a2474a13..125d992ba1 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_tan.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_tan.c
+@@ -16,15 +16,18 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-double.h>
+ 
+ extern double __redirect_tan (double);
+ 
+-#define SYMBOL_NAME tan
+-#include "ifunc-avx-fma4.h"
++# define SYMBOL_NAME tan
++# include "ifunc-avx-fma4.h"
+ 
+ libc_ifunc_redirected (__redirect_tan, __tan, IFUNC_SELECTOR ());
+ libm_alias_double (__tan, tan)
+ 
+-#define __tan __tan_sse2
++# define __tan __tan_sse2
++#endif
+ #include <sysdeps/ieee754/dbl-64/s_tan.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_trunc-avx.S b/sysdeps/x86_64/fpu/multiarch/s_trunc-avx.S
+new file mode 100644
+index 0000000000..b3e87e9606
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_trunc-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of trunc function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-double.h>
++
++	.text
++ENTRY(__trunc)
++	vroundsd $11, %xmm0, %xmm0, %xmm0
++	ret
++END(__trunc)
++
++libm_alias_double (__trunc, trunc)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_trunc-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_trunc-sse4_1.S
+index b496a6ef49..2b79174eed 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_trunc-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_trunc-sse4_1.S
+@@ -18,8 +18,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-double.h>
++# define __trunc_sse41 __trunc
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__trunc_sse41)
+ 	roundsd	$11, %xmm0, %xmm0
+ 	ret
+ END(__trunc_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_double (__trunc, trunc)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_trunc.c b/sysdeps/x86_64/fpu/multiarch/s_trunc.c
+index 9bc9df8744..ea89c4f85d 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_trunc.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_trunc.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-double.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-double.h>
+ 
+-#define trunc __redirect_trunc
+-#define __trunc __redirect___trunc
+-#include <math.h>
+-#undef trunc
+-#undef __trunc
++# define trunc __redirect_trunc
++# define __trunc __redirect___trunc
++# include <math.h>
++# undef trunc
++# undef __trunc
+ 
+-#define SYMBOL_NAME trunc
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME trunc
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_trunc, __trunc, IFUNC_SELECTOR ());
+ libm_alias_double (__trunc, trunc)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_truncf-avx.S b/sysdeps/x86_64/fpu/multiarch/s_truncf-avx.S
+new file mode 100644
+index 0000000000..f31ac7d7f7
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_truncf-avx.S
+@@ -0,0 +1,28 @@
++/* AVX implementation of truncf function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#include <libm-alias-float.h>
++
++	.text
++ENTRY(__truncf)
++	vroundss $11, %xmm0, %xmm0, %xmm0
++	ret
++END(__truncf)
++
++libm_alias_float (__trunc, trunc)
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_truncf-sse4_1.S b/sysdeps/x86_64/fpu/multiarch/s_truncf-sse4_1.S
+index 22e9a83307..60498b2cb2 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_truncf-sse4_1.S
++++ b/sysdeps/x86_64/fpu/multiarch/s_truncf-sse4_1.S
+@@ -18,8 +18,20 @@
+ 
+ #include <sysdep.h>
+ 
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++# include <libm-alias-float.h>
++# define __truncf_sse41 __truncf
++	.text
++#else
+ 	.section .text.sse4.1,"ax",@progbits
++#endif
++
+ ENTRY(__truncf_sse41)
+ 	roundss	$11, %xmm0, %xmm0
+ 	ret
+ END(__truncf_sse41)
++
++#if MINIMUM_X86_ISA_LEVEL == SSE4_1_X86_ISA_LEVEL
++libm_alias_float (__trunc, trunc)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_truncf.c b/sysdeps/x86_64/fpu/multiarch/s_truncf.c
+index dae01d166a..92435ce39d 100644
+--- a/sysdeps/x86_64/fpu/multiarch/s_truncf.c
++++ b/sysdeps/x86_64/fpu/multiarch/s_truncf.c
+@@ -16,17 +16,20 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define NO_MATH_REDIRECT
+-#include <libm-alias-float.h>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < SSE4_1_X86_ISA_LEVEL
++# define NO_MATH_REDIRECT
++# include <libm-alias-float.h>
+ 
+-#define truncf __redirect_truncf
+-#define __truncf __redirect___truncf
+-#include <math.h>
+-#undef truncf
+-#undef __truncf
++# define truncf __redirect_truncf
++# define __truncf __redirect___truncf
++# include <math.h>
++# undef truncf
++# undef __truncf
+ 
+-#define SYMBOL_NAME truncf
+-#include "ifunc-sse4_1.h"
++# define SYMBOL_NAME truncf
++# include "ifunc-sse4_1.h"
+ 
+ libc_ifunc_redirected (__redirect_truncf, __truncf, IFUNC_SELECTOR ());
+ libm_alias_float (__trunc, trunc)
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/w_exp.c b/sysdeps/x86_64/fpu/multiarch/w_exp.c
+index 27eee98a0a..3584187e0e 100644
+--- a/sysdeps/x86_64/fpu/multiarch/w_exp.c
++++ b/sysdeps/x86_64/fpu/multiarch/w_exp.c
+@@ -1 +1,6 @@
+-#include <sysdeps/../math/w_exp.c>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL >= AVX2_X86_ISA_LEVEL
++# include <sysdeps/ieee754/dbl-64/w_exp.c>
++#else
++# include <sysdeps/../math/w_exp.c>
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/w_log.c b/sysdeps/x86_64/fpu/multiarch/w_log.c
+index 9b2b018711..414ca3ca3d 100644
+--- a/sysdeps/x86_64/fpu/multiarch/w_log.c
++++ b/sysdeps/x86_64/fpu/multiarch/w_log.c
+@@ -1 +1,6 @@
+-#include <sysdeps/../math/w_log.c>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL >= AVX2_X86_ISA_LEVEL
++# include <sysdeps/ieee754/dbl-64/w_log.c>
++#else
++# include <sysdeps/../math/w_log.c>
++#endif
+diff --git a/sysdeps/x86_64/fpu/multiarch/w_pow.c b/sysdeps/x86_64/fpu/multiarch/w_pow.c
+index b50c1988de..d5fcc4f871 100644
+--- a/sysdeps/x86_64/fpu/multiarch/w_pow.c
++++ b/sysdeps/x86_64/fpu/multiarch/w_pow.c
+@@ -1 +1,6 @@
+-#include <sysdeps/../math/w_pow.c>
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL >= AVX2_X86_ISA_LEVEL
++# include <sysdeps/ieee754/dbl-64/w_pow.c>
++#else
++# include <sysdeps/../math/w_pow.c>
++#endif
+diff --git a/sysdeps/x86_64/multiarch/Makefile b/sysdeps/x86_64/multiarch/Makefile
+index e1e894c963..d3d2270394 100644
+--- a/sysdeps/x86_64/multiarch/Makefile
++++ b/sysdeps/x86_64/multiarch/Makefile
+@@ -4,8 +4,8 @@ sysdep_routines += \
+   memchr-avx2 \
+   memchr-avx2-rtm \
+   memchr-evex \
+-  memchr-evex512 \
+   memchr-evex-rtm \
++  memchr-evex512 \
+   memchr-sse2 \
+   memcmp-avx2-movbe \
+   memcmp-avx2-movbe-rtm \
+@@ -37,8 +37,8 @@ sysdep_routines += \
+   rawmemchr-avx2 \
+   rawmemchr-avx2-rtm \
+   rawmemchr-evex \
+-  rawmemchr-evex512 \
+   rawmemchr-evex-rtm \
++  rawmemchr-evex512 \
+   rawmemchr-sse2 \
+   stpcpy-avx2 \
+   stpcpy-avx2-rtm \
 diff --git a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
 index 9984c3ca0f..97839a2248 100644
 --- a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
