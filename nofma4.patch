@@ -1,35 +1,5 @@
 fma4 (deprecated) conflicts with APX for now so disable
 
---- glibc-2.39/sysdeps/x86_64/fpu/multiarch/Makefile~	2024-01-31 00:34:58.000000000 +0000
-+++ glibc-2.39/sysdeps/x86_64/fpu/multiarch/Makefile	2024-02-04 14:44:32.729526535 +0000
-@@ -83,27 +83,6 @@
- CFLAGS-s_cosf-fma.c = -mfma -mavx2
- CFLAGS-s_sincosf-fma.c = -mfma -mavx2
- 
--libm-sysdep_routines += \
--  e_exp-fma4 \
--  e_log-fma4 \
--  e_pow-fma4 \
--  e_asin-fma4 \
--  s_atan-fma4 \
--  e_atan2-fma4 \
--  s_sin-fma4 \
--  s_sincos-fma4 \
--  s_tan-fma4 \
--# libm-sysdep_routines
--
--CFLAGS-e_asin-fma4.c = -mfma4
--CFLAGS-e_atan2-fma4.c = -mfma4
--CFLAGS-e_exp-fma4.c = -mfma4
--CFLAGS-e_log-fma4.c = -mfma4
--CFLAGS-e_pow-fma4.c = -mfma4
--CFLAGS-s_atan-fma4.c = -mfma4
--CFLAGS-s_sin-fma4.c = -mfma4
--CFLAGS-s_tan-fma4.c = -mfma4
--CFLAGS-s_sincos-fma4.c = -mfma4
- 
- libm-sysdep_routines += \
-   e_exp-avx \
 --- glibc-2.39/sysdeps/x86_64/fpu/multiarch/ifunc-fma4.h~	2024-01-31 00:34:58.000000000 +0000
 +++ glibc-2.39/sysdeps/x86_64/fpu/multiarch/ifunc-fma4.h	2024-02-04 14:55:50.011204977 +0000
 @@ -32,8 +32,5 @@
@@ -53,3 +23,67 @@ fma4 (deprecated) conflicts with APX for now so disable
    if (CPU_FEATURE_USABLE_P (cpu_features, AVX))
      return OPTIMIZE (avx);
  
+--- glibc-2.39/sysdeps/x86_64/fpu/multiarch/Makefile~	2024-04-17 20:22:14.000000000 +0000
++++ glibc-2.39/sysdeps/x86_64/fpu/multiarch/Makefile	2024-04-17 20:23:01.381413989 +0000
+@@ -40,27 +40,21 @@
+ else
+ libm-sysdep_routines += \
+   e_asin-fma \
+-  e_asin-fma4 \
+   e_atan2-avx \
+   e_atan2-fma \
+-  e_atan2-fma4 \
+   e_exp-avx \
+   e_exp-fma \
+-  e_exp-fma4 \
+   e_exp2f-fma \
+   e_expf-fma \
+   e_log-avx \
+   e_log-fma \
+-  e_log-fma4 \
+   e_log2-fma \
+   e_log2f-fma \
+   e_logf-fma \
+   e_pow-fma \
+-  e_pow-fma4 \
+   e_powf-fma \
+   s_atan-avx \
+   s_atan-fma \
+-  s_atan-fma4 \
+   s_ceil-sse4_1 \
+   s_ceilf-sse4_1 \
+   s_cosf-fma \
+@@ -77,17 +71,14 @@
+   s_roundevenf-sse4_1 \
+   s_sin-avx \
+   s_sin-fma \
+-  s_sin-fma4 \
+   s_sincos-avx \
+   s_sincos-fma \
+-  s_sincos-fma4 \
+   s_sincosf-fma \
+   s_sincosf-sse2 \
+   s_sinf-fma \
+   s_sinf-sse2 \
+   s_tan-avx \
+   s_tan-fma \
+-  s_tan-fma4 \
+   s_trunc-sse4_1 \
+   s_truncf-sse4_1 \
+ # libm-sysdep_routines
+@@ -109,15 +100,6 @@
+ endif
+ endif
+ 
+-CFLAGS-e_asin-fma4.c = -mfma4
+-CFLAGS-e_atan2-fma4.c = -mfma4
+-CFLAGS-e_exp-fma4.c = -mfma4
+-CFLAGS-e_log-fma4.c = -mfma4
+-CFLAGS-e_pow-fma4.c = -mfma4
+-CFLAGS-s_atan-fma4.c = -mfma4
+-CFLAGS-s_sin-fma4.c = -mfma4
+-CFLAGS-s_tan-fma4.c = -mfma4
+-CFLAGS-s_sincos-fma4.c = -mfma4
+ 
+ CFLAGS-e_atan2-avx.c = -msse2avx -DSSE2AVX
+ CFLAGS-e_exp-avx.c = -msse2avx -DSSE2AVX
