@@ -60,7 +60,6 @@ BuildRequires:	gcc-dev32 gcc-libgcc32 gcc-libstdc++32
 BuildRequires:	python3-dev
 BuildRequires:	util-linux
 
-BuildRequires:  gcc14 gcc14-dev
 #BuildRequires:  rpcsvc-proto-dev
 
 
