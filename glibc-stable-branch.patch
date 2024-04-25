@@ -31,7 +31,7 @@ Florian Weimer (9):
       CVE-2024-33600: nscd: Avoid null pointer crashes after notfound response (bug 31678)
       CVE-2024-33601, CVE-2024-33602: nscd: netgroup: Use two buffers in addgetnetgrentX (bug 31680)
 
-H.J. Lu (7):
+H.J. Lu (8):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
       x86-64: Update _dl_tlsdesc_dynamic to preserve AMX registers
@@ -39,6 +39,7 @@ H.J. Lu (7):
       x86-64: Don't use SSE resolvers for ISA level 3 or above
       Apply the Makefile sorting fix
       x86: Define MINIMUM_X86_ISA_LEVEL in config.h [BZ #31676]
+      elf: Also compile dl-misc.os with $(rtld-early-cflags)
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
@@ -464,10 +465,18 @@ index 65799e5685..bdc385d03c 100644
  dnl clang emits an warning for a double alias redirection, to warn the
  dnl original symbol is sed even when weak definition overrides it.
 diff --git a/elf/Makefile b/elf/Makefile
-index 5d78b659ce..69aa423c4b 100644
+index 5d78b659ce..a50a988e73 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
-@@ -424,6 +424,7 @@ tests += \
+@@ -170,6 +170,7 @@ CFLAGS-.op += $(call elide-stack-protector,.op,$(elide-routines.os))
+ CFLAGS-.os += $(call elide-stack-protector,.os,$(all-rtld-routines))
+ 
+ # Add the requested compiler flags to the early startup code.
++CFLAGS-dl-misc.os += $(rtld-early-cflags)
+ CFLAGS-dl-printf.os += $(rtld-early-cflags)
+ CFLAGS-dl-setup_hash.os += $(rtld-early-cflags)
+ CFLAGS-dl-sysdep.os += $(rtld-early-cflags)
+@@ -424,6 +425,7 @@ tests += \
    tst-glibc-hwcaps-prepend \
    tst-global1 \
    tst-global2 \
@@ -475,7 +484,7 @@ index 5d78b659ce..69aa423c4b 100644
    tst-initfinilazyfail \
    tst-initorder \
    tst-initorder2 \
-@@ -846,6 +847,9 @@ modules-names += \
+@@ -846,6 +848,9 @@ modules-names += \
    tst-filterobj-flt \
    tst-finilazyfailmod \
    tst-globalmod2 \
@@ -485,7 +494,7 @@ index 5d78b659ce..69aa423c4b 100644
    tst-initlazyfailmod \
    tst-initorder2a \
    tst-initorder2b \
-@@ -995,13 +999,13 @@ modules-names-tests = $(filter-out ifuncmod% tst-tlsmod%,\
+@@ -995,13 +1000,13 @@ modules-names-tests = $(filter-out ifuncmod% tst-tlsmod%,\
  # For +depfiles in Makerules.
  extra-test-objs += tst-auditmod17.os
  
@@ -502,7 +511,7 @@ index 5d78b659ce..69aa423c4b 100644
  
  ifeq (yes,$(have-protected-data))
  modules-names += tst-protected1moda tst-protected1modb
-@@ -2968,11 +2972,11 @@ $(objpfx)tst-tls-allocation-failure-static-patched.out: \
+@@ -2968,11 +2973,11 @@ $(objpfx)tst-tls-allocation-failure-static-patched.out: \
  $(objpfx)tst-audit-tlsdesc: $(objpfx)tst-audit-tlsdesc-mod1.so \
  			    $(objpfx)tst-audit-tlsdesc-mod2.so \
  			    $(shared-thread-library)
@@ -517,7 +526,7 @@ index 5d78b659ce..69aa423c4b 100644
  endif
  $(objpfx)tst-audit-tlsdesc-dlopen: $(shared-thread-library)
  $(objpfx)tst-audit-tlsdesc-dlopen.out: $(objpfx)tst-audit-tlsdesc-mod1.so \
-@@ -3044,8 +3048,18 @@ $(objpfx)tst-tlsgap.out: \
+@@ -3044,8 +3049,18 @@ $(objpfx)tst-tlsgap.out: \
    $(objpfx)tst-tlsgap-mod0.so \
    $(objpfx)tst-tlsgap-mod1.so \
    $(objpfx)tst-tlsgap-mod2.so
