@@ -17,10 +17,13 @@ Andreas K. Hüttel (1):
 Andreas Schwab (1):
       Add tst-gnu2-tls2mod1 to test-internal-extras
 
+Carlos O'Donell (1):
+      time: Allow later version licensing.
+
 Charles Fol (1):
       iconv: ISO-2022-CN-EXT: fix out-of-bound writes when writing escape sequence (CVE-2024-2961)
 
-Florian Weimer (9):
+Florian Weimer (12):
       linux: Use rseq area unconditionally in sched_getcpu (bug 31479)
       i386: Use generic memrchr in libc (bug 31316)
       powerpc: Fix ld.so address determination for PCREL mode (bug 31640)
@@ -30,6 +33,9 @@ Florian Weimer (9):
       CVE-2024-33600: nscd: Do not send missing not-found response in addgetnetgrentX (bug 31678)
       CVE-2024-33600: nscd: Avoid null pointer crashes after notfound response (bug 31678)
       CVE-2024-33601, CVE-2024-33602: nscd: netgroup: Use two buffers in addgetnetgrentX (bug 31680)
+      login: Check default sizes of structs utmp, utmpx, lastlog
+      login: structs utmp, utmpx, lastlog _TIME_BITS independence (bug 30701)
+      nscd: Use time_t for return type of addgetnetgrentX
 
 H.J. Lu (8):
       x86-64: Save APX registers in ld.so trampoline
@@ -325,6 +331,22 @@ index 94e68b1350..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/bits/wordsize.h b/bits/wordsize.h
+index 14edae3a11..53013a9275 100644
+--- a/bits/wordsize.h
++++ b/bits/wordsize.h
+@@ -21,7 +21,9 @@
+ #define __WORDSIZE32_PTRDIFF_LONG
+ 
+ /* Set to 1 in order to force time types to be 32 bits instead of 64 bits in
+-   struct lastlog and struct utmp{,x} on 64-bit ports.  This may be done in
++   struct lastlog and struct utmp{,x}.  This may be done in
+    order to make 64-bit ports compatible with 32-bit ports.  Set to 0 for
+-   64-bit ports where the time types are 64-bits or for any 32-bit ports.  */
++   64-bit ports where the time types are 64-bits and new 32-bit ports
++   where time_t is 64 bits, and there is no companion architecture with
++   32-bit time_t.  */
+ #define __WORDSIZE_TIME64_COMPAT32
 diff --git a/config.h.in b/config.h.in
 index 44a34072a4..1e647de585 100644
 --- a/config.h.in
@@ -1065,6 +1087,68 @@ index 0000000000..96a8765fd5
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/login/Makefile b/login/Makefile
+index 1e22008a61..f91190e3dc 100644
+--- a/login/Makefile
++++ b/login/Makefile
+@@ -44,7 +44,9 @@ subdir-dirs = programs
+ vpath %.c programs
+ 
+ tests := tst-utmp tst-utmpx tst-grantpt tst-ptsname tst-getlogin tst-updwtmpx \
+-  tst-pututxline-lockfail tst-pututxline-cache
++  tst-pututxline-lockfail tst-pututxline-cache tst-utmp-size tst-utmp-size-64
++
++CFLAGS-tst-utmp-size-64.c += -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64
+ 
+ # Empty compatibility library for old binaries.
+ extra-libs      := libutil
+diff --git a/login/tst-utmp-size-64.c b/login/tst-utmp-size-64.c
+new file mode 100644
+index 0000000000..7a581a4c12
+--- /dev/null
++++ b/login/tst-utmp-size-64.c
+@@ -0,0 +1,2 @@
++/* The on-disk layout must not change in time64 mode.  */
++#include "tst-utmp-size.c"
+diff --git a/login/tst-utmp-size.c b/login/tst-utmp-size.c
+new file mode 100644
+index 0000000000..1b7f7ff042
+--- /dev/null
++++ b/login/tst-utmp-size.c
+@@ -0,0 +1,33 @@
++/* Check expected sizes of struct utmp, struct utmpx, struct lastlog.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <utmp.h>
++#include <utmpx.h>
++#include <utmp-size.h>
++
++static int
++do_test (void)
++{
++  _Static_assert (sizeof (struct utmp) == UTMP_SIZE, "struct utmp size");
++  _Static_assert (sizeof (struct utmpx) == UTMP_SIZE, "struct utmpx size");
++  _Static_assert (sizeof (struct lastlog) == LASTLOG_SIZE,
++                  "struct lastlog size");
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/manual/stdbit.texi b/manual/stdbit.texi
 index fe41c671d8..6c75ed9a20 100644
 --- a/manual/stdbit.texi
@@ -1085,7 +1169,7 @@ index fe41c671d8..6c75ed9a20 100644
  @deftypefun {unsigned int} stdc_leading_zeros_uc (unsigned char @var{x})
  @deftypefunx {unsigned int} stdc_leading_zeros_us (unsigned short @var{x})
 diff --git a/nscd/netgroupcache.c b/nscd/netgroupcache.c
-index 0c6e46f15c..e8fe041846 100644
+index 0c6e46f15c..01d554af9c 100644
 --- a/nscd/netgroupcache.c
 +++ b/nscd/netgroupcache.c
 @@ -23,6 +23,7 @@
@@ -1513,8 +1597,8 @@ index 0c6e46f15c..e8fe041846 100644
      };
  
 -  return addinnetgrX (db, -1, &req, db->data + he->key, he->owner, he, dh);
-+  int timeout = addinnetgrX (db, -1, &req, db->data + he->key, he->owner,
-+			     he, dh);
++  time_t timeout = addinnetgrX (db, -1, &req, db->data + he->key, he->owner,
++				he, dh);
 +  if (timeout < 0)
 +    timeout = 0;
 +  return timeout;
@@ -3283,6 +3367,15 @@ index d9bd1f8558..19657b627b 100644
 +	mtls_descriptor=desc
  	;;
  esac
+diff --git a/sysdeps/arc/utmp-size.h b/sysdeps/arc/utmp-size.h
+new file mode 100644
+index 0000000000..a247fcd3da
+--- /dev/null
++++ b/sysdeps/arc/utmp-size.h
+@@ -0,0 +1,3 @@
++/* arc has less padding than other architectures with 64-bit time_t.  */
++#define UTMP_SIZE 392
++#define LASTLOG_SIZE 296
 diff --git a/sysdeps/arm/Makefile b/sysdeps/arm/Makefile
 index d5cea717a9..619474eca9 100644
 --- a/sysdeps/arm/Makefile
@@ -3307,6 +3400,33 @@ index d5cea717a9..619474eca9 100644
  LDFLAGS-tst-armtlsdescextnowmod.so += -Wl,-z,now
  tst-armtlsdescloc-ENV = LD_BIND_NOW=1
  tst-armtlsdescextnow-ENV = LD_BIND_NOW=1
+diff --git a/sysdeps/arm/bits/wordsize.h b/sysdeps/arm/bits/wordsize.h
+new file mode 100644
+index 0000000000..6ecbfe7c86
+--- /dev/null
++++ b/sysdeps/arm/bits/wordsize.h
+@@ -0,0 +1,21 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define __WORDSIZE			32
++#define __WORDSIZE_TIME64_COMPAT32	1
++#define __WORDSIZE32_SIZE_ULONG		0
++#define __WORDSIZE32_PTRDIFF_LONG	0
 diff --git a/sysdeps/arm/configure b/sysdeps/arm/configure
 index 35e2918922..4ef4d46cbd 100644
 --- a/sysdeps/arm/configure
@@ -3633,6 +3753,49 @@ index 0000000000..e413ac21fb
 +#endif /* __SOFTFP__ */
 +
 +#include_next <tst-gnu2-tls2.h>
+diff --git a/sysdeps/arm/utmp-size.h b/sysdeps/arm/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/arm/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
+diff --git a/sysdeps/csky/bits/wordsize.h b/sysdeps/csky/bits/wordsize.h
+new file mode 100644
+index 0000000000..6ecbfe7c86
+--- /dev/null
++++ b/sysdeps/csky/bits/wordsize.h
+@@ -0,0 +1,21 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define __WORDSIZE			32
++#define __WORDSIZE_TIME64_COMPAT32	1
++#define __WORDSIZE32_SIZE_ULONG		0
++#define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/csky/utmp-size.h b/sysdeps/csky/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/csky/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
 diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
 index 117c901ccc..50f58a60e3 100644
 --- a/sysdeps/generic/ldsodefs.h
@@ -3646,6 +3809,43 @@ index 117c901ccc..50f58a60e3 100644
  
    EXTERN enum dso_sort_algorithm _dl_dso_sort_algo;
  
+diff --git a/sysdeps/generic/utmp-size.h b/sysdeps/generic/utmp-size.h
+new file mode 100644
+index 0000000000..89dbe878b0
+--- /dev/null
++++ b/sysdeps/generic/utmp-size.h
+@@ -0,0 +1,23 @@
++/* Expected sizes of utmp-related structures stored in files.  64-bit version.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* Expected size, in bytes, of struct utmp and struct utmpx.  */
++#define UTMP_SIZE 400
++
++/* Expected size, in bytes, of struct lastlog.  */
++#define LASTLOG_SIZE 296
+diff --git a/sysdeps/hppa/utmp-size.h b/sysdeps/hppa/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/hppa/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
 diff --git a/sysdeps/i386/dl-machine.h b/sysdeps/i386/dl-machine.h
 index fc1ef96587..50d74fe6e9 100644
 --- a/sysdeps/i386/dl-machine.h
@@ -4122,6 +4322,94 @@ index fe863e1ba4..01762ef526 100644
 +  strrchr-lsx \
  # sysdep_routines
  endif
+diff --git a/sysdeps/m68k/bits/wordsize.h b/sysdeps/m68k/bits/wordsize.h
+new file mode 100644
+index 0000000000..6ecbfe7c86
+--- /dev/null
++++ b/sysdeps/m68k/bits/wordsize.h
+@@ -0,0 +1,21 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define __WORDSIZE			32
++#define __WORDSIZE_TIME64_COMPAT32	1
++#define __WORDSIZE32_SIZE_ULONG		0
++#define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/m68k/utmp-size.h b/sysdeps/m68k/utmp-size.h
+new file mode 100644
+index 0000000000..5946685819
+--- /dev/null
++++ b/sysdeps/m68k/utmp-size.h
+@@ -0,0 +1,3 @@
++/* m68k has 2-byte alignment.  */
++#define UTMP_SIZE 382
++#define LASTLOG_SIZE 292
+diff --git a/sysdeps/microblaze/bits/wordsize.h b/sysdeps/microblaze/bits/wordsize.h
+new file mode 100644
+index 0000000000..6ecbfe7c86
+--- /dev/null
++++ b/sysdeps/microblaze/bits/wordsize.h
+@@ -0,0 +1,21 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define __WORDSIZE			32
++#define __WORDSIZE_TIME64_COMPAT32	1
++#define __WORDSIZE32_SIZE_ULONG		0
++#define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/microblaze/utmp-size.h b/sysdeps/microblaze/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/microblaze/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
+diff --git a/sysdeps/mips/bits/wordsize.h b/sysdeps/mips/bits/wordsize.h
+index 57f0f2a22f..30dd3fd85d 100644
+--- a/sysdeps/mips/bits/wordsize.h
++++ b/sysdeps/mips/bits/wordsize.h
+@@ -19,11 +19,7 @@
+ 
+ #define __WORDSIZE			_MIPS_SZPTR
+ 
+-#if _MIPS_SIM == _ABI64
+-# define __WORDSIZE_TIME64_COMPAT32	1
+-#else
+-# define __WORDSIZE_TIME64_COMPAT32	0
+-#endif
++#define __WORDSIZE_TIME64_COMPAT32	1
+ 
+ #if __WORDSIZE == 32
+ #define __WORDSIZE32_SIZE_ULONG		0
 diff --git a/sysdeps/mips/mips64/libm-test-ulps b/sysdeps/mips/mips64/libm-test-ulps
 index 78969745b2..933aba4735 100644
 --- a/sysdeps/mips/mips64/libm-test-ulps
@@ -4155,6 +4443,58 @@ index 78969745b2..933aba4735 100644
  float: 1
  ldouble: 1
  
+diff --git a/sysdeps/mips/utmp-size.h b/sysdeps/mips/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/mips/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
+diff --git a/sysdeps/nios2/bits/wordsize.h b/sysdeps/nios2/bits/wordsize.h
+new file mode 100644
+index 0000000000..6ecbfe7c86
+--- /dev/null
++++ b/sysdeps/nios2/bits/wordsize.h
+@@ -0,0 +1,21 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define __WORDSIZE			32
++#define __WORDSIZE_TIME64_COMPAT32	1
++#define __WORDSIZE32_SIZE_ULONG		0
++#define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/nios2/utmp-size.h b/sysdeps/nios2/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/nios2/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
+diff --git a/sysdeps/or1k/utmp-size.h b/sysdeps/or1k/utmp-size.h
+new file mode 100644
+index 0000000000..6b3653aa4d
+--- /dev/null
++++ b/sysdeps/or1k/utmp-size.h
+@@ -0,0 +1,3 @@
++/* or1k has less padding than other architectures with 64-bit time_t.  */
++#define UTMP_SIZE 392
++#define LASTLOG_SIZE 296
 diff --git a/sysdeps/powerpc/dl-procinfo.c b/sysdeps/powerpc/dl-procinfo.c
 index a76bb6e5b0..8cf00aa7e3 100644
 --- a/sysdeps/powerpc/dl-procinfo.c
@@ -4327,6 +4667,22 @@ index 76344f285a..f6fede15a7 100644
  
  }
  #if IS_IN (rtld)
+diff --git a/sysdeps/powerpc/powerpc32/bits/wordsize.h b/sysdeps/powerpc/powerpc32/bits/wordsize.h
+index 04ca9debf0..6993fb6b29 100644
+--- a/sysdeps/powerpc/powerpc32/bits/wordsize.h
++++ b/sysdeps/powerpc/powerpc32/bits/wordsize.h
+@@ -2,10 +2,9 @@
+ 
+ #if defined __powerpc64__
+ # define __WORDSIZE	64
+-# define __WORDSIZE_TIME64_COMPAT32	1
+ #else
+ # define __WORDSIZE	32
+-# define __WORDSIZE_TIME64_COMPAT32	0
+ # define __WORDSIZE32_SIZE_ULONG	0
+ # define __WORDSIZE32_PTRDIFF_LONG	0
+ #endif
++#define __WORDSIZE_TIME64_COMPAT32	1
 diff --git a/sysdeps/powerpc/powerpc32/power11/Implies b/sysdeps/powerpc/powerpc32/power11/Implies
 new file mode 100644
 index 0000000000..051cbe0f79
@@ -4378,6 +4734,22 @@ index 0000000000..9491a394c9
 +++ b/sysdeps/powerpc/powerpc64/be/power11/multiarch/Implies
 @@ -0,0 +1 @@
 +powerpc/powerpc64/be/power10/multiarch
+diff --git a/sysdeps/powerpc/powerpc64/bits/wordsize.h b/sysdeps/powerpc/powerpc64/bits/wordsize.h
+index 04ca9debf0..6993fb6b29 100644
+--- a/sysdeps/powerpc/powerpc64/bits/wordsize.h
++++ b/sysdeps/powerpc/powerpc64/bits/wordsize.h
+@@ -2,10 +2,9 @@
+ 
+ #if defined __powerpc64__
+ # define __WORDSIZE	64
+-# define __WORDSIZE_TIME64_COMPAT32	1
+ #else
+ # define __WORDSIZE	32
+-# define __WORDSIZE_TIME64_COMPAT32	0
+ # define __WORDSIZE32_SIZE_ULONG	0
+ # define __WORDSIZE32_PTRDIFF_LONG	0
+ #endif
++#define __WORDSIZE_TIME64_COMPAT32	1
 diff --git a/sysdeps/powerpc/powerpc64/dl-machine.h b/sysdeps/powerpc/powerpc64/dl-machine.h
 index c6682f3445..2b6f5d2b08 100644
 --- a/sysdeps/powerpc/powerpc64/dl-machine.h
@@ -4488,6 +4860,14 @@ index 6c63bd8257..14b6dafd4a 100644
      submachine=${archcpu}
      AC_CACHE_VAL(libc_cv_cc_submachine,libc_cv_cc_submachine="")
      ;;
+diff --git a/sysdeps/powerpc/utmp-size.h b/sysdeps/powerpc/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/powerpc/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
 diff --git a/sysdeps/pthread/tst-cancel30.c b/sysdeps/pthread/tst-cancel30.c
 index 3030660e5f..94ad6281bc 100644
 --- a/sysdeps/pthread/tst-cancel30.c
@@ -4524,6 +4904,85 @@ index 3030660e5f..94ad6281bc 100644
  #endif
  
    return 0;
+diff --git a/sysdeps/riscv/utmp-size.h b/sysdeps/riscv/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/riscv/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
+diff --git a/sysdeps/sh/bits/wordsize.h b/sysdeps/sh/bits/wordsize.h
+new file mode 100644
+index 0000000000..6ecbfe7c86
+--- /dev/null
++++ b/sysdeps/sh/bits/wordsize.h
+@@ -0,0 +1,21 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define __WORDSIZE			32
++#define __WORDSIZE_TIME64_COMPAT32	1
++#define __WORDSIZE32_SIZE_ULONG		0
++#define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/sh/utmp-size.h b/sysdeps/sh/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/sh/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
+diff --git a/sysdeps/sparc/sparc32/bits/wordsize.h b/sysdeps/sparc/sparc32/bits/wordsize.h
+index 4bbd2e63b4..a2e79e0fa9 100644
+--- a/sysdeps/sparc/sparc32/bits/wordsize.h
++++ b/sysdeps/sparc/sparc32/bits/wordsize.h
+@@ -1,6 +1,6 @@
+ /* Determine the wordsize from the preprocessor defines.  */
+ 
+ #define __WORDSIZE	32
+-#define __WORDSIZE_TIME64_COMPAT32	0
++#define __WORDSIZE_TIME64_COMPAT32	1
+ #define __WORDSIZE32_SIZE_ULONG	0
+ #define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/sparc/sparc64/bits/wordsize.h b/sysdeps/sparc/sparc64/bits/wordsize.h
+index 2f66f10d72..ea103e5970 100644
+--- a/sysdeps/sparc/sparc64/bits/wordsize.h
++++ b/sysdeps/sparc/sparc64/bits/wordsize.h
+@@ -2,10 +2,9 @@
+ 
+ #if defined __arch64__ || defined __sparcv9
+ # define __WORDSIZE	64
+-# define __WORDSIZE_TIME64_COMPAT32	1
+ #else
+ # define __WORDSIZE	32
+-# define __WORDSIZE_TIME64_COMPAT32	0
+ # define __WORDSIZE32_SIZE_ULONG	0
+ # define __WORDSIZE32_PTRDIFF_LONG	0
+ #endif
++#define __WORDSIZE_TIME64_COMPAT32	1
+diff --git a/sysdeps/sparc/utmp-size.h b/sysdeps/sparc/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/sparc/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
 diff --git a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c b/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
 index b1a3f673f0..c0b047bc0d 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
@@ -4623,6 +5082,33 @@ index ad3692d738..e1b14e9eb3 100644
  	  [AT_MINSIGSTKSZ - 2] =	{ "MINSIGSTKSZ:       ", dec },
  	  [AT_L1I_CACHESIZE - 2] =	{ "L1I_CACHESIZE:     ", dec },
  	  [AT_L1I_CACHEGEOMETRY - 2] =	{ "L1I_CACHEGEOMETRY: 0x", hex },
+diff --git a/sysdeps/unix/sysv/linux/hppa/bits/wordsize.h b/sysdeps/unix/sysv/linux/hppa/bits/wordsize.h
+new file mode 100644
+index 0000000000..6ecbfe7c86
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/hppa/bits/wordsize.h
+@@ -0,0 +1,21 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#define __WORDSIZE			32
++#define __WORDSIZE_TIME64_COMPAT32	1
++#define __WORDSIZE32_SIZE_ULONG		0
++#define __WORDSIZE32_PTRDIFF_LONG	0
 diff --git a/sysdeps/unix/sysv/linux/mips/clone3.S b/sysdeps/unix/sysv/linux/mips/clone3.S
 index e9fec2fa47..481b8ae963 100644
 --- a/sysdeps/unix/sysv/linux/mips/clone3.S
@@ -4683,6 +5169,22 @@ index e9fec2fa47..481b8ae963 100644
  
  	/* Call the user's function.  */
  	jal		t9
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h b/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h
+index 04ca9debf0..6993fb6b29 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h
+@@ -2,10 +2,9 @@
+ 
+ #if defined __powerpc64__
+ # define __WORDSIZE	64
+-# define __WORDSIZE_TIME64_COMPAT32	1
+ #else
+ # define __WORDSIZE	32
+-# define __WORDSIZE_TIME64_COMPAT32	0
+ # define __WORDSIZE32_SIZE_ULONG	0
+ # define __WORDSIZE32_PTRDIFF_LONG	0
+ #endif
++#define __WORDSIZE_TIME64_COMPAT32	1
 diff --git a/sysdeps/unix/sysv/linux/powerpc/cpu-features.c b/sysdeps/unix/sysv/linux/powerpc/cpu-features.c
 index 8e8a5ec2ea..a947d62db6 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/cpu-features.c
@@ -4772,6 +5274,48 @@ index dfb884568d..72a3360550 100644
 -  return vsyscall_sched_getcpu ();
 -}
 -#endif /* RSEQ_SIG */
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/wordsize.h b/sysdeps/unix/sysv/linux/sparc/bits/wordsize.h
+index 7562875ee2..ea103e5970 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/wordsize.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/wordsize.h
+@@ -2,10 +2,9 @@
+ 
+ #if defined __arch64__ || defined __sparcv9
+ # define __WORDSIZE	64
+-# define __WORDSIZE_TIME64_COMPAT32	1
+ #else
+ # define __WORDSIZE	32
+ # define __WORDSIZE32_SIZE_ULONG	0
+ # define __WORDSIZE32_PTRDIFF_LONG	0
+-# define __WORDSIZE_TIME64_COMPAT32	0
+ #endif
++#define __WORDSIZE_TIME64_COMPAT32	1
+diff --git a/sysdeps/unix/sysv/linux/timespec_get.c b/sysdeps/unix/sysv/linux/timespec_get.c
+index c6e5e66289..778d1e3354 100644
+--- a/sysdeps/unix/sysv/linux/timespec_get.c
++++ b/sysdeps/unix/sysv/linux/timespec_get.c
+@@ -5,7 +5,7 @@
+    The GNU C Library is free software; you can redistribute it and/or
+    modify it under the terms of the GNU Lesser General Public
+    License as published by the Free Software Foundation; either
+-   version 2.1 of the License.
++   version 2.1 of the License, or (at your option) any later version.
+ 
+    The GNU C Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+diff --git a/sysdeps/unix/sysv/linux/timespec_getres.c b/sysdeps/unix/sysv/linux/timespec_getres.c
+index 5acebe2a2c..2eef9e512c 100644
+--- a/sysdeps/unix/sysv/linux/timespec_getres.c
++++ b/sysdeps/unix/sysv/linux/timespec_getres.c
+@@ -5,7 +5,7 @@
+    The GNU C Library is free software; you can redistribute it and/or
+    modify it under the terms of the GNU Lesser General Public
+    License as published by the Free Software Foundation; either
+-   version 2.1 of the License.
++   version 2.1 of the License, or (at your option) any later version.
+ 
+    The GNU C Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
 diff --git a/sysdeps/unix/sysv/linux/tst-clone.c b/sysdeps/unix/sysv/linux/tst-clone.c
 index 470676ab2b..2bc7124983 100644
 --- a/sysdeps/unix/sysv/linux/tst-clone.c
@@ -5151,6 +5695,23 @@ index 4d50b327b5..5311b594af 100644
  endif
  
  ifeq ($(subdir),math)
+diff --git a/sysdeps/x86/bits/wordsize.h b/sysdeps/x86/bits/wordsize.h
+index 70f652bca1..3f40aa76f9 100644
+--- a/sysdeps/x86/bits/wordsize.h
++++ b/sysdeps/x86/bits/wordsize.h
+@@ -8,10 +8,9 @@
+ #define __WORDSIZE32_PTRDIFF_LONG	0
+ #endif
+ 
++#define __WORDSIZE_TIME64_COMPAT32 1
++
+ #ifdef __x86_64__
+-# define __WORDSIZE_TIME64_COMPAT32	1
+ /* Both x86-64 and x32 use the 64-bit system call interface.  */
+ # define __SYSCALL_WORDSIZE		64
+-#else
+-# define __WORDSIZE_TIME64_COMPAT32	0
+ #endif
 diff --git a/sysdeps/x86/configure b/sysdeps/x86/configure
 index 1f4c2d67fd..d28d9bcb29 100644
 --- a/sysdeps/x86/configure
@@ -5823,6 +6384,14 @@ index 0000000000..de900a423b
 +}
 +
 +#include <elf/tst-gnu2-tls2.c>
+diff --git a/sysdeps/x86/utmp-size.h b/sysdeps/x86/utmp-size.h
+new file mode 100644
+index 0000000000..8f21ebe1b6
+--- /dev/null
++++ b/sysdeps/x86/utmp-size.h
+@@ -0,0 +1,2 @@
++#define UTMP_SIZE 384
++#define LASTLOG_SIZE 292
 diff --git a/sysdeps/x86_64/Makefile b/sysdeps/x86_64/Makefile
 index 90f4ecfd26..0ede447405 100644
 --- a/sysdeps/x86_64/Makefile
@@ -8648,3 +9217,29 @@ index 0000000000..1d636669ba
 +	.local	saved_rsi
 +	.comm	saved_rsi,8,8
 +	.section	.note.GNU-stack,"",@progbits
+diff --git a/time/timespec_get.c b/time/timespec_get.c
+index b031e42ca2..26a044bca6 100644
+--- a/time/timespec_get.c
++++ b/time/timespec_get.c
+@@ -4,7 +4,7 @@
+    The GNU C Library is free software; you can redistribute it and/or
+    modify it under the terms of the GNU Lesser General Public
+    License as published by the Free Software Foundation; either
+-   version 2.1 of the License.
++   version 2.1 of the License, or (at your option) any later version.
+ 
+    The GNU C Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+diff --git a/time/timespec_getres.c b/time/timespec_getres.c
+index edb397507c..2e18b8bcac 100644
+--- a/time/timespec_getres.c
++++ b/time/timespec_getres.c
+@@ -5,7 +5,7 @@
+    The GNU C Library is free software; you can redistribute it and/or
+    modify it under the terms of the GNU Lesser General Public
+    License as published by the Free Software Foundation; either
+-   version 2.1 of the License.
++   version 2.1 of the License, or (at your option) any later version.
+ 
+    The GNU C Library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
