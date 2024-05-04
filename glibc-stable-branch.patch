@@ -37,6 +37,14 @@ Florian Weimer (12):
       login: structs utmp, utmpx, lastlog _TIME_BITS independence (bug 30701)
       nscd: Use time_t for return type of addgetnetgrentX
 
+Gabi Falk (6):
+      i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk
+      i686: Fix multiple definitions of __memmove_chk and __memset_chk
+      Add a test to check for duplicate definitions in the static library
+      i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk
+      i686: Fix multiple definitions of __memmove_chk and __memset_chk
+      Add a test to check for duplicate definitions in the static library
+
 H.J. Lu (8):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
@@ -55,6 +63,11 @@ Joe Ramsay (1):
 
 Manjunath Matti (1):
       ﻿powerpc: Add HWCAP3/HWCAP4 data to TCB for Power Architecture.
+
+Sam James (3):
+      Revert "Add a test to check for duplicate definitions in the static library"
+      Revert "i686: Fix multiple definitions of __memmove_chk and __memset_chk"
+      Revert "i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk"
 
 Stefan Liebler (1):
       S390: Do not clobber r7 in clone [BZ #31402]
@@ -83,6 +96,24 @@ index 0000000000..d4e33f2df3
 @@ -0,0 +1,2 @@
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
+diff --git a/Makefile b/Makefile
+index 7052b46df8..2e351c0321 100644
+--- a/Makefile
++++ b/Makefile
+@@ -577,6 +577,13 @@ $(objpfx)lint-makefiles.out: scripts/lint-makefiles.sh
+ 	$(SHELL) $< "$(PYTHON)" `pwd` > $@ ; \
+ 	$(evaluate-test)
+ 
++# Link libc.a as a whole to verify that it does not contain multiple
++# definitions of any symbols.
++tests-special += $(objpfx)link-static-libc.out
++$(objpfx)link-static-libc.out:
++	$(LINK.o) $(whole-archive) -r $(objpfx)libc.a -o /dev/null > $@ 2>&1; \
++	$(evaluate-test)
++
+ # Print test summary for tests in $1 .sum file;
+ # $2 is optional test identifier.
+ # Fail if there are unexpected failures in the test results.
 diff --git a/advisories/GLIBC-SA-2023-0001 b/advisories/GLIBC-SA-2023-0001
 deleted file mode 100644
 index 3d19c91b6a..0000000000
@@ -4196,6 +4227,45 @@ index 84e6686eba..f2139fc172 100644
  float128: 1
  ldouble: 1
  
+diff --git a/sysdeps/i386/i586/memcpy.S b/sysdeps/i386/i586/memcpy.S
+index 3e26f112d6..79856d498a 100644
+--- a/sysdeps/i386/i586/memcpy.S
++++ b/sysdeps/i386/i586/memcpy.S
+@@ -26,7 +26,7 @@
+ #define LEN	SRC+4
+ 
+         .text
+-#if defined PIC && IS_IN (libc)
++#if defined SHARED && IS_IN (libc)
+ ENTRY (__memcpy_chk)
+ 	movl	12(%esp), %eax
+ 	cmpl	%eax, 16(%esp)
+diff --git a/sysdeps/i386/i686/memmove.S b/sysdeps/i386/i686/memmove.S
+index f230359ad6..effd958120 100644
+--- a/sysdeps/i386/i686/memmove.S
++++ b/sysdeps/i386/i686/memmove.S
+@@ -29,7 +29,7 @@
+ #define SRC	DEST+4
+ #define LEN	SRC+4
+ 
+-#if defined PIC && IS_IN (libc)
++#if defined SHARED && IS_IN (libc)
+ ENTRY_CHK (__memmove_chk)
+ 	movl	12(%esp), %eax
+ 	cmpl	%eax, 16(%esp)
+diff --git a/sysdeps/i386/i686/memset.S b/sysdeps/i386/i686/memset.S
+index f02f5a6df7..ab06771ea0 100644
+--- a/sysdeps/i386/i686/memset.S
++++ b/sysdeps/i386/i686/memset.S
+@@ -27,7 +27,7 @@
+ #define LEN	CHR+4
+ 
+         .text
+-#if defined PIC && IS_IN (libc)
++#if defined SHARED && IS_IN (libc)
+ ENTRY_CHK (__memset_chk)
+ 	movl	12(%esp), %eax
+ 	cmpl	%eax, 16(%esp)
 diff --git a/sysdeps/i386/i686/multiarch/memrchr-c.c b/sysdeps/i386/i686/multiarch/memrchr-c.c
 index ef7bbbe792..20bfdf3af3 100644
 --- a/sysdeps/i386/i686/multiarch/memrchr-c.c
