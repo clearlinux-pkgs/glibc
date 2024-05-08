@@ -1,4 +1,4 @@
-Adhemerval Zanella (8):
+Adhemerval Zanella (9):
       arm: Remove wrong ldr from _dl_start_user (BZ 31339)
       mips: FIx clone3 implementation (BZ 31325)
       Ignore undefined symbols for -mtls-dialect=gnu2
@@ -7,6 +7,7 @@ Adhemerval Zanella (8):
       x86: Fix Zen3/Zen4 ERMS selection (BZ 30994)
       x86: Do not prefer ERMS for memset on Zen3+
       x86: Expand the comment on when REP STOSB is used on memset
+      elf: Only process multiple tunable once (BZ 31686)
 
 Amrita H S (1):
       ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
@@ -628,6 +629,65 @@ index 2f502c8b0d..451932dd03 100644
  
  enum dso_sort_algorithm _dl_dso_sort_algo;
  
+diff --git a/elf/dl-tunables.c b/elf/dl-tunables.c
+index 03e1a68675..614ac9c047 100644
+--- a/elf/dl-tunables.c
++++ b/elf/dl-tunables.c
+@@ -32,6 +32,7 @@
+ #include <ldsodefs.h>
+ #include <array_length.h>
+ #include <dl-minimal-malloc.h>
++#include <dl-symbol-redir-ifunc.h>
+ 
+ #define TUNABLES_INTERNAL 1
+ #include "dl-tunables.h"
+@@ -223,6 +224,7 @@ parse_tunables_string (const char *valstring, struct tunable_toset_t *tunables)
+ 	    {
+ 	      tunables[ntunables++] =
+ 		(struct tunable_toset_t) { cur, value, p - value };
++
+ 	      break;
+ 	    }
+ 	}
+@@ -234,23 +236,27 @@ parse_tunables_string (const char *valstring, struct tunable_toset_t *tunables)
+ static void
+ parse_tunables (const char *valstring)
+ {
+-  struct tunable_toset_t tunables[tunables_list_size];
+-  int ntunables = parse_tunables_string (valstring, tunables);
+-  if (ntunables == -1)
++  struct tunable_toset_t tunables[tunables_list_size] = { 0 };
++  if (parse_tunables_string (valstring, tunables) == -1)
+     {
+       _dl_error_printf (
+         "WARNING: ld.so: invalid GLIBC_TUNABLES `%s': ignored.\n", valstring);
+       return;
+     }
+ 
+-  for (int i = 0; i < ntunables; i++)
+-    if (!tunable_initialize (tunables[i].t, tunables[i].value,
+-			     tunables[i].len))
+-      _dl_error_printf ("WARNING: ld.so: invalid GLIBC_TUNABLES value `%.*s' "
+-		       "for option `%s': ignored.\n",
+-		       (int) tunables[i].len,
+-		       tunables[i].value,
+-		       tunables[i].t->name);
++  for (int i = 0; i < tunables_list_size; i++)
++    {
++      if (tunables[i].t == NULL)
++	continue;
++
++      if (!tunable_initialize (tunables[i].t, tunables[i].value,
++			       tunables[i].len))
++	_dl_error_printf ("WARNING: ld.so: invalid GLIBC_TUNABLES value `%.*s' "
++			  "for option `%s': ignored.\n",
++			  (int) tunables[i].len,
++			  tunables[i].value,
++			  tunables[i].t->name);
++    }
+ }
+ 
+ /* Initialize the tunables list from the environment.  For now we only use the
 diff --git a/elf/elf.h b/elf/elf.h
 index 455731663c..1c394c64cd 100644
 --- a/elf/elf.h
@@ -931,6 +991,104 @@ index 0000000000..6d3031dc5f
 +  AFTER_TLSDESC_CALL ();
 +  return ret;
 +}
+diff --git a/elf/tst-tunables.c b/elf/tst-tunables.c
+index 095b5c81d9..dff34ed748 100644
+--- a/elf/tst-tunables.c
++++ b/elf/tst-tunables.c
+@@ -17,6 +17,10 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include <array_length.h>
++/* The test uses the tunable_list size, which is only exported for
++   ld.so.  This will result in a copy of tunable_list, which is ununsed by
++   the test itself.  */
++#define TUNABLES_INTERNAL 1
+ #include <dl-tunables.h>
+ #include <getopt.h>
+ #include <intprops.h>
+@@ -24,12 +28,13 @@
+ #include <stdlib.h>
+ #include <support/capture_subprocess.h>
+ #include <support/check.h>
++#include <support/support.h>
+ 
+ static int restart;
+ #define CMDLINE_OPTIONS \
+   { "restart", no_argument, &restart, 1 },
+ 
+-static const struct test_t
++static struct test_t
+ {
+   const char *name;
+   const char *value;
+@@ -284,6 +289,29 @@ static const struct test_t
+     0,
+     0,
+   },
++  /* Also check for repeated tunables with a count larger than the total number
++     of tunables.  */
++  {
++    "GLIBC_TUNABLES",
++    NULL,
++    2,
++    0,
++    0,
++  },
++  {
++    "GLIBC_TUNABLES",
++    NULL,
++    1,
++    0,
++    0,
++  },
++  {
++    "GLIBC_TUNABLES",
++    NULL,
++    0,
++    0,
++    0,
++  },
+ };
+ 
+ static int
+@@ -327,6 +355,37 @@ do_test (int argc, char *argv[])
+     spargv[i] = NULL;
+   }
+ 
++  /* Create a tunable line with the duplicate values with a total number
++     larger than the different number of tunables.  */
++  {
++    enum { tunables_list_size = array_length (tunable_list) };
++    const char *value = "";
++    for (int i = 0; i < tunables_list_size; i++)
++      value = xasprintf ("%sglibc.malloc.check=2%c",
++			 value,
++			 i == (tunables_list_size - 1) ? '\0' : ':');
++    tests[33].value = value;
++  }
++  /* Same as before, but the last tunable values is differen than the
++     rest.  */
++  {
++    enum { tunables_list_size = array_length (tunable_list) };
++    const char *value = "";
++    for (int i = 0; i < tunables_list_size - 1; i++)
++      value = xasprintf ("%sglibc.malloc.check=2:", value);
++    value = xasprintf ("%sglibc.malloc.check=1", value);
++    tests[34].value = value;
++  }
++  /* Same as before, but with an invalid last entry.  */
++  {
++    enum { tunables_list_size = array_length (tunable_list) };
++    const char *value = "";
++    for (int i = 0; i < tunables_list_size - 1; i++)
++      value = xasprintf ("%sglibc.malloc.check=2:", value);
++    value = xasprintf ("%sglibc.malloc.check=1=1", value);
++    tests[35].value = value;
++  }
++
+   for (int i = 0; i < array_length (tests); i++)
+     {
+       snprintf (nteststr, sizeof nteststr, "%d", i);
 diff --git a/iconvdata/Makefile b/iconvdata/Makefile
 index ea019ce5c0..7196a8744b 100644
 --- a/iconvdata/Makefile
@@ -3387,6 +3545,18 @@ index 2081eeb4d4..fe95037be3 100644
      }
  
    if (IS_THUNDERX (midr))
+diff --git a/sysdeps/aarch64/multiarch/memset_generic.S b/sysdeps/aarch64/multiarch/memset_generic.S
+index 81748bdbce..e125a5ed85 100644
+--- a/sysdeps/aarch64/multiarch/memset_generic.S
++++ b/sysdeps/aarch64/multiarch/memset_generic.S
+@@ -33,3 +33,7 @@
+ #endif
+ 
+ #include <../memset.S>
++
++#if IS_IN (rtld)
++strong_alias (memset, __memset_generic)
++#endif
 diff --git a/sysdeps/aarch64/preconfigure b/sysdeps/aarch64/preconfigure
 index d9bd1f8558..19657b627b 100644
 --- a/sysdeps/aarch64/preconfigure
@@ -5045,6 +5215,15 @@ index 2f66f10d72..ea103e5970 100644
  # define __WORDSIZE32_PTRDIFF_LONG	0
  #endif
 +#define __WORDSIZE_TIME64_COMPAT32	1
+diff --git a/sysdeps/sparc/sparc64/rtld-memset.c b/sysdeps/sparc/sparc64/rtld-memset.c
+index 55f3835790..a19202a620 100644
+--- a/sysdeps/sparc/sparc64/rtld-memset.c
++++ b/sysdeps/sparc/sparc64/rtld-memset.c
+@@ -1 +1,4 @@
+ #include <string/memset.c>
++#if IS_IN(rtld)
++strong_alias (memset, __memset_ultra1)
++#endif
 diff --git a/sysdeps/sparc/utmp-size.h b/sysdeps/sparc/utmp-size.h
 new file mode 100644
 index 0000000000..8f21ebe1b6
