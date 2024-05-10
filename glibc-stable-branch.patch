@@ -46,7 +46,7 @@ Gabi Falk (6):
       i686: Fix multiple definitions of __memmove_chk and __memset_chk
       Add a test to check for duplicate definitions in the static library
 
-H.J. Lu (8):
+H.J. Lu (9):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
       x86-64: Update _dl_tlsdesc_dynamic to preserve AMX registers
@@ -55,6 +55,7 @@ H.J. Lu (8):
       Apply the Makefile sorting fix
       x86: Define MINIMUM_X86_ISA_LEVEL in config.h [BZ #31676]
       elf: Also compile dl-misc.os with $(rtld-early-cflags)
+      Force DT_RPATH for --enable-hardcoded-path-in-tests
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
@@ -97,6 +98,27 @@ index 0000000000..d4e33f2df3
 @@ -0,0 +1,2 @@
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
+diff --git a/Makeconfig b/Makeconfig
+index 85e00cef94..522182abdc 100644
+--- a/Makeconfig
++++ b/Makeconfig
+@@ -586,10 +586,13 @@ link-libc-rpath-link = -Wl,-rpath-link=$(rpath-link)
+ # before the expansion of LDLIBS-* variables).
+ 
+ # Tests use -Wl,-rpath instead of -Wl,-rpath-link for
+-# build-hardcoded-path-in-tests.
++# build-hardcoded-path-in-tests.  Add -Wl,--disable-new-dtags to force
++# DT_RPATH instead of DT_RUNPATH which only applies to DT_NEEDED entries
++# in the executable and doesn't applies to DT_NEEDED entries in shared
++# libraries which are loaded via DT_NEEDED entries in the executable.
+ ifeq (yes,$(build-hardcoded-path-in-tests))
+-link-libc-tests-rpath-link = $(link-libc-rpath)
+-link-test-modules-rpath-link = $(link-libc-rpath)
++link-libc-tests-rpath-link = $(link-libc-rpath) -Wl,--disable-new-dtags
++link-test-modules-rpath-link = $(link-libc-rpath) -Wl,--disable-new-dtags
+ else
+ link-libc-tests-rpath-link = $(link-libc-rpath-link)
+ link-test-modules-rpath-link =
 diff --git a/Makefile b/Makefile
 index 7052b46df8..2e351c0321 100644
 --- a/Makefile
