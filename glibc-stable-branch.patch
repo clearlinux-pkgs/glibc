@@ -38,13 +38,14 @@ Florian Weimer (12):
       login: structs utmp, utmpx, lastlog _TIME_BITS independence (bug 30701)
       nscd: Use time_t for return type of addgetnetgrentX
 
-Gabi Falk (6):
+Gabi Falk (7):
       i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk
       i686: Fix multiple definitions of __memmove_chk and __memset_chk
       Add a test to check for duplicate definitions in the static library
       i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk
       i686: Fix multiple definitions of __memmove_chk and __memset_chk
       Add a test to check for duplicate definitions in the static library
+      x86_64: Fix missing wcsncat function definition without multiarch (x86-64-v4)
 
 H.J. Lu (9):
       x86-64: Save APX registers in ld.so trampoline
@@ -70,6 +71,10 @@ Sam James (3):
       Revert "Add a test to check for duplicate definitions in the static library"
       Revert "i686: Fix multiple definitions of __memmove_chk and __memset_chk"
       Revert "i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk"
+
+Sergey Kolosov (2):
+      libsupport: Add xgetpeername
+      socket: Add new test for connect
 
 Stefan Liebler (1):
       S390: Do not clobber r7 in clone [BZ #31402]
@@ -1814,6 +1819,137 @@ index 0c6e46f15c..01d554af9c 100644
 +    timeout = 0;
 +  return timeout;
  }
+diff --git a/socket/Makefile b/socket/Makefile
+index 74ca5b8452..fc1bd0a260 100644
+--- a/socket/Makefile
++++ b/socket/Makefile
+@@ -70,6 +70,7 @@ tests := \
+   tst-accept4 \
+   tst-cmsg_cloexec \
+   tst-cmsghdr \
++  tst-connect \
+   tst-sockopt \
+   # tests
+ 
+diff --git a/socket/tst-connect.c b/socket/tst-connect.c
+new file mode 100644
+index 0000000000..ec2fdd92c0
+--- /dev/null
++++ b/socket/tst-connect.c
+@@ -0,0 +1,113 @@
++/* Test the connect function.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <arpa/inet.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <signal.h>
++#include <stdbool.h>
++#include <support/check.h>
++#include <support/xsocket.h>
++#include <support/xunistd.h>
++#include <sys/socket.h>
++#include <stdio.h>
++
++static struct sockaddr_in server_address;
++
++int
++open_socket_inet_tcp (void)
++{
++  int fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
++  if (fd < 0)
++    {
++      if (errno == EAFNOSUPPORT)
++        FAIL_UNSUPPORTED ("The host does not support IPv4");
++      else
++        FAIL_EXIT1 ("socket (AF_INET, SOCK_STREAM, IPPROTO_TCP): %m\n");
++    }
++  return fd;
++}
++
++static pid_t
++start_server (void)
++{
++  server_address.sin_family = AF_INET;
++  server_address.sin_port = 0;
++  server_address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
++
++  int server_sock = open_socket_inet_tcp ();
++
++  xbind (server_sock, (struct sockaddr *) &server_address,
++         sizeof (server_address));
++
++  socklen_t sa_len = sizeof (server_address);
++  xgetsockname (server_sock, (struct sockaddr *) &server_address, &sa_len);
++  xlisten (server_sock, 5);
++
++  pid_t my_pid = xfork ();
++  if (my_pid > 0)
++    {
++      xclose (server_sock);
++      return my_pid;
++    }
++
++  struct sockaddr_in client_address;
++  socklen_t ca_len = sizeof (server_address);
++  int client_sock = xaccept (server_sock, (struct sockaddr *) &client_address,
++                             &ca_len);
++  printf ("socket accepted %d\n", client_sock);
++
++  _exit (0);
++}
++
++static int
++do_test (void)
++{
++  pid_t serv_pid;
++  struct sockaddr_in peer;
++  socklen_t peer_len;
++
++  serv_pid = start_server ();
++  int client_sock = open_socket_inet_tcp ();
++  xconnect (client_sock, (const struct sockaddr *) &server_address,
++            sizeof (server_address));
++
++  /* A second connect with same arguments should fail with EISCONN.  */
++  int result = connect (client_sock,
++                        (const struct sockaddr *) &server_address,
++                        sizeof (server_address));
++  if (result == 0 || errno != EISCONN)
++    FAIL_EXIT1 ("Second connect (%d), should fail with EISCONN: %m",
++                client_sock);
++
++  peer_len = sizeof (peer);
++  xgetpeername (client_sock, (struct sockaddr *) &peer, &peer_len);
++  TEST_COMPARE (peer_len, sizeof (peer));
++  TEST_COMPARE (peer.sin_port, server_address.sin_port);
++  TEST_COMPARE_BLOB (&peer.sin_addr, sizeof (peer.sin_addr),
++                     &server_address.sin_addr,
++                     sizeof (server_address.sin_addr));
++
++  int status;
++  xwaitpid (serv_pid, &status, 0);
++  TEST_COMPARE (status, 0);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/stdlib/Makefile b/stdlib/Makefile
 index d587f054d1..9898cc5d8a 100644
 --- a/stdlib/Makefile
@@ -2825,6 +2961,66 @@ index 0000000000..536841ca8a
 +#endif
 +
 +#include <support/test-driver.c>
+diff --git a/support/Makefile b/support/Makefile
+index 362a51f882..aa57207bdc 100644
+--- a/support/Makefile
++++ b/support/Makefile
+@@ -131,6 +131,7 @@ libsupport-routines = \
+   xfreopen \
+   xftruncate \
+   xgetline \
++  xgetpeername \
+   xgetsockname \
+   xlisten \
+   xlseek \
+diff --git a/support/xgetpeername.c b/support/xgetpeername.c
+new file mode 100644
+index 0000000000..6f448e456a
+--- /dev/null
++++ b/support/xgetpeername.c
+@@ -0,0 +1,30 @@
++/* getpeername with error checking.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/xsocket.h>
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <support/check.h>
++
++void
++xgetpeername (int fd, struct sockaddr *sa, socklen_t *plen)
++{
++  if (getpeername (fd, sa, plen) != 0)
++    FAIL_EXIT1 ("getpeername (%d): %m", fd);
++}
+diff --git a/support/xsocket.h b/support/xsocket.h
+index 3e44103546..4ac0e1f5ff 100644
+--- a/support/xsocket.h
++++ b/support/xsocket.h
+@@ -26,6 +26,7 @@
+ int xsocket (int, int, int);
+ void xsetsockopt (int, int, int, const void *, socklen_t);
+ void xgetsockname (int, struct sockaddr *, socklen_t *);
++void xgetpeername (int, struct sockaddr *, socklen_t *);
+ void xconnect (int, const struct sockaddr *, socklen_t);
+ void xbind (int, const struct sockaddr *, socklen_t);
+ void xlisten (int, int);
 diff --git a/sysdeps/aarch64/configure b/sysdeps/aarch64/configure
 old mode 100644
 new mode 100755
@@ -9395,6 +9591,23 @@ index 9984c3ca0f..97839a2248 100644
        4 VEC stores and store 4 * VEC at a time until done.  */
  
  #include <sysdep.h>
+diff --git a/sysdeps/x86_64/multiarch/wcsncat-evex.S b/sysdeps/x86_64/multiarch/wcsncat-evex.S
+index 392215950a..10bfb0a531 100644
+--- a/sysdeps/x86_64/multiarch/wcsncat-evex.S
++++ b/sysdeps/x86_64/multiarch/wcsncat-evex.S
+@@ -1,9 +1,9 @@
+-#ifndef WCSCAT
+-# define WCSCAT	__wcsncat_evex
++#ifndef WCSNCAT
++# define WCSNCAT	__wcsncat_evex
+ #endif
+ 
+ #define USE_AS_WCSCPY
+ #define USE_AS_STRCAT
+ 
+-#define STRNCAT	WCSCAT
++#define STRNCAT	WCSNCAT
+ #include "strncat-evex.S"
 diff --git a/sysdeps/x86_64/tst-gnu2-tls2mod1.S b/sysdeps/x86_64/tst-gnu2-tls2mod1.S
 new file mode 100644
 index 0000000000..1d636669ba
