@@ -92,8 +92,9 @@ Wilco Dijkstra (1):
 Xi Ruoyao (1):
       math: Update mips64 ulps
 
-caiyinyu (1):
+caiyinyu (2):
       LoongArch: Correct {__ieee754, _}_scalb -> {__ieee754, _}_scalbf
+      LoongArch: Fix undefined `__memset_aligned` reference in ld.so linking.
 
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
@@ -4780,6 +4781,20 @@ index fe863e1ba4..01762ef526 100644
 +  strrchr-lsx \
  # sysdep_routines
  endif
+diff --git a/sysdeps/loongarch/lp64/multiarch/dl-symbol-redir-ifunc.h b/sysdeps/loongarch/lp64/multiarch/dl-symbol-redir-ifunc.h
+index cb640d77b7..a73390b12f 100644
+--- a/sysdeps/loongarch/lp64/multiarch/dl-symbol-redir-ifunc.h
++++ b/sysdeps/loongarch/lp64/multiarch/dl-symbol-redir-ifunc.h
+@@ -19,6 +19,9 @@
+ #ifndef _DL_IFUNC_GENERIC_H
+ #define _DL_IFUNC_GENERIC_H
+ 
++#ifndef SHARED
+ asm ("memset = __memset_aligned");
++asm ("memcmp = __memcmp_aligned");
++#endif
+ 
+ #endif
 diff --git a/sysdeps/m68k/bits/wordsize.h b/sysdeps/m68k/bits/wordsize.h
 new file mode 100644
 index 0000000000..6ecbfe7c86
