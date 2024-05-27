@@ -24,7 +24,7 @@ Carlos O'Donell (1):
 Charles Fol (1):
       iconv: ISO-2022-CN-EXT: fix out-of-bound writes when writing escape sequence (CVE-2024-2961)
 
-Florian Weimer (12):
+Florian Weimer (13):
       linux: Use rseq area unconditionally in sched_getcpu (bug 31479)
       i386: Use generic memrchr in libc (bug 31316)
       powerpc: Fix ld.so address determination for PCREL mode (bug 31640)
@@ -37,6 +37,7 @@ Florian Weimer (12):
       login: Check default sizes of structs utmp, utmpx, lastlog
       login: structs utmp, utmpx, lastlog _TIME_BITS independence (bug 30701)
       nscd: Use time_t for return type of addgetnetgrentX
+      socket: Use may_alias on sockaddr structs (bug 19622)
 
 Gabi Falk (7):
       i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk
@@ -47,7 +48,7 @@ Gabi Falk (7):
       Add a test to check for duplicate definitions in the static library
       x86_64: Fix missing wcsncat function definition without multiarch (x86-64-v4)
 
-H.J. Lu (9):
+H.J. Lu (10):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
       x86-64: Update _dl_tlsdesc_dynamic to preserve AMX registers
@@ -57,6 +58,7 @@ H.J. Lu (9):
       x86: Define MINIMUM_X86_ISA_LEVEL in config.h [BZ #31676]
       elf: Also compile dl-misc.os with $(rtld-early-cflags)
       Force DT_RPATH for --enable-hardcoded-path-in-tests
+      parse_fdinfo: Don't advance pointer twice [BZ #31798]
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
@@ -391,6 +393,28 @@ index 94e68b1350..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/bits/socket.h b/bits/socket.h
+index 13de124bac..772074d52a 100644
+--- a/bits/socket.h
++++ b/bits/socket.h
+@@ -149,7 +149,7 @@ enum __socket_type
+ #include <bits/sockaddr.h>
+ 
+ /* Structure describing a generic socket address.  */
+-struct sockaddr
++struct __attribute_struct_may_alias__ sockaddr
+   {
+     __SOCKADDR_COMMON (sa_);	/* Common data: address family and length.  */
+     char sa_data[14];		/* Address data.  */
+@@ -166,7 +166,7 @@ struct sockaddr
+ #define _SS_PADSIZE \
+   (_SS_SIZE - __SOCKADDR_COMMON_SIZE - sizeof (__ss_aligntype))
+ 
+-struct sockaddr_storage
++struct __attribute_struct_may_alias__ sockaddr_storage
+   {
+     __SOCKADDR_COMMON (ss_);	/* Address family, etc.  */
+     char __ss_padding[_SS_PADSIZE];
 diff --git a/bits/wordsize.h b/bits/wordsize.h
 index 14edae3a11..53013a9275 100644
 --- a/bits/wordsize.h
@@ -1304,6 +1328,33 @@ index 0000000000..96a8765fd5
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/inet/netinet/in.h b/inet/netinet/in.h
+index fa57b61079..f684be5beb 100644
+--- a/inet/netinet/in.h
++++ b/inet/netinet/in.h
+@@ -244,7 +244,7 @@ extern const struct in6_addr in6addr_loopback;   /* ::1 */
+ 
+ 
+ /* Structure describing an Internet socket address.  */
+-struct sockaddr_in
++struct __attribute_struct_may_alias__ sockaddr_in
+   {
+     __SOCKADDR_COMMON (sin_);
+     in_port_t sin_port;			/* Port number.  */
+@@ -257,9 +257,11 @@ struct sockaddr_in
+ 			   - sizeof (struct in_addr)];
+   };
+ 
+-#if !__USE_KERNEL_IPV6_DEFS
++#if __USE_KERNEL_IPV6_DEFS
++struct __attribute_struct_may_alias__ sockaddr_in6;
++#else
+ /* Ditto, for IPv6.  */
+-struct sockaddr_in6
++struct __attribute_struct_may_alias__ sockaddr_in6
+   {
+     __SOCKADDR_COMMON (sin6_);
+     in_port_t sin6_port;	/* Transport layer port # */
 diff --git a/login/Makefile b/login/Makefile
 index 1e22008a61..f91190e3dc 100644
 --- a/login/Makefile
@@ -1385,6 +1436,24 @@ index fe41c671d8..6c75ed9a20 100644
  
  @deftypefun {unsigned int} stdc_leading_zeros_uc (unsigned char @var{x})
  @deftypefunx {unsigned int} stdc_leading_zeros_us (unsigned short @var{x})
+diff --git a/misc/sys/cdefs.h b/misc/sys/cdefs.h
+index 520231dbea..399ee7d24c 100644
+--- a/misc/sys/cdefs.h
++++ b/misc/sys/cdefs.h
+@@ -720,4 +720,13 @@ _Static_assert (0, "IEEE 128-bits long double requires redirection on this platf
+ # define __attribute_returns_twice__ /* Ignore.  */
+ #endif
+ 
++/* Mark struct types as aliasable.  Restricted to compilers that
++   support forward declarations of structs in the presence of the
++   attribute.  */
++#if __GNUC_PREREQ (7, 1) || defined __clang__
++# define __attribute_struct_may_alias__ __attribute__ ((__may_alias__))
++#else
++# define __attribute_struct_may_alias__
++#endif
++
+ #endif	 /* sys/cdefs.h */
 diff --git a/nscd/netgroupcache.c b/nscd/netgroupcache.c
 index 0c6e46f15c..01d554af9c 100644
 --- a/nscd/netgroupcache.c
@@ -1832,6 +1901,19 @@ index 74ca5b8452..fc1bd0a260 100644
    tst-sockopt \
    # tests
  
+diff --git a/socket/sys/un.h b/socket/sys/un.h
+index bf03b7d6ce..ff9cbd6efa 100644
+--- a/socket/sys/un.h
++++ b/socket/sys/un.h
+@@ -26,7 +26,7 @@
+ __BEGIN_DECLS
+ 
+ /* Structure describing the address of an AF_LOCAL (aka AF_UNIX) socket.  */
+-struct sockaddr_un
++struct __attribute_struct_may_alias__ sockaddr_un
+   {
+     __SOCKADDR_COMMON (sun_);
+     char sun_path[108];		/* Path name.  */
 diff --git a/socket/tst-connect.c b/socket/tst-connect.c
 new file mode 100644
 index 0000000000..ec2fdd92c0
@@ -4831,6 +4913,28 @@ index 0000000000..5946685819
 +/* m68k has 2-byte alignment.  */
 +#define UTMP_SIZE 382
 +#define LASTLOG_SIZE 292
+diff --git a/sysdeps/mach/hurd/bits/socket.h b/sysdeps/mach/hurd/bits/socket.h
+index 3e72f9fa93..b5eeac3731 100644
+--- a/sysdeps/mach/hurd/bits/socket.h
++++ b/sysdeps/mach/hurd/bits/socket.h
+@@ -153,7 +153,7 @@ enum __socket_type
+ #include <bits/sockaddr.h>
+ 
+ /* Structure describing a generic socket address.  */
+-struct sockaddr
++struct __attribute_struct_may_alias__ sockaddr
+   {
+     __SOCKADDR_COMMON (sa_);	/* Common data: address family and length.  */
+     char sa_data[14];		/* Address data.  */
+@@ -170,7 +170,7 @@ struct sockaddr
+ #define _SS_PADSIZE \
+   (_SS_SIZE - __SOCKADDR_COMMON_SIZE - sizeof (__ss_aligntype))
+ 
+-struct sockaddr_storage
++struct __attribute_struct_may_alias__ sockaddr_storage
+   {
+     __SOCKADDR_COMMON (ss_);	/* Address family, etc.  */
+     char __ss_padding[_SS_PADSIZE];
 diff --git a/sysdeps/microblaze/bits/wordsize.h b/sysdeps/microblaze/bits/wordsize.h
 new file mode 100644
 index 0000000000..6ecbfe7c86
@@ -5538,6 +5642,28 @@ index b1a3f673f0..c0b047bc0d 100644
    /* Check if MOPS is supported.  */
    cpu_features->mops = GLRO (dl_hwcap2) & HWCAP2_MOPS;
  }
+diff --git a/sysdeps/unix/sysv/linux/bits/socket.h b/sysdeps/unix/sysv/linux/bits/socket.h
+index 0d86feb4ca..6dab283a2e 100644
+--- a/sysdeps/unix/sysv/linux/bits/socket.h
++++ b/sysdeps/unix/sysv/linux/bits/socket.h
+@@ -180,7 +180,7 @@ typedef __socklen_t socklen_t;
+ #include <bits/sockaddr.h>
+ 
+ /* Structure describing a generic socket address.  */
+-struct sockaddr
++struct __attribute_struct_may_alias__ sockaddr
+   {
+     __SOCKADDR_COMMON (sa_);	/* Common data: address family and length.  */
+     char sa_data[14];		/* Address data.  */
+@@ -193,7 +193,7 @@ struct sockaddr
+ #define _SS_PADSIZE \
+   (_SS_SIZE - __SOCKADDR_COMMON_SIZE - sizeof (__ss_aligntype))
+ 
+-struct sockaddr_storage
++struct __attribute_struct_may_alias__ sockaddr_storage
+   {
+     __SOCKADDR_COMMON (ss_);	/* Address family, etc.  */
+     char __ss_padding[_SS_PADSIZE];
 diff --git a/sysdeps/unix/sysv/linux/dl-parse_auxv.h b/sysdeps/unix/sysv/linux/dl-parse_auxv.h
 index e3d758b163..ea2a58ecb1 100644
 --- a/sysdeps/unix/sysv/linux/dl-parse_auxv.h
@@ -5651,6 +5777,74 @@ index e9fec2fa47..481b8ae963 100644
  
  	/* Call the user's function.  */
  	jal		t9
+diff --git a/sysdeps/unix/sysv/linux/net/if_packet.h b/sysdeps/unix/sysv/linux/net/if_packet.h
+index 9ffb69b508..c17e1c23c5 100644
+--- a/sysdeps/unix/sysv/linux/net/if_packet.h
++++ b/sysdeps/unix/sysv/linux/net/if_packet.h
+@@ -26,7 +26,7 @@
+    From Linux 2.1 the AF_PACKET interface is preferred and you should
+    consider using it in place of this one.  */
+ 
+-struct sockaddr_pkt
++struct __attribute_struct_may_alias__ sockaddr_pkt
+   {
+     __SOCKADDR_COMMON (spkt_);
+     unsigned char spkt_device[14];
+diff --git a/sysdeps/unix/sysv/linux/netash/ash.h b/sysdeps/unix/sysv/linux/netash/ash.h
+index 7d885d17cc..7a6ff50b17 100644
+--- a/sysdeps/unix/sysv/linux/netash/ash.h
++++ b/sysdeps/unix/sysv/linux/netash/ash.h
+@@ -22,7 +22,7 @@
+ #include <features.h>
+ #include <bits/sockaddr.h>
+ 
+-struct sockaddr_ash
++struct __attribute_struct_may_alias__ sockaddr_ash
+   {
+     __SOCKADDR_COMMON (sash_);		/* Common data: address family etc.  */
+     int sash_ifindex;			/* Interface to use.  */
+diff --git a/sysdeps/unix/sysv/linux/neteconet/ec.h b/sysdeps/unix/sysv/linux/neteconet/ec.h
+index b07a107961..f3132f06ff 100644
+--- a/sysdeps/unix/sysv/linux/neteconet/ec.h
++++ b/sysdeps/unix/sysv/linux/neteconet/ec.h
+@@ -28,7 +28,7 @@ struct ec_addr
+     unsigned char net;			/* Network number.  */
+   };
+ 
+-struct sockaddr_ec
++struct __attribute_struct_may_alias__ sockaddr_ec
+   {
+     __SOCKADDR_COMMON (sec_);
+     unsigned char port;			/* Port number.  */
+diff --git a/sysdeps/unix/sysv/linux/netiucv/iucv.h b/sysdeps/unix/sysv/linux/netiucv/iucv.h
+index f5fad81751..27151e8bbe 100644
+--- a/sysdeps/unix/sysv/linux/netiucv/iucv.h
++++ b/sysdeps/unix/sysv/linux/netiucv/iucv.h
+@@ -23,7 +23,7 @@
+ 
+ __BEGIN_DECLS
+ 
+-struct sockaddr_iucv
++struct __attribute_struct_may_alias__ sockaddr_iucv
+   {
+     __SOCKADDR_COMMON (siucv_);
+     unsigned short	siucv_port;		/* Reserved */
+diff --git a/sysdeps/unix/sysv/linux/pidfd_getpid.c b/sysdeps/unix/sysv/linux/pidfd_getpid.c
+index 8567b413dd..30025e5863 100644
+--- a/sysdeps/unix/sysv/linux/pidfd_getpid.c
++++ b/sysdeps/unix/sysv/linux/pidfd_getpid.c
+@@ -74,8 +74,10 @@ parse_fdinfo (const char *l, void *arg)
+ 
+       /* Ignore invalid large values.  */
+       if (INT_MULTIPLY_WRAPV (10, n, &n)
+-          || INT_ADD_WRAPV (n, *l++ - '0', &n))
++          || INT_ADD_WRAPV (n, *l - '0', &n))
+         return -1;
++
++      l++;
+     }
+ 
+   /* -1 indicates that the process is terminated.  */
 diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h b/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h
 index 04ca9debf0..6993fb6b29 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h
