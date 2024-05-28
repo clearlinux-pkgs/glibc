@@ -1,4 +1,4 @@
-Adhemerval Zanella (9):
+Adhemerval Zanella (11):
       arm: Remove wrong ldr from _dl_start_user (BZ 31339)
       mips: FIx clone3 implementation (BZ 31325)
       Ignore undefined symbols for -mtls-dialect=gnu2
@@ -8,6 +8,8 @@ Adhemerval Zanella (9):
       x86: Do not prefer ERMS for memset on Zen3+
       x86: Expand the comment on when REP STOSB is used on memset
       elf: Only process multiple tunable once (BZ 31686)
+      Always define __USE_TIME_BITS64 when 64 bit time_t is used
+      Reinstate generic features-time64.h
 
 Amrita H S (1):
       ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
@@ -1355,6 +1357,241 @@ index fa57b61079..f684be5beb 100644
    {
      __SOCKADDR_COMMON (sin6_);
      in_port_t sin6_port;	/* Transport layer port # */
+diff --git a/io/bits/poll2.h b/io/bits/poll2.h
+index 6152a8c5e4..efc8b85403 100644
+--- a/io/bits/poll2.h
++++ b/io/bits/poll2.h
+@@ -43,7 +43,7 @@ poll (struct pollfd *__fds, nfds_t __nfds, int __timeout)
+ 
+ 
+ #ifdef __USE_GNU
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ extern int __REDIRECT (__ppoll64_alias, (struct pollfd *__fds, nfds_t __nfds,
+ 				       const struct timespec *__timeout,
+ 				       const __sigset_t *__ss), __ppoll64);
+diff --git a/io/fcntl.h b/io/fcntl.h
+index 9cee0b5900..666b7e5eb6 100644
+--- a/io/fcntl.h
++++ b/io/fcntl.h
+@@ -172,7 +172,7 @@ typedef __pid_t pid_t;
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ # ifndef __USE_FILE_OFFSET64
+ extern int fcntl (int __fd, int __cmd, ...);
+ # else
+@@ -185,7 +185,7 @@ extern int __REDIRECT (fcntl, (int __fd, int __cmd, ...), fcntl64);
+ # ifdef __USE_LARGEFILE64
+ extern int fcntl64 (int __fd, int __cmd, ...);
+ # endif
+-#else /* __USE_TIME_BITS64 */
++#else /* __USE_TIME64_REDIRECTS */
+ # ifdef __REDIRECT
+ extern int __REDIRECT_NTH (fcntl, (int __fd, int __request, ...),
+ 			   __fcntl_time64);
+diff --git a/io/fts.h b/io/fts.h
+index 61f95bb441..97a031ebbd 100644
+--- a/io/fts.h
++++ b/io/fts.h
+@@ -187,7 +187,7 @@ FTSENT	*fts_read (FTS *);
+ int	 fts_set (FTS *, FTSENT *, int) __THROW;
+ #else
+ # ifdef __REDIRECT
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ FTSENT	*__REDIRECT (fts_children, (FTS *, int), fts64_children);
+ int	 __REDIRECT (fts_close, (FTS *), fts64_close);
+ FTS	*__REDIRECT (fts_open, (char * const *, int,
+@@ -206,7 +206,7 @@ int	 __REDIRECT_NTH (fts_set, (FTS *, FTSENT *, int),
+ 			 __fts64_set_time64);
+ #  endif
+ # else
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ #   define fts_children fts64_children
+ #   define fts_close fts64_close
+ #   define fts_open fts64_open
+@@ -217,7 +217,7 @@ int	 __REDIRECT_NTH (fts_set, (FTS *, FTSENT *, int),
+ # endif
+ #endif
+ #ifdef __USE_LARGEFILE64
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ FTSENT64 *fts64_children (FTS64 *, int);
+ int	  fts64_close (FTS64 *);
+ FTS64	 *fts64_open (char * const *, int,
+diff --git a/io/ftw.h b/io/ftw.h
+index e4d1b84d53..39cf595b27 100644
+--- a/io/ftw.h
++++ b/io/ftw.h
+@@ -137,7 +137,7 @@ extern int ftw (const char *__dir, __ftw_func_t __func, int __descriptors)
+      __nonnull ((1, 2));
+ #else
+ # ifdef __REDIRECT
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int __REDIRECT (ftw, (const char *__dir, __ftw_func_t __func,
+ 			     int __descriptors), ftw64) __nonnull ((1, 2));
+ #  else
+@@ -146,7 +146,7 @@ extern int __REDIRECT (ftw, (const char *__dir, __ftw_func_t __func,
+      __nonnull ((1, 2));
+ #  endif
+ # else
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ #   define ftw ftw64
+ #  else
+ #   define ftw __ftw64_time64
+@@ -154,7 +154,7 @@ extern int __REDIRECT (ftw, (const char *__dir, __ftw_func_t __func,
+ # endif
+ #endif
+ #ifdef __USE_LARGEFILE64
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int ftw64 (const char *__dir, __ftw64_func_t __func,
+ 		  int __descriptors) __nonnull ((1, 2));
+ # else
+@@ -180,7 +180,7 @@ extern int nftw (const char *__dir, __nftw_func_t __func, int __descriptors,
+ 		 int __flag) __nonnull ((1, 2));
+ # else
+ #  ifdef __REDIRECT
+-#   ifndef __USE_TIME_BITS64
++#   ifndef __USE_TIME64_REDIRECTS
+ extern int __REDIRECT (nftw, (const char *__dir, __nftw_func_t __func,
+ 			      int __descriptors, int __flag), nftw64)
+      __nonnull ((1, 2));
+@@ -190,7 +190,7 @@ extern int __REDIRECT (nftw, (const char *__dir, __nftw_func_t __func,
+      __nonnull ((1, 2));
+ #   endif
+ #  else
+-#   ifndef __USE_TIME_BITS64
++#   ifndef __USE_TIME64_REDIRECTS
+ #    define nftw nftw64
+ #   else
+ #    define nftw __nftw64_time64
+@@ -198,7 +198,7 @@ extern int __REDIRECT (nftw, (const char *__dir, __nftw_func_t __func,
+ #  endif
+ # endif
+ # ifdef __USE_LARGEFILE64
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int nftw64 (const char *__dir, __nftw64_func_t __func,
+ 		   int __descriptors, int __flag) __nonnull ((1, 2));
+ #  else
+diff --git a/io/sys/poll.h b/io/sys/poll.h
+index 7858fad6b9..c324ff5dad 100644
+--- a/io/sys/poll.h
++++ b/io/sys/poll.h
+@@ -66,7 +66,7 @@ extern int ppoll (struct pollfd *__fds, nfds_t __nfds,
+ 		  const __sigset_t *__ss)
+     __fortified_attr_access (__write_only__, 1, 2);
+ 
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  ifdef __REDIRECT
+ extern int __REDIRECT (ppoll, (struct pollfd *__fds, nfds_t __nfds,
+                                const struct timespec *__timeout,
+diff --git a/io/sys/stat.h b/io/sys/stat.h
+index 1fa6d6e62e..3b4ba80132 100644
+--- a/io/sys/stat.h
++++ b/io/sys/stat.h
+@@ -209,7 +209,7 @@ extern int stat (const char *__restrict __file,
+    that file descriptor FD is open on and put them in BUF.  */
+ extern int fstat (int __fd, struct stat *__buf) __THROW __nonnull ((2));
+ #else
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  ifdef __REDIRECT_NTH
+ extern int __REDIRECT_NTH (stat, (const char *__restrict __file,
+ 				  struct stat *__restrict __buf),
+@@ -236,7 +236,7 @@ extern int __REDIRECT_NTH (fstat, (int __fd, struct stat *__buf), fstat64)
+ # endif
+ #endif
+ #ifdef __USE_LARGEFILE64
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int stat64 (const char *__restrict __file,
+ 		   struct stat64 *__restrict __buf) __THROW __nonnull ((1, 2));
+ extern int fstat64 (int __fd, struct stat64 *__buf) __THROW __nonnull ((2));
+@@ -265,7 +265,7 @@ extern int fstatat (int __fd, const char *__restrict __file,
+ 		    struct stat *__restrict __buf, int __flag)
+      __THROW __nonnull ((2, 3));
+ # else
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ #   ifdef __REDIRECT_NTH
+ extern int __REDIRECT_NTH (fstatat, (int __fd, const char *__restrict __file,
+ 				     struct stat *__restrict __buf,
+@@ -287,7 +287,7 @@ extern int __REDIRECT_NTH (fstatat, (int __fd, const char *__restrict __file,
+ # endif
+ 
+ # ifdef __USE_LARGEFILE64
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int fstatat64 (int __fd, const char *__restrict __file,
+ 		      struct stat64 *__restrict __buf, int __flag)
+      __THROW __nonnull ((2, 3));
+@@ -313,7 +313,7 @@ extern int __REDIRECT_NTH (fstatat64, (int __fd,
+ extern int lstat (const char *__restrict __file,
+ 		  struct stat *__restrict __buf) __THROW __nonnull ((1, 2));
+ # else
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ #   ifdef __REDIRECT_NTH
+ extern int __REDIRECT_NTH (lstat,
+ 			   (const char *__restrict __file,
+@@ -334,7 +334,7 @@ extern int __REDIRECT_NTH (lstat,
+ #  endif
+ # endif
+ # ifdef __USE_LARGEFILE64
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int lstat64 (const char *__restrict __file,
+ 		    struct stat64 *__restrict __buf)
+      __THROW __nonnull ((1, 2));
+@@ -427,7 +427,7 @@ extern int mkfifoat (int __fd, const char *__path, __mode_t __mode)
+ #endif
+ 
+ #ifdef __USE_ATFILE
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Set file access and modification times relative to directory file
+    descriptor.  */
+ extern int utimensat (int __fd, const char *__path,
+@@ -447,7 +447,7 @@ extern int __REDIRECT_NTH (utimensat, (int fd, const char *__path,
+ #endif
+ 
+ #ifdef __USE_XOPEN2K8
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Set file access and modification times of the file associated with FD.  */
+ extern int futimens (int __fd, const struct timespec __times[2]) __THROW;
+ 
+diff --git a/io/utime.h b/io/utime.h
+index c5eacedd6a..1c7587d9c1 100644
+--- a/io/utime.h
++++ b/io/utime.h
+@@ -35,7 +35,7 @@ __BEGIN_DECLS
+ /* Structure describing file times.  */
+ struct utimbuf
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+     __time64_t actime;		/* Access time.  */
+     __time64_t modtime;		/* Modification time.  */
+ #else
+@@ -46,7 +46,7 @@ struct utimbuf
+ 
+ /* Set the access and modification times of FILE to those given in
+    *FILE_TIMES.  If FILE_TIMES is NULL, set them to the current time.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int utime (const char *__file,
+ 		  const struct utimbuf *__file_times)
+      __THROW __nonnull ((1));
 diff --git a/login/Makefile b/login/Makefile
 index 1e22008a61..f91190e3dc 100644
 --- a/login/Makefile
@@ -1417,6 +1654,38 @@ index 0000000000..1b7f7ff042
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/manual/creature.texi b/manual/creature.texi
+index fa5dd9d6ad..8d19e9dd73 100644
+--- a/manual/creature.texi
++++ b/manual/creature.texi
+@@ -192,6 +192,12 @@ Linux kernel version on which the system is running. For Linux kernel
+ version above @b{5.1} syscalls supporting 64-bit time are used. Otherwise,
+ a fallback code is used with legacy (i.e. 32-bit) syscalls.
+ 
++On such platforms, @theglibc{} will also define @code{__USE_TIME64_REDIRECTS}
++to indicate whether the declarations are expanded to different ones
++(either by redefiniding the symbol name or using symbol aliais).
++For instance, if the symbol @code{clock_gettime} expands to
++@code{__glock_gettime64}.
++
+ @item
+ If @code{_TIME_BITS} is defined to be 32, @code{time_t} is defined to
+ be a 32-bit integer where that is supported.  This is not recommended,
+diff --git a/manual/maint.texi b/manual/maint.texi
+index 89da704f45..04faa222e2 100644
+--- a/manual/maint.texi
++++ b/manual/maint.texi
+@@ -491,6 +491,10 @@ derived as in the dual-time configuration case, and which expands to
+ the symbol's name.  For instance, the macro @code{__clock_gettime64}
+ expands to @code{clock_gettime}.
+ 
++When @code{__TIMESIZE} is set to 64, @theglibc{} will also define
++the@code{__USE_TIME_BITS64} macro.  It is used by the Linux kernel ABI
++to set the expected @code{time_t} size used on some syscalls.
++
+ These macros are purely internal to @theglibc{} and exist only so that
+ a single definition of the 64-bit time functions can be used on both
+ single-time and dual-time configurations, and so that glibc code can
 diff --git a/manual/stdbit.texi b/manual/stdbit.texi
 index fe41c671d8..6c75ed9a20 100644
 --- a/manual/stdbit.texi
@@ -1454,6 +1723,41 @@ index 520231dbea..399ee7d24c 100644
 +#endif
 +
  #endif	 /* sys/cdefs.h */
+diff --git a/misc/sys/ioctl.h b/misc/sys/ioctl.h
+index 3f2338ddd3..ea6583e122 100644
+--- a/misc/sys/ioctl.h
++++ b/misc/sys/ioctl.h
+@@ -38,7 +38,7 @@ __BEGIN_DECLS
+ /* Perform the I/O control operation specified by REQUEST on FD.
+    One argument may follow; its presence and type depend on REQUEST.
+    Return value depends on REQUEST.  Usually -1 indicates error.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int ioctl (int __fd, unsigned long int __request, ...) __THROW;
+ #else
+ # ifdef __REDIRECT
+diff --git a/misc/sys/select.h b/misc/sys/select.h
+index e6a0c1b8b2..2e45e94bc1 100644
+--- a/misc/sys/select.h
++++ b/misc/sys/select.h
+@@ -98,7 +98,7 @@ __BEGIN_DECLS
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int select (int __nfds, fd_set *__restrict __readfds,
+ 		   fd_set *__restrict __writefds,
+ 		   fd_set *__restrict __exceptfds,
+@@ -123,7 +123,7 @@ extern int __REDIRECT (select,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int pselect (int __nfds, fd_set *__restrict __readfds,
+ 		    fd_set *__restrict __writefds,
+ 		    fd_set *__restrict __exceptfds,
 diff --git a/nscd/netgroupcache.c b/nscd/netgroupcache.c
 index 0c6e46f15c..01d554af9c 100644
 --- a/nscd/netgroupcache.c
@@ -1889,6 +2193,137 @@ index 0c6e46f15c..01d554af9c 100644
 +    timeout = 0;
 +  return timeout;
  }
+diff --git a/posix/glob.h b/posix/glob.h
+index 3406662840..b6bba0fbcd 100644
+--- a/posix/glob.h
++++ b/posix/glob.h
+@@ -150,7 +150,7 @@ extern int glob (const char *__restrict __pattern, int __flags,
+ /* Free storage allocated in PGLOB by a previous `glob' call.  */
+ extern void globfree (glob_t *__pglob) __THROW;
+ #else
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ extern int __REDIRECT_NTHNL (glob, (const char *__restrict __pattern,
+ 				    int __flags,
+ 				    int (*__errfunc) (const char *, int),
+@@ -170,7 +170,7 @@ extern void __REDIRECT_NTH (globfree, (glob_t *__pglob), globfree64);
+ #endif
+ 
+ #ifdef __USE_LARGEFILE64
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ extern int __REDIRECT_NTHNL (glob64, (const char *__restrict __pattern,
+ 				      int __flags,
+ 				      int (*__errfunc) (const char *, int),
+diff --git a/posix/sched.h b/posix/sched.h
+index 3eac206f35..49f504a488 100644
+--- a/posix/sched.h
++++ b/posix/sched.h
+@@ -74,7 +74,7 @@ extern int sched_get_priority_max (int __algorithm) __THROW;
+ extern int sched_get_priority_min (int __algorithm) __THROW;
+ 
+ /* Get the SCHED_RR interval for the named process.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int sched_rr_get_interval (__pid_t __pid, struct timespec *__t) __THROW;
+ #else
+ # ifdef __REDIRECT_NTH
+diff --git a/posix/sys/wait.h b/posix/sys/wait.h
+index edbb7b4392..1f44ee1145 100644
+--- a/posix/sys/wait.h
++++ b/posix/sys/wait.h
+@@ -139,7 +139,7 @@ struct rusage;
+    nil, store information about the child's resource usage there.  If the
+    WUNTRACED bit is set in OPTIONS, return status for stopped children;
+    otherwise don't.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern __pid_t wait3 (int *__stat_loc, int __options,
+ 		      struct rusage * __usage) __THROWNL;
+ # else
+@@ -154,7 +154,7 @@ extern __pid_t __REDIRECT_NTHNL (wait3, (int *__stat_loc, int __options,
+ #endif
+ 
+ #ifdef __USE_MISC
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* PID is like waitpid.  Other args are like wait3.  */
+ extern __pid_t wait4 (__pid_t __pid, int *__stat_loc, int __options,
+ 		      struct rusage *__usage) __THROWNL;
+diff --git a/resolv/netdb.h b/resolv/netdb.h
+index 14228b0d95..b7f473fafe 100644
+--- a/resolv/netdb.h
++++ b/resolv/netdb.h
+@@ -701,7 +701,7 @@ extern int getaddrinfo_a (int __mode, struct gaicb *__list[__restrict_arr],
+ extern int gai_suspend (const struct gaicb *const __list[], int __ent,
+ 			const struct timespec *__timeout);
+ 
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  if defined(__REDIRECT)
+ extern int __REDIRECT (gai_suspend, (const struct gaicb *const __list[],
+                                      int __ent,
+diff --git a/resource/sys/resource.h b/resource/sys/resource.h
+index a5634ba715..b0bf751e92 100644
+--- a/resource/sys/resource.h
++++ b/resource/sys/resource.h
+@@ -88,7 +88,7 @@ extern int setrlimit64 (__rlimit_resource_t __resource,
+    and put it in *USAGE.  Returns 0 for success, -1 for failure.  */
+ extern int getrusage (__rusage_who_t __who, struct rusage *__usage) __THROW;
+ 
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # if defined(__REDIRECT_NTH)
+ extern int __REDIRECT_NTH (getrusage, (__rusage_who_t __who,
+                                        struct rusage *__usage),
+diff --git a/rt/aio.h b/rt/aio.h
+index 37d19abf16..e71435733f 100644
+--- a/rt/aio.h
++++ b/rt/aio.h
+@@ -193,7 +193,7 @@ extern __ssize_t __REDIRECT_NTH (aio_return, (struct aiocb *__aiocbp),
+ extern int __REDIRECT_NTH (aio_cancel,
+ 			   (int __fildes, struct aiocb *__aiocbp),
+ 			   aio_cancel64);
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ extern int __REDIRECT_NTH (aio_suspend,
+ 			   (const struct aiocb *const __list[], int __nent,
+ 			    const struct timespec *__restrict __timeout),
+@@ -215,7 +215,7 @@ extern int __REDIRECT_NTH (aio_fsync,
+ #  define aio_error aio_error64
+ #  define aio_return aio_return64
+ #  define aio_cancel aio_cancel64
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ #   define aio_suspend __aio_suspend_time64
+ #  else
+ #   define aio_suspend aio_suspend64
+diff --git a/rt/mqueue.h b/rt/mqueue.h
+index 787cc36df2..fd6fff4bb2 100644
+--- a/rt/mqueue.h
++++ b/rt/mqueue.h
+@@ -71,7 +71,7 @@ extern int mq_send (mqd_t __mqdes, const char *__msg_ptr, size_t __msg_len,
+ 		    unsigned int __msg_prio) __nonnull ((2));
+ 
+ #ifdef __USE_XOPEN2K
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Receive the oldest from highest priority messages in message queue
+    MQDES, stop waiting if ABS_TIMEOUT expires.  */
+ extern ssize_t mq_timedreceive (mqd_t __mqdes, char *__restrict __msg_ptr,
+diff --git a/signal/signal.h b/signal/signal.h
+index f37499ce60..8e07b041b1 100644
+--- a/signal/signal.h
++++ b/signal/signal.h
+@@ -269,7 +269,7 @@ extern int sigwaitinfo (const sigset_t *__restrict __set,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int sigtimedwait (const sigset_t *__restrict __set,
+ 			 siginfo_t *__restrict __info,
+ 			 const struct timespec *__restrict __timeout)
 diff --git a/socket/Makefile b/socket/Makefile
 index 74ca5b8452..fc1bd0a260 100644
 --- a/socket/Makefile
@@ -1901,6 +2336,73 @@ index 74ca5b8452..fc1bd0a260 100644
    tst-sockopt \
    # tests
  
+diff --git a/socket/sys/socket.h b/socket/sys/socket.h
+index 366eaab845..463cf3291b 100644
+--- a/socket/sys/socket.h
++++ b/socket/sys/socket.h
+@@ -170,7 +170,7 @@ extern ssize_t recvfrom (int __fd, void *__restrict __buf, size_t __n,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern ssize_t sendmsg (int __fd, const struct msghdr *__message,
+ 			int __flags);
+ #else
+@@ -191,7 +191,7 @@ extern ssize_t __sendmsg64 (int __fd, const struct msghdr *__message,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int sendmmsg (int __fd, struct mmsghdr *__vmessages,
+ 		     unsigned int __vlen, int __flags);
+ # else
+@@ -204,7 +204,7 @@ extern int __sendmmsg64 (int __fd, struct mmsghdr *__vmessages,
+ 			 unsigned int __vlen, int __flags);
+ #   define sendmmsg __sendmmsg64
+ #  endif
+-# endif	 /* __USE_TIME_BITS64 */
++# endif	 /* __USE_TIME64_REDIRECTS */
+ #endif /* __USE_GNU */
+ 
+ /* Receive a message as described by MESSAGE from socket FD.
+@@ -212,7 +212,7 @@ extern int __sendmmsg64 (int __fd, struct mmsghdr *__vmessages,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern ssize_t recvmsg (int __fd, struct msghdr *__message, int __flags);
+ #else
+ # ifdef __REDIRECT
+@@ -231,7 +231,7 @@ extern ssize_t __recvmsg64 (int __fd, struct msghdr *__message, int __flags);
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int recvmmsg (int __fd, struct mmsghdr *__vmessages,
+ 		     unsigned int __vlen, int __flags,
+ 		     struct timespec *__tmo);
+@@ -251,7 +251,7 @@ extern int __REDIRECT (recvmmsg, (int __fd, struct mmsghdr *__vmessages,
+ /* Put the current value for socket FD's option OPTNAME at protocol level LEVEL
+    into OPTVAL (which is *OPTLEN bytes long), and set *OPTLEN to the value's
+    actual length.  Returns 0 on success, -1 for errors.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int getsockopt (int __fd, int __level, int __optname,
+ 		       void *__restrict __optval,
+ 		       socklen_t *__restrict __optlen) __THROW;
+@@ -273,7 +273,7 @@ extern int __getsockopt64 (int __fd, int __level, int __optname,
+ /* Set socket FD's option OPTNAME at protocol level LEVEL
+    to *OPTVAL (which is OPTLEN bytes long).
+    Returns 0 on success, -1 for errors.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int setsockopt (int __fd, int __level, int __optname,
+ 		       const void *__optval, socklen_t __optlen) __THROW;
+ #else
 diff --git a/socket/sys/un.h b/socket/sys/un.h
 index bf03b7d6ce..ff9cbd6efa 100644
 --- a/socket/sys/un.h
@@ -3056,6 +3558,19 @@ index 362a51f882..aa57207bdc 100644
    xgetsockname \
    xlisten \
    xlseek \
+diff --git a/support/timespec.h b/support/timespec.h
+index 42f32bcc2c..5ccc7163a5 100644
+--- a/support/timespec.h
++++ b/support/timespec.h
+@@ -35,7 +35,7 @@ make_timespec (time_t s, long int ns)
+ 
+ enum { TIMESPEC_HZ = 1000000000 };
+ 
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ struct timespec timespec_add (struct timespec, struct timespec)
+   __attribute__((const));
+ struct timespec timespec_sub (struct timespec, struct timespec)
 diff --git a/support/xgetpeername.c b/support/xgetpeername.c
 new file mode 100644
 index 0000000000..6f448e456a
@@ -3104,6 +3619,32 @@ index 3e44103546..4ac0e1f5ff 100644
  void xconnect (int, const struct sockaddr *, socklen_t);
  void xbind (int, const struct sockaddr *, socklen_t);
  void xlisten (int, int);
+diff --git a/support/xtime.h b/support/xtime.h
+index 5200eef2e0..9961899634 100644
+--- a/support/xtime.h
++++ b/support/xtime.h
+@@ -30,7 +30,7 @@ __BEGIN_DECLS
+ /* The following functions call the corresponding libc functions and
+    terminate the process on error.  */
+ 
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ void xclock_gettime (clockid_t clock, struct timespec *ts);
+ void xclock_settime (clockid_t clock, const struct timespec *ts);
+ #else
+diff --git a/support/xunistd.h b/support/xunistd.h
+index b5e8c2f420..13be9a46a3 100644
+--- a/support/xunistd.h
++++ b/support/xunistd.h
+@@ -36,7 +36,7 @@ pid_t xwaitpid (pid_t, int *status, int flags);
+ void xpipe (int[2]);
+ void xdup2 (int, int);
+ int xopen (const char *path, int flags, mode_t);
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ # ifdef __USE_FILE_OFFSET64
+ void xstat (const char *path, struct stat *);
+ void xlstat (const char *path, struct stat *);
 diff --git a/sysdeps/aarch64/configure b/sysdeps/aarch64/configure
 old mode 100644
 new mode 100755
@@ -5063,6 +5604,91 @@ index 0000000000..8f21ebe1b6
 @@ -0,0 +1,2 @@
 +#define UTMP_SIZE 384
 +#define LASTLOG_SIZE 292
+diff --git a/sysdeps/nptl/pthread.h b/sysdeps/nptl/pthread.h
+index 1607fdf29a..3d4f4a756c 100644
+--- a/sysdeps/nptl/pthread.h
++++ b/sysdeps/nptl/pthread.h
+@@ -223,7 +223,7 @@ extern int pthread_join (pthread_t __th, void **__thread_return);
+    the thread in *THREAD_RETURN, if THREAD_RETURN is not NULL.  */
+ extern int pthread_tryjoin_np (pthread_t __th, void **__thread_return) __THROW;
+ 
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Make calling thread wait for termination of the thread TH, but only
+    until TIMEOUT.  The exit status of the thread is stored in
+    *THREAD_RETURN, if THREAD_RETURN is not NULL.
+@@ -796,7 +796,7 @@ extern int pthread_mutex_lock (pthread_mutex_t *__mutex)
+ 
+ #ifdef __USE_XOPEN2K
+ /* Wait until lock becomes available, or specified time passes. */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_mutex_timedlock (pthread_mutex_t *__restrict __mutex,
+ 				    const struct timespec *__restrict
+ 				    __abstime) __THROWNL __nonnull ((1, 2));
+@@ -813,7 +813,7 @@ extern int __REDIRECT_NTHNL (pthread_mutex_timedlock,
+ #endif
+ 
+ #ifdef __USE_GNU
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_mutex_clocklock (pthread_mutex_t *__restrict __mutex,
+ 				    clockid_t __clockid,
+ 				    const struct timespec *__restrict
+@@ -982,7 +982,7 @@ extern int pthread_rwlock_tryrdlock (pthread_rwlock_t *__rwlock)
+ 
+ # ifdef __USE_XOPEN2K
+ /* Try to acquire read lock for RWLOCK or return after specified time.  */
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_rwlock_timedrdlock (pthread_rwlock_t *__restrict __rwlock,
+ 				       const struct timespec *__restrict
+ 				       __abstime) __THROWNL __nonnull ((1, 2));
+@@ -1000,7 +1000,7 @@ extern int __REDIRECT_NTHNL (pthread_rwlock_timedrdlock,
+ # endif
+ 
+ # ifdef __USE_GNU
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_rwlock_clockrdlock (pthread_rwlock_t *__restrict __rwlock,
+ 				       clockid_t __clockid,
+ 				       const struct timespec *__restrict
+@@ -1029,7 +1029,7 @@ extern int pthread_rwlock_trywrlock (pthread_rwlock_t *__rwlock)
+ 
+ # ifdef __USE_XOPEN2K
+ /* Try to acquire write lock for RWLOCK or return after specified time.  */
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_rwlock_timedwrlock (pthread_rwlock_t *__restrict __rwlock,
+ 				       const struct timespec *__restrict
+ 				       __abstime) __THROWNL __nonnull ((1, 2));
+@@ -1047,7 +1047,7 @@ extern int __REDIRECT_NTHNL (pthread_rwlock_timedwrlock,
+ # endif
+ 
+ # ifdef __USE_GNU
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_rwlock_clockwrlock (pthread_rwlock_t *__restrict __rwlock,
+ 				       clockid_t __clockid,
+ 				       const struct timespec *__restrict
+@@ -1141,7 +1141,7 @@ extern int pthread_cond_wait (pthread_cond_t *__restrict __cond,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_cond_timedwait (pthread_cond_t *__restrict __cond,
+ 				   pthread_mutex_t *__restrict __mutex,
+ 				   const struct timespec *__restrict __abstime)
+@@ -1167,7 +1167,7 @@ extern int __REDIRECT (pthread_cond_timedwait,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW. */
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int pthread_cond_clockwait (pthread_cond_t *__restrict __cond,
+ 				   pthread_mutex_t *__restrict __mutex,
+ 				   __clockid_t __clock_id,
 diff --git a/sysdeps/or1k/utmp-size.h b/sysdeps/or1k/utmp-size.h
 new file mode 100644
 index 0000000000..6b3653aa4d
@@ -5445,6 +6071,59 @@ index 0000000000..8f21ebe1b6
 @@ -0,0 +1,2 @@
 +#define UTMP_SIZE 384
 +#define LASTLOG_SIZE 292
+diff --git a/sysdeps/pthread/semaphore.h b/sysdeps/pthread/semaphore.h
+index c75ca4ce6d..8a09633699 100644
+--- a/sysdeps/pthread/semaphore.h
++++ b/sysdeps/pthread/semaphore.h
+@@ -59,7 +59,7 @@ extern int sem_wait (sem_t *__sem) __nonnull ((1));
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int sem_timedwait (sem_t *__restrict __sem,
+ 			  const struct timespec *__restrict __abstime)
+   __nonnull ((1, 2));
+@@ -77,7 +77,7 @@ extern int __REDIRECT (sem_timedwait,
+ #endif
+ 
+ #ifdef __USE_GNU
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int sem_clockwait (sem_t *__restrict __sem,
+ 			  clockid_t clock,
+ 			  const struct timespec *__restrict __abstime)
+diff --git a/sysdeps/pthread/threads.h b/sysdeps/pthread/threads.h
+index c5410b5c3a..7cade24e1f 100644
+--- a/sysdeps/pthread/threads.h
++++ b/sysdeps/pthread/threads.h
+@@ -90,7 +90,7 @@ extern thrd_t thrd_current (void);
+    __TIME_POINT.  The current thread may resume if receives a signal.  In
+    that case, if __REMAINING is not NULL, the remaining time is stored in
+    the object pointed by it.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int thrd_sleep (const struct timespec *__time_point,
+ 		       struct timespec *__remaining);
+ #else
+@@ -143,7 +143,7 @@ extern int mtx_lock (mtx_t *__mutex);
+ /* Block the current thread until the mutex pointed by __MUTEX is unlocked
+    or time pointed by __TIME_POINT is reached.  In case the mutex is unlock,
+    the current thread will not be blocked.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int mtx_timedlock (mtx_t *__restrict __mutex,
+ 			  const struct timespec *__restrict __time_point);
+ #else
+@@ -194,7 +194,7 @@ extern int cnd_wait (cnd_t *__cond, mtx_t *__mutex);
+ /* Block current thread on the condition variable until condition variable
+    pointed by __COND is signaled or time pointed by __TIME_POINT is
+    reached.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int cnd_timedwait (cnd_t *__restrict __cond,
+ 			  mtx_t *__restrict __mutex,
+ 			  const struct timespec *__restrict __time_point);
 diff --git a/sysdeps/pthread/tst-cancel30.c b/sysdeps/pthread/tst-cancel30.c
 index 3030660e5f..94ad6281bc 100644
 --- a/sysdeps/pthread/tst-cancel30.c
@@ -5642,6 +6321,57 @@ index b1a3f673f0..c0b047bc0d 100644
    /* Check if MOPS is supported.  */
    cpu_features->mops = GLRO (dl_hwcap2) & HWCAP2_MOPS;
  }
+diff --git a/sysdeps/unix/sysv/linux/arm/bits/struct_stat.h b/sysdeps/unix/sysv/linux/arm/bits/struct_stat.h
+index 255feaa8cb..89534fea85 100644
+--- a/sysdeps/unix/sysv/linux/arm/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/arm/bits/struct_stat.h
+@@ -28,7 +28,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;			/* Device.  */
+@@ -83,13 +83,13 @@ struct stat
+ # else
+     __ino64_t st_ino;			/* File serial number.	*/
+ # endif
+-#endif /* __USE_TIME_BITS64  */
++#endif /* __USE_TIME64_REDIRECTS  */
+   };
+ 
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;			/* Device.  */
+@@ -125,7 +125,7 @@ struct stat64
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+ #  endif
+     __ino64_t st_ino;			/* File serial number.		*/
+-# endif /* __USE_TIME_BITS64  */
++# endif /* __USE_TIME64_REDIRECTS  */
+   };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/bits/socket-constants.h b/sysdeps/unix/sysv/linux/bits/socket-constants.h
+index d997dbf594..b2102d3abf 100644
+--- a/sysdeps/unix/sysv/linux/bits/socket-constants.h
++++ b/sysdeps/unix/sysv/linux/bits/socket-constants.h
+@@ -64,7 +64,7 @@
+ #  define SO_TIMESTAMPNS_NEW 64
+ #  define SO_TIMESTAMPING_NEW 65
+ 
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ #   define SO_RCVTIMEO SO_RCVTIMEO_NEW
+ #   define SO_SNDTIMEO SO_SNDTIMEO_NEW
+ #   define SO_TIMESTAMP SO_TIMESTAMP_NEW
 diff --git a/sysdeps/unix/sysv/linux/bits/socket.h b/sysdeps/unix/sysv/linux/bits/socket.h
 index 0d86feb4ca..6dab283a2e 100644
 --- a/sysdeps/unix/sysv/linux/bits/socket.h
@@ -5664,6 +6394,93 @@ index 0d86feb4ca..6dab283a2e 100644
    {
      __SOCKADDR_COMMON (ss_);	/* Address family, etc.  */
      char __ss_padding[_SS_PADSIZE];
+diff --git a/sysdeps/unix/sysv/linux/bits/time.h b/sysdeps/unix/sysv/linux/bits/time.h
+index b70ba58a7d..cab4057971 100644
+--- a/sysdeps/unix/sysv/linux/bits/time.h
++++ b/sysdeps/unix/sysv/linux/bits/time.h
+@@ -77,7 +77,7 @@ __BEGIN_DECLS
+ /* Tune a POSIX clock.  */
+ extern int clock_adjtime (__clockid_t __clock_id, struct timex *__utx) __THROW __nonnull((2));
+ 
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # if defined(__REDIRECT_NTH)
+ extern int __REDIRECT_NTH (clock_adjtime, (__clockid_t __clock_id,
+                                            struct timex *__utx),
+diff --git a/sysdeps/unix/sysv/linux/bits/timex.h b/sysdeps/unix/sysv/linux/bits/timex.h
+index 398d8094f2..03ccde6d0a 100644
+--- a/sysdeps/unix/sysv/linux/bits/timex.h
++++ b/sysdeps/unix/sysv/linux/bits/timex.h
+@@ -25,7 +25,7 @@
+ 
+ struct timex
+ {
+-# if defined __USE_TIME_BITS64 || (__TIMESIZE == 64 && __WORDSIZE == 32)
++# if defined __USE_TIME64_REDIRECTS || (__TIMESIZE == 64 && __WORDSIZE == 32)
+   unsigned int modes;          /* mode selector */
+   int :32;                     /* pad */
+   long long offset;            /* time offset (usec) */
+diff --git a/sysdeps/unix/sysv/linux/bits/types/struct_msqid_ds.h b/sysdeps/unix/sysv/linux/bits/types/struct_msqid_ds.h
+index fae50281c7..86296ca922 100644
+--- a/sysdeps/unix/sysv/linux/bits/types/struct_msqid_ds.h
++++ b/sysdeps/unix/sysv/linux/bits/types/struct_msqid_ds.h
+@@ -26,7 +26,7 @@
+    The type `struct msg' is opaque.  */
+ struct msqid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_msqid64_ds_helper.h>
+ #else
+   struct ipc_perm msg_perm;	/* structure describing operation permission */
+diff --git a/sysdeps/unix/sysv/linux/bits/types/struct_semid_ds.h b/sysdeps/unix/sysv/linux/bits/types/struct_semid_ds.h
+index 3c277ed1d8..2ac89b3ce4 100644
+--- a/sysdeps/unix/sysv/linux/bits/types/struct_semid_ds.h
++++ b/sysdeps/unix/sysv/linux/bits/types/struct_semid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a set of semaphores.  */
+ struct semid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_semid64_ds_helper.h>
+ #else
+   struct ipc_perm sem_perm;        /* operation permission struct */
+diff --git a/sysdeps/unix/sysv/linux/bits/types/struct_shmid_ds.h b/sysdeps/unix/sysv/linux/bits/types/struct_shmid_ds.h
+index 09de0b4e3a..1012ed0317 100644
+--- a/sysdeps/unix/sysv/linux/bits/types/struct_shmid_ds.h
++++ b/sysdeps/unix/sysv/linux/bits/types/struct_shmid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a shared memory segment.  */
+ struct shmid_ds
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_shmid64_ds_helper.h>
+ #else
+     struct ipc_perm shm_perm;		/* operation permission struct */
+diff --git a/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h b/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
+index 4b4822d6d0..47a9f0aaff 100644
+--- a/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
+@@ -43,7 +43,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;		/* Device.  */
+@@ -88,7 +88,7 @@ struct stat
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;		/* Device.  */
 diff --git a/sysdeps/unix/sysv/linux/dl-parse_auxv.h b/sysdeps/unix/sysv/linux/dl-parse_auxv.h
 index e3d758b163..ea2a58ecb1 100644
 --- a/sysdeps/unix/sysv/linux/dl-parse_auxv.h
@@ -5690,6 +6507,122 @@ index ad3692d738..e1b14e9eb3 100644
  	  [AT_MINSIGSTKSZ - 2] =	{ "MINSIGSTKSZ:       ", dec },
  	  [AT_L1I_CACHESIZE - 2] =	{ "L1I_CACHESIZE:     ", dec },
  	  [AT_L1I_CACHEGEOMETRY - 2] =	{ "L1I_CACHEGEOMETRY: 0x", hex },
+diff --git a/sysdeps/unix/sysv/linux/features-time64.h b/sysdeps/unix/sysv/linux/features-time64.h
+index dd3442c2ea..8d573cd23e 100644
+--- a/sysdeps/unix/sysv/linux/features-time64.h
++++ b/sysdeps/unix/sysv/linux/features-time64.h
+@@ -24,9 +24,8 @@
+ # if _TIME_BITS == 64
+ #  if ! defined (_FILE_OFFSET_BITS) || _FILE_OFFSET_BITS != 64
+ #   error "_TIME_BITS=64 is allowed only with _FILE_OFFSET_BITS=64"
+-#  elif __TIMESIZE == 32
+-#   define __USE_TIME_BITS64	1
+ #  endif
++#  define __USE_TIME_BITS64	1
+ # elif _TIME_BITS == 32
+ #  if __TIMESIZE > 32
+ #   error "_TIME_BITS=32 is not compatible with __TIMESIZE > 32"
+@@ -34,4 +33,10 @@
+ # else
+ #  error Invalid _TIME_BITS value (can only be 32 or 64-bit)
+ # endif
++#elif __TIMESIZE == 64
++# define __USE_TIME_BITS64      1
++#endif
++
++#if defined __USE_TIME_BITS64 && __TIMESIZE == 32
++# define __USE_TIME64_REDIRECTS 1
+ #endif
+diff --git a/sysdeps/unix/sysv/linux/hppa/bits/socket-constants.h b/sysdeps/unix/sysv/linux/hppa/bits/socket-constants.h
+index 58b523d03a..80a76a17dc 100644
+--- a/sysdeps/unix/sysv/linux/hppa/bits/socket-constants.h
++++ b/sysdeps/unix/sysv/linux/hppa/bits/socket-constants.h
+@@ -54,7 +54,7 @@
+ # define SO_TIMESTAMPNS_NEW 0x4039
+ # define SO_TIMESTAMPING_NEW 0x403A
+ 
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  define SO_RCVTIMEO SO_RCVTIMEO_NEW
+ #  define SO_SNDTIMEO SO_SNDTIMEO_NEW
+ #  define SO_TIMESTAMP SO_TIMESTAMP_NEW
+diff --git a/sysdeps/unix/sysv/linux/hppa/bits/struct_stat.h b/sysdeps/unix/sysv/linux/hppa/bits/struct_stat.h
+index 069efdbc55..09ea40054b 100644
+--- a/sysdeps/unix/sysv/linux/hppa/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/hppa/bits/struct_stat.h
+@@ -28,7 +28,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;			/* Device.  */
+@@ -83,13 +83,13 @@ struct stat
+ # else
+     __ino64_t st_ino;			/* File serial number.	*/
+ # endif
+-#endif /* __USE_TIME_BITS64  */
++#endif /* __USE_TIME64_REDIRECTS  */
+   };
+ 
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;			/* Device.  */
+@@ -125,7 +125,7 @@ struct stat64
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+ #  endif
+     __ino64_t st_ino;			/* File serial number.		*/
+-# endif /* __USE_TIME_BITS64  */
++# endif /* __USE_TIME64_REDIRECTS  */
+   };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/hppa/bits/types/struct_msqid_ds.h b/sysdeps/unix/sysv/linux/hppa/bits/types/struct_msqid_ds.h
+index 2bc7cac06d..4995e0a4a5 100644
+--- a/sysdeps/unix/sysv/linux/hppa/bits/types/struct_msqid_ds.h
++++ b/sysdeps/unix/sysv/linux/hppa/bits/types/struct_msqid_ds.h
+@@ -26,7 +26,7 @@
+    The type `struct msg' is opaque.  */
+ struct msqid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_msqid64_ds_helper.h>
+ #else
+   struct ipc_perm msg_perm;	/* structure describing operation permission */
+diff --git a/sysdeps/unix/sysv/linux/hppa/bits/types/struct_semid_ds.h b/sysdeps/unix/sysv/linux/hppa/bits/types/struct_semid_ds.h
+index dd8fbebcf4..df88949dc2 100644
+--- a/sysdeps/unix/sysv/linux/hppa/bits/types/struct_semid_ds.h
++++ b/sysdeps/unix/sysv/linux/hppa/bits/types/struct_semid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a set of semaphores.  */
+ struct semid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_semid64_ds_helper.h>
+ #else
+   struct ipc_perm sem_perm;   /* operation permission struct */
+diff --git a/sysdeps/unix/sysv/linux/hppa/bits/types/struct_shmid_ds.h b/sysdeps/unix/sysv/linux/hppa/bits/types/struct_shmid_ds.h
+index 58ac572b6e..cb3b0303aa 100644
+--- a/sysdeps/unix/sysv/linux/hppa/bits/types/struct_shmid_ds.h
++++ b/sysdeps/unix/sysv/linux/hppa/bits/types/struct_shmid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a shared memory segment.  */
+ struct shmid_ds
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_shmid64_ds_helper.h>
+ #else
+     struct ipc_perm shm_perm;		/* operation permission struct */
 diff --git a/sysdeps/unix/sysv/linux/hppa/bits/wordsize.h b/sysdeps/unix/sysv/linux/hppa/bits/wordsize.h
 new file mode 100644
 index 0000000000..6ecbfe7c86
@@ -5717,6 +6650,218 @@ index 0000000000..6ecbfe7c86
 +#define __WORDSIZE_TIME64_COMPAT32	1
 +#define __WORDSIZE32_SIZE_ULONG		0
 +#define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/unix/sysv/linux/m68k/bits/struct_stat.h b/sysdeps/unix/sysv/linux/m68k/bits/struct_stat.h
+index 3b1db157bc..b7f20189b1 100644
+--- a/sysdeps/unix/sysv/linux/m68k/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/m68k/bits/struct_stat.h
+@@ -25,7 +25,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;			/* Device.  */
+@@ -80,13 +80,13 @@ struct stat
+ # else
+     __ino64_t st_ino;			/* File serial number.	*/
+ # endif
+-#endif /* __USE_TIME_BITS64  */
++#endif /* __USE_TIME64_REDIRECTS  */
+   };
+ 
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;			/* Device.  */
+@@ -122,7 +122,7 @@ struct stat64
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+ #  endif
+     __ino64_t st_ino;			/* File serial number.		*/
+-# endif /* __USE_TIME_BITS64 */
++# endif /* __USE_TIME64_REDIRECTS */
+   };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/microblaze/bits/struct_stat.h b/sysdeps/unix/sysv/linux/microblaze/bits/struct_stat.h
+index 0f4693fb1f..ff1e269f14 100644
+--- a/sysdeps/unix/sysv/linux/microblaze/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/microblaze/bits/struct_stat.h
+@@ -26,7 +26,7 @@
+ #ifndef __USE_FILE_OFFSET64
+ struct stat
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+         __dev_t         st_dev;     /* Device.  */
+@@ -64,7 +64,7 @@ struct stat
+ # endif
+         unsigned int            __glibc_reserved4;
+         unsigned int            __glibc_reserved5;
+-#endif /* __USE_TIME_BITS64  */
++#endif /* __USE_TIME64_REDIRECTS  */
+ };
+ #else /* __USE_FILE_OFFSET64 */
+ /* MS: If __USE_FILE_OFFSET64 is setup then struct stat should match stat64
+@@ -74,7 +74,7 @@ struct stat
+  * create one ifdef to separate stats structures.  */
+ struct stat
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+         unsigned long long      st_dev;     /* Device.  */
+@@ -112,14 +112,14 @@ struct stat
+ # endif
+         unsigned int            __glibc_reserved4;
+         unsigned int            __glibc_reserved5;
+-# endif /* __USE_TIME_BITS64 */
++# endif /* __USE_TIME64_REDIRECTS */
+ };
+ #endif /* __USE_FILE_OFFSET64 */
+ 
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+ {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+         unsigned long long      st_dev;     /* Device.  */
+@@ -157,7 +157,7 @@ struct stat64
+ #  endif
+         unsigned int            __glibc_reserved4;
+         unsigned int            __glibc_reserved5;
+-# endif /* __USE_TIME_BITS64 */
++# endif /* __USE_TIME64_REDIRECTS */
+ };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/mips/bits/socket-constants.h b/sysdeps/unix/sysv/linux/mips/bits/socket-constants.h
+index c6908a2793..77ffc8b890 100644
+--- a/sysdeps/unix/sysv/linux/mips/bits/socket-constants.h
++++ b/sysdeps/unix/sysv/linux/mips/bits/socket-constants.h
+@@ -54,7 +54,7 @@
+ # define SO_TIMESTAMPNS_NEW 64
+ # define SO_TIMESTAMPING_NEW 65
+ 
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  define SO_RCVTIMEO SO_RCVTIMEO_NEW
+ #  define SO_SNDTIMEO SO_SNDTIMEO_NEW
+ #  define SO_TIMESTAMP SO_TIMESTAMP_NEW
+diff --git a/sysdeps/unix/sysv/linux/mips/bits/struct_stat.h b/sysdeps/unix/sysv/linux/mips/bits/struct_stat.h
+index 277ebad9b6..50a4b367f6 100644
+--- a/sysdeps/unix/sysv/linux/mips/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/mips/bits/struct_stat.h
+@@ -29,7 +29,7 @@
+ /* Structure describing file characteristics.  */
+ struct stat
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     unsigned long int st_dev;
+@@ -82,13 +82,13 @@ struct stat
+     __blkcnt64_t st_blocks;	/* Number of 512-byte blocks allocated.  */
+ #  endif
+     long int st_pad5[14];
+-# endif /* __USE_TIME_BITS64  */
++# endif /* __USE_TIME64_REDIRECTS  */
+   };
+ 
+ # ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ #   include <bits/struct_stat_time64_helper.h>
+ #  else
+     unsigned long int st_dev;
+@@ -123,7 +123,7 @@ struct stat64
+     long int st_pad3;
+     __blkcnt64_t st_blocks;	/* Number of 512-byte blocks allocated.  */
+     long int st_pad4[14];
+-#  endif /* __USE_TIME_BITS64  */
++#  endif /* __USE_TIME64_REDIRECTS  */
+   };
+ # endif /* __USE_LARGEFILE64  */
+ 
+@@ -131,7 +131,7 @@ struct stat64
+ 
+ struct stat
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;
+@@ -189,7 +189,7 @@ struct stat
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;
+@@ -224,7 +224,7 @@ struct stat64
+     unsigned int st_pad3;
+     __blkcnt64_t st_blocks;
+     int st_pad4[14];
+-# endif /* __USE_TIME_BITS64  */
++# endif /* __USE_TIME64_REDIRECTS  */
+ };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/mips/bits/types/struct_msqid_ds.h b/sysdeps/unix/sysv/linux/mips/bits/types/struct_msqid_ds.h
+index 4e8bd51b0a..09c53648b7 100644
+--- a/sysdeps/unix/sysv/linux/mips/bits/types/struct_msqid_ds.h
++++ b/sysdeps/unix/sysv/linux/mips/bits/types/struct_msqid_ds.h
+@@ -26,7 +26,7 @@
+    The type `struct msg' is opaque.  */
+ struct msqid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_msqid64_ds_helper.h>
+ #else
+   struct ipc_perm msg_perm;	/* structure describing operation permission */
+diff --git a/sysdeps/unix/sysv/linux/mips/bits/types/struct_semid_ds.h b/sysdeps/unix/sysv/linux/mips/bits/types/struct_semid_ds.h
+index d1a30e3164..0746684a7d 100644
+--- a/sysdeps/unix/sysv/linux/mips/bits/types/struct_semid_ds.h
++++ b/sysdeps/unix/sysv/linux/mips/bits/types/struct_semid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a set of semaphores.  */
+ struct semid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_semid64_ds_helper.h>
+ #else
+   struct ipc_perm sem_perm;		/* operation permission struct */
+diff --git a/sysdeps/unix/sysv/linux/mips/bits/types/struct_shmid_ds.h b/sysdeps/unix/sysv/linux/mips/bits/types/struct_shmid_ds.h
+index 8771164b57..c665af1874 100644
+--- a/sysdeps/unix/sysv/linux/mips/bits/types/struct_shmid_ds.h
++++ b/sysdeps/unix/sysv/linux/mips/bits/types/struct_shmid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a shared memory segment.  */
+ struct shmid_ds
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_shmid64_ds_helper.h>
+ #else
+     struct ipc_perm shm_perm;		/* operation permission struct */
 diff --git a/sysdeps/unix/sysv/linux/mips/clone3.S b/sysdeps/unix/sysv/linux/mips/clone3.S
 index e9fec2fa47..481b8ae963 100644
 --- a/sysdeps/unix/sysv/linux/mips/clone3.S
@@ -5829,6 +6974,28 @@ index f5fad81751..27151e8bbe 100644
    {
      __SOCKADDR_COMMON (siucv_);
      unsigned short	siucv_port;		/* Reserved */
+diff --git a/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h b/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h
+index 672c7c6bb8..dab466d881 100644
+--- a/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/nios2/bits/struct_stat.h
+@@ -43,7 +43,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;		/* Device.  */
+@@ -88,7 +88,7 @@ struct stat
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;		/* Device.  */
 diff --git a/sysdeps/unix/sysv/linux/pidfd_getpid.c b/sysdeps/unix/sysv/linux/pidfd_getpid.c
 index 8567b413dd..30025e5863 100644
 --- a/sysdeps/unix/sysv/linux/pidfd_getpid.c
@@ -5845,6 +7012,96 @@ index 8567b413dd..30025e5863 100644
      }
  
    /* -1 indicates that the process is terminated.  */
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/socket-constants.h b/sysdeps/unix/sysv/linux/powerpc/bits/socket-constants.h
+index 6be5055e65..0d3e095c5d 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/socket-constants.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/socket-constants.h
+@@ -54,7 +54,7 @@
+ # define SO_TIMESTAMPNS_NEW 64
+ # define SO_TIMESTAMPING_NEW 65
+ 
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  define SO_RCVTIMEO SO_RCVTIMEO_NEW
+ #  define SO_SNDTIMEO SO_SNDTIMEO_NEW
+ #  define SO_TIMESTAMP SO_TIMESTAMP_NEW
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/struct_stat.h b/sysdeps/unix/sysv/linux/powerpc/bits/struct_stat.h
+index f6328399cd..2cf331544a 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/struct_stat.h
+@@ -28,7 +28,7 @@
+ #if __WORDSIZE == 32
+ struct stat
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;			/* Device.  */
+@@ -79,13 +79,13 @@ struct stat
+ #  endif
+     unsigned long int __glibc_reserved4;
+     unsigned long int __glibc_reserved5;
+-# endif /* __USE_TIME_BITS64 */
++# endif /* __USE_TIME64_REDIRECTS */
+   };
+ 
+ # ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ #   include <bits/struct_stat_time64_helper.h>
+ #  else
+     __dev_t st_dev;			/* Device.  */
+@@ -122,7 +122,7 @@ struct stat64
+ #   endif
+     unsigned long int __glibc_reserved4;
+     unsigned long int __glibc_reserved5;
+-#  endif /* __USE_TIME_BITS64 */
++#  endif /* __USE_TIME64_REDIRECTS */
+   };
+ # endif /* __USE_LARGEFILE64 */
+ 
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_msqid_ds.h b/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_msqid_ds.h
+index 830629cd37..44ae08265d 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_msqid_ds.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_msqid_ds.h
+@@ -26,7 +26,7 @@
+    The type `struct msg' is opaque.  */
+ struct msqid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_msqid64_ds_helper.h>
+ #else
+   struct ipc_perm msg_perm;	/* structure describing operation permission */
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_semid_ds.h b/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_semid_ds.h
+index 4370257557..ccee57c28b 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_semid_ds.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_semid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a set of semaphores.  */
+ struct semid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_semid64_ds_helper.h>
+ #else
+   struct ipc_perm sem_perm;   /* operation permission struct */
+diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_shmid_ds.h b/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_shmid_ds.h
+index da1b4b3c56..58145d0a5d 100644
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_shmid_ds.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/types/struct_shmid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a shared memory segment.  */
+ struct shmid_ds
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_shmid64_ds_helper.h>
+ #else
+     struct ipc_perm shm_perm;		/* operation permission struct */
 diff --git a/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h b/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h
 index 04ca9debf0..6993fb6b29 100644
 --- a/sysdeps/unix/sysv/linux/powerpc/bits/wordsize.h
@@ -5904,6 +7161,28 @@ index a4705daf1c..6a00cd88cd 100644
        case AT_PLATFORM:
  	_dl_platform = (void *) av->a_un.a_val;
  	break;
+diff --git a/sysdeps/unix/sysv/linux/s390/bits/struct_stat.h b/sysdeps/unix/sysv/linux/s390/bits/struct_stat.h
+index 9911c47bb2..e5c9024fb2 100644
+--- a/sysdeps/unix/sysv/linux/s390/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/s390/bits/struct_stat.h
+@@ -65,7 +65,7 @@ struct stat
+ #else
+ struct stat
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;			/* Device.  */
+@@ -166,7 +166,7 @@ struct stat64
+ # else
+ struct stat64
+   {
+-#  ifdef __USE_TIME_BITS64
++#  ifdef __USE_TIME64_REDIRECTS
+ #   include <bits/struct_stat_time64_helper.h>
+ #  else
+     __dev_t st_dev;			/* Device.  */
 diff --git a/sysdeps/unix/sysv/linux/s390/s390-32/clone.S b/sysdeps/unix/sysv/linux/s390/s390-32/clone.S
 index 4c882ef2ee..a7a863242c 100644
 --- a/sysdeps/unix/sysv/linux/s390/s390-32/clone.S
@@ -5950,6 +7229,134 @@ index dfb884568d..72a3360550 100644
 -  return vsyscall_sched_getcpu ();
 -}
 -#endif /* RSEQ_SIG */
+diff --git a/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h b/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h
+index cbd4bc0f31..d47cd7be1e 100644
+--- a/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/sh/bits/struct_stat.h
+@@ -28,7 +28,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;			/* Device.  */
+@@ -83,13 +83,13 @@ struct stat
+ # else
+     __ino64_t st_ino;			/* File serial number.	*/
+ # endif
+-#endif /* __USE_TIME_BITS64  */
++#endif /* __USE_TIME64_REDIRECTS  */
+   };
+ 
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;			/* Device.  */
+@@ -125,7 +125,7 @@ struct stat64
+     unsigned long int st_ctimensec;	/* Nsecs of last status change.  */
+ #  endif
+     __ino64_t st_ino;			/* File serial number.		*/
+-# endif /* __USE_TIME_BITS64  */
++# endif /* __USE_TIME64_REDIRECTS  */
+   };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/socket-constants.h b/sysdeps/unix/sysv/linux/sparc/bits/socket-constants.h
+index 59958611c4..e7a6b684cc 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/socket-constants.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/socket-constants.h
+@@ -54,7 +54,7 @@
+ # define SO_TIMESTAMPNS_NEW 0x0042
+ # define SO_TIMESTAMPING_NEW 0x0043
+ 
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  define SO_RCVTIMEO SO_RCVTIMEO_NEW
+ #  define SO_SNDTIMEO SO_SNDTIMEO_NEW
+ #  define SO_TIMESTAMP SO_TIMESTAMP_NEW
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h b/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h
+index 4e48634edc..fcab5f4804 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/struct_stat.h
+@@ -28,7 +28,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;			/* Device.  */
+@@ -79,13 +79,13 @@ struct stat
+ # endif
+     unsigned long int __glibc_reserved4;
+     unsigned long int __glibc_reserved5;
+-#endif /* __USE_TIME_BITS64  */
++#endif /* __USE_TIME64_REDIRECTS  */
+   };
+ 
+ #ifdef __USE_LARGEFILE64
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;			/* Device.  */
+@@ -126,7 +126,7 @@ struct stat64
+ #  endif
+     unsigned long int __glibc_reserved4;
+     unsigned long int __glibc_reserved5;
+-# endif /* __USE_TIME_BITS64  */
++# endif /* __USE_TIME64_REDIRECTS  */
+   };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/types/struct_msqid_ds.h b/sysdeps/unix/sysv/linux/sparc/bits/types/struct_msqid_ds.h
+index db783c28d4..ed8d47c9b6 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/types/struct_msqid_ds.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/types/struct_msqid_ds.h
+@@ -26,7 +26,7 @@
+    The type `struct msg' is opaque.  */
+ struct msqid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_msqid64_ds_helper.h>
+ #else
+   struct ipc_perm msg_perm;	/* structure describing operation permission */
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/types/struct_semid_ds.h b/sysdeps/unix/sysv/linux/sparc/bits/types/struct_semid_ds.h
+index 1c8a3693db..b9e729b8b4 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/types/struct_semid_ds.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/types/struct_semid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a set of semaphores.  */
+ struct semid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_semid64_ds_helper.h>
+ #else
+   struct ipc_perm sem_perm;   /* operation permission struct */
+diff --git a/sysdeps/unix/sysv/linux/sparc/bits/types/struct_shmid_ds.h b/sysdeps/unix/sysv/linux/sparc/bits/types/struct_shmid_ds.h
+index 35a0cc36ab..7885d2ab25 100644
+--- a/sysdeps/unix/sysv/linux/sparc/bits/types/struct_shmid_ds.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/types/struct_shmid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a shared memory segment.  */
+ struct shmid_ds
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_shmid64_ds_helper.h>
+ #else
+     struct ipc_perm shm_perm;		/* operation permission struct */
 diff --git a/sysdeps/unix/sysv/linux/sparc/bits/wordsize.h b/sysdeps/unix/sysv/linux/sparc/bits/wordsize.h
 index 7562875ee2..ea103e5970 100644
 --- a/sysdeps/unix/sysv/linux/sparc/bits/wordsize.h
@@ -5966,6 +7373,67 @@ index 7562875ee2..ea103e5970 100644
 -# define __WORDSIZE_TIME64_COMPAT32	0
  #endif
 +#define __WORDSIZE_TIME64_COMPAT32	1
+diff --git a/sysdeps/unix/sysv/linux/sys/epoll.h b/sysdeps/unix/sysv/linux/sys/epoll.h
+index 9b51e3bd14..fc8dce45c8 100644
+--- a/sysdeps/unix/sysv/linux/sys/epoll.h
++++ b/sysdeps/unix/sysv/linux/sys/epoll.h
+@@ -140,7 +140,7 @@ extern int epoll_pwait (int __epfd, struct epoll_event *__events,
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int epoll_pwait2 (int __epfd, struct epoll_event *__events,
+ 			 int __maxevents, const struct timespec *__timeout,
+ 			 const __sigset_t *__ss)
+diff --git a/sysdeps/unix/sysv/linux/sys/prctl.h b/sysdeps/unix/sysv/linux/sys/prctl.h
+index b13b846261..79a9b31273 100644
+--- a/sysdeps/unix/sysv/linux/sys/prctl.h
++++ b/sysdeps/unix/sysv/linux/sys/prctl.h
+@@ -38,7 +38,7 @@
+ __BEGIN_DECLS
+ 
+ /* Control process execution.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int prctl (int __option, ...) __THROW;
+ #else
+ # ifdef __REDIRECT
+diff --git a/sysdeps/unix/sysv/linux/sys/timerfd.h b/sysdeps/unix/sysv/linux/sys/timerfd.h
+index 19d0cbfae0..f66ece306a 100644
+--- a/sysdeps/unix/sysv/linux/sys/timerfd.h
++++ b/sysdeps/unix/sysv/linux/sys/timerfd.h
+@@ -47,7 +47,7 @@ extern int timerfd_settime (int __ufd, int __flags,
+ 			    const struct itimerspec *__utmr,
+ 			    struct itimerspec *__otmr) __THROW;
+ 
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # if defined(__REDIRECT_NTH)
+ extern int __REDIRECT_NTH (timerfd_settime,
+                            (int __ufd, int __flags,
+@@ -62,7 +62,7 @@ extern int __REDIRECT_NTH (timerfd_settime,
+ /* Return the next expiration time of UFD.  */
+ extern int timerfd_gettime (int __ufd, struct itimerspec *__otmr) __THROW;
+ 
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # if defined(__REDIRECT_NTH)
+ extern int __REDIRECT_NTH (timerfd_gettime, (int __ufd,
+                                              struct itimerspec *__otmr),
+diff --git a/sysdeps/unix/sysv/linux/sys/timex.h b/sysdeps/unix/sysv/linux/sys/timex.h
+index 28ce022253..568748d767 100644
+--- a/sysdeps/unix/sysv/linux/sys/timex.h
++++ b/sysdeps/unix/sysv/linux/sys/timex.h
+@@ -54,7 +54,7 @@ struct ntptimeval
+ 
+ __BEGIN_DECLS
+ 
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int adjtimex (struct timex *__ntx) __THROW __nonnull ((1));
+ extern int ntp_gettimex (struct ntptimeval *__ntv) __THROW __nonnull ((1));
+ 
 diff --git a/sysdeps/unix/sysv/linux/timespec_get.c b/sysdeps/unix/sysv/linux/timespec_get.c
 index c6e5e66289..778d1e3354 100644
 --- a/sysdeps/unix/sysv/linux/timespec_get.c
@@ -6093,6 +7561,58 @@ index 470676ab2b..2bc7124983 100644
 -#define TEST_FUNCTION do_test ()
 -#include "../test-skeleton.c"
 +#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/x86/bits/struct_stat.h b/sysdeps/unix/sysv/linux/x86/bits/struct_stat.h
+index 21aa315d8d..810d6566f0 100644
+--- a/sysdeps/unix/sysv/linux/x86/bits/struct_stat.h
++++ b/sysdeps/unix/sysv/linux/x86/bits/struct_stat.h
+@@ -25,7 +25,7 @@
+ 
+ struct stat
+   {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/struct_stat_time64_helper.h>
+ #else
+     __dev_t st_dev;		/* Device.  */
+@@ -95,14 +95,14 @@ struct stat
+     __ino64_t st_ino;			/* File serial number.	*/
+ #  endif
+ # endif
+-#endif /* __USE_TIME_BITS64  */
++#endif /* __USE_TIME64_REDIRECTS  */
+   };
+ 
+ #ifdef __USE_LARGEFILE64
+ /* Note stat64 has the same shape as stat for x86-64.  */
+ struct stat64
+   {
+-# ifdef __USE_TIME_BITS64
++# ifdef __USE_TIME64_REDIRECTS
+ #  include <bits/struct_stat_time64_helper.h>
+ # else
+     __dev_t st_dev;		/* Device.  */
+@@ -152,7 +152,7 @@ struct stat64
+ #  else
+     __ino64_t st_ino;			/* File serial number.		*/
+ #  endif
+-# endif /* __USE_TIME_BITS64  */
++# endif /* __USE_TIME64_REDIRECTS  */
+   };
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/x86/bits/types/struct_semid_ds.h b/sysdeps/unix/sysv/linux/x86/bits/types/struct_semid_ds.h
+index 9f3d170b65..81867c0316 100644
+--- a/sysdeps/unix/sysv/linux/x86/bits/types/struct_semid_ds.h
++++ b/sysdeps/unix/sysv/linux/x86/bits/types/struct_semid_ds.h
+@@ -23,7 +23,7 @@
+ /* Data structure describing a set of semaphores.  */
+ struct semid_ds
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ # include <bits/types/struct_semid64_ds_helper.h>
+ #else
+   struct ipc_perm sem_perm;   /* operation permission struct */
 diff --git a/sysdeps/unix/sysv/linux/x86_64/Makefile b/sysdeps/unix/sysv/linux/x86_64/Makefile
 index 4223feb95f..9a1e7aa646 100644
 --- a/sysdeps/unix/sysv/linux/x86_64/Makefile
@@ -9910,6 +11430,262 @@ index 0000000000..1d636669ba
 +	.local	saved_rsi
 +	.comm	saved_rsi,8,8
 +	.section	.note.GNU-stack,"",@progbits
+diff --git a/sysvipc/sys/msg.h b/sysvipc/sys/msg.h
+index d0388b0522..4178ad9955 100644
+--- a/sysvipc/sys/msg.h
++++ b/sysvipc/sys/msg.h
+@@ -58,7 +58,7 @@ struct msgbuf
+ __BEGIN_DECLS
+ 
+ /* Message queue control operation.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int msgctl (int __msqid, int __cmd, struct msqid_ds *__buf) __THROW;
+ #else
+ # ifdef __REDIRECT_NTH
+diff --git a/sysvipc/sys/sem.h b/sysvipc/sys/sem.h
+index 5d9ec39296..812f1303b3 100644
+--- a/sysvipc/sys/sem.h
++++ b/sysvipc/sys/sem.h
+@@ -48,7 +48,7 @@ struct sembuf
+ __BEGIN_DECLS
+ 
+ /* Semaphore control operation.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int semctl (int __semid, int __semnum, int __cmd, ...) __THROW;
+ #else
+ # ifdef __REDIRECT_NTH
+@@ -68,7 +68,7 @@ extern int semop (int __semid, struct sembuf *__sops, size_t __nsops) __THROW;
+ 
+ #ifdef __USE_GNU
+ /* Operate on semaphore with timeout.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int semtimedop (int __semid, struct sembuf *__sops, size_t __nsops,
+ 		       const struct timespec *__timeout) __THROW;
+ # else
+diff --git a/sysvipc/sys/shm.h b/sysvipc/sys/shm.h
+index 04191656d5..496e57ef45 100644
+--- a/sysvipc/sys/shm.h
++++ b/sysvipc/sys/shm.h
+@@ -46,7 +46,7 @@ __BEGIN_DECLS
+    facility.  The definition is found in XPG4.2.  */
+ 
+ /* Shared memory control operation.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int shmctl (int __shmid, int __cmd, struct shmid_ds *__buf) __THROW;
+ #else
+ # ifdef __REDIRECT_NTH
+diff --git a/time/bits/types/struct_timespec.h b/time/bits/types/struct_timespec.h
+index 489e81136d..1141015f27 100644
+--- a/time/bits/types/struct_timespec.h
++++ b/time/bits/types/struct_timespec.h
+@@ -10,14 +10,14 @@
+    has nanoseconds instead of microseconds.  */
+ struct timespec
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+   __time64_t tv_sec;		/* Seconds.  */
+ #else
+   __time_t tv_sec;		/* Seconds.  */
+ #endif
+ #if __WORDSIZE == 64 \
+   || (defined __SYSCALL_WORDSIZE && __SYSCALL_WORDSIZE == 64) \
+-  || (__TIMESIZE == 32 && !defined __USE_TIME_BITS64)
++  || (__TIMESIZE == 32 && !defined __USE_TIME64_REDIRECTS)
+   __syscall_slong_t tv_nsec;	/* Nanoseconds.  */
+ #else
+ # if __BYTE_ORDER == __BIG_ENDIAN
+diff --git a/time/bits/types/struct_timeval.h b/time/bits/types/struct_timeval.h
+index 3466137c35..0c8e88c82c 100644
+--- a/time/bits/types/struct_timeval.h
++++ b/time/bits/types/struct_timeval.h
+@@ -7,7 +7,7 @@
+    microsecond but also has a range of years.  */
+ struct timeval
+ {
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+   __time64_t tv_sec;		/* Seconds.  */
+   __suseconds64_t tv_usec;	/* Microseconds.  */
+ #else
+diff --git a/time/bits/types/time_t.h b/time/bits/types/time_t.h
+index 84d67f6ac3..00cde92c62 100644
+--- a/time/bits/types/time_t.h
++++ b/time/bits/types/time_t.h
+@@ -4,7 +4,7 @@
+ #include <bits/types.h>
+ 
+ /* Returned by `time'.  */
+-#ifdef __USE_TIME_BITS64
++#ifdef __USE_TIME64_REDIRECTS
+ typedef __time64_t time_t;
+ #else
+ typedef __time_t time_t;
+diff --git a/time/sys/time.h b/time/sys/time.h
+index c8708198a5..8c3d0c3022 100644
+--- a/time/sys/time.h
++++ b/time/sys/time.h
+@@ -63,7 +63,7 @@ struct timezone
+    use localtime etc. instead.
+    This function itself is semi-obsolete;
+    most callers should use time or clock_gettime instead. */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern int gettimeofday (struct timeval *__restrict __tv,
+ 			 void *__restrict __tz) __THROW __nonnull ((1));
+ #else
+@@ -77,7 +77,7 @@ extern int __REDIRECT_NTH (gettimeofday, (struct timeval *__restrict __tv,
+ #endif
+ 
+ #ifdef __USE_MISC
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Set the current time of day and timezone information.
+    This call is restricted to the super-user.
+    Setting the timezone in this way is obsolete, but we don't yet
+@@ -143,7 +143,7 @@ typedef enum __itimer_which __itimer_which_t;
+ typedef int __itimer_which_t;
+ #endif
+ 
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ /* Set *VALUE to the current setting of timer WHICH.
+    Return 0 on success, -1 on errors.  */
+ extern int getitimer (__itimer_which_t __which,
+@@ -184,7 +184,7 @@ extern int __REDIRECT_NTH (utimes, (const char *__file,
+ #endif
+ 
+ #ifdef __USE_MISC
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Same as `utimes', but does not follow symbolic links.  */
+ extern int lutimes (const char *__file, const struct timeval __tvp[2])
+      __THROW __nonnull ((1));
+@@ -207,7 +207,7 @@ extern int __REDIRECT_NTH (futimes, (int __fd, const struct timeval __tvp[2]),
+ #endif
+ 
+ #ifdef __USE_GNU
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Change the access time of FILE relative to FD to TVP[0] and the
+    modification time of FILE to TVP[1].  If TVP is a null pointer, use
+    the current time instead.  Returns 0 on success, -1 on errors.  */
+diff --git a/time/time.h b/time/time.h
+index 1609aaeffa..3785dc608f 100644
+--- a/time/time.h
++++ b/time/time.h
+@@ -71,7 +71,7 @@ __BEGIN_DECLS
+    The result / CLOCKS_PER_SEC is program time in seconds.  */
+ extern clock_t clock (void) __THROW;
+ 
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ /* Return the current time and put it in *TIMER if TIMER is not NULL.  */
+ extern time_t time (time_t *__timer) __THROW;
+ 
+@@ -127,7 +127,7 @@ extern char *strptime_l (const char *__restrict __s,
+ #endif
+ 
+ 
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ /* Return the `struct tm' representation of *TIMER
+    in Universal Coordinated Time (aka Greenwich Mean Time).  */
+ extern struct tm *gmtime (const time_t *__timer) __THROW;
+@@ -149,7 +149,7 @@ extern struct tm *__REDIRECT_NTH (localtime, (const time_t *__timer),
+ 
+ 
+ #if defined __USE_POSIX || __GLIBC_USE (ISOC2X)
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Return the `struct tm' representation of *TIMER in UTC,
+    using *TP to store the result.  */
+ extern struct tm *gmtime_r (const time_t *__restrict __timer,
+@@ -180,7 +180,7 @@ extern struct tm*__REDIRECT_NTH (localtime_r, (const time_t *__restrict __t,
+ extern char *asctime (const struct tm *__tp) __THROW;
+ 
+ /* Equivalent to `asctime (localtime (timer))'.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern char *ctime (const time_t *__timer) __THROW;
+ #else
+ # ifdef __REDIRECT_NTH
+@@ -199,7 +199,7 @@ extern char *asctime_r (const struct tm *__restrict __tp,
+ 			char *__restrict __buf) __THROW;
+ 
+ /* Equivalent to `asctime_r (localtime_r (timer, *TMP*), buf)'.  */
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ extern char *ctime_r (const time_t *__restrict __timer,
+ 		      char *__restrict __buf) __THROW;
+ #else
+@@ -242,7 +242,7 @@ extern long int timezone;
+ 
+ 
+ #if defined __USE_MISC || __GLIBC_USE (ISOC2X)
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Like `mktime', but for TP represents Universal Time, not local time.  */
+ extern time_t timegm (struct tm *__tp) __THROW;
+ # else
+@@ -259,7 +259,7 @@ extern time_t __REDIRECT_NTH (timegm, (struct tm *__tp), __timegm64);
+ /* Miscellaneous functions many Unices inherited from the public domain
+    localtime package.  These are included only for compatibility.  */
+ 
+-#ifndef __USE_TIME_BITS64
++#ifndef __USE_TIME64_REDIRECTS
+ /* Another name for `mktime'.  */
+ extern time_t timelocal (struct tm *__tp) __THROW;
+ #else
+@@ -274,7 +274,7 @@ extern int dysize (int __year) __THROW  __attribute__ ((__const__));
+ 
+ 
+ #ifdef __USE_POSIX199309
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Pause execution for a number of nanoseconds.
+ 
+    This function is a cancellation point and therefore not marked with
+@@ -320,7 +320,7 @@ extern int __REDIRECT_NTH (clock_settime, (clockid_t __clock_id, const struct
+ 
+    This function is a cancellation point and therefore not marked with
+    __THROW.  */
+-#  ifndef __USE_TIME_BITS64
++#  ifndef __USE_TIME64_REDIRECTS
+ extern int clock_nanosleep (clockid_t __clock_id, int __flags,
+ 			    const struct timespec *__req,
+ 			    struct timespec *__rem);
+@@ -349,7 +349,7 @@ extern int timer_create (clockid_t __clock_id,
+ extern int timer_delete (timer_t __timerid) __THROW;
+ 
+ /* Set timer TIMERID to VALUE, returning old value in OVALUE.  */
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ extern int timer_settime (timer_t __timerid, int __flags,
+ 			  const struct itimerspec *__restrict __value,
+ 			  struct itimerspec *__restrict __ovalue) __THROW;
+@@ -379,7 +379,7 @@ extern int timer_getoverrun (timer_t __timerid) __THROW;
+ 
+ 
+ #ifdef __USE_ISOC11
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Set TS to calendar time based in time base BASE.  */
+ extern int timespec_get (struct timespec *__ts, int __base)
+      __THROW __nonnull ((1));
+@@ -395,7 +395,7 @@ extern int __REDIRECT_NTH (timespec_get, (struct timespec *__ts, int __base),
+ 
+ 
+ #if __GLIBC_USE (ISOC2X)
+-# ifndef __USE_TIME_BITS64
++# ifndef __USE_TIME64_REDIRECTS
+ /* Set TS to resolution of time base BASE.  */
+ extern int timespec_getres (struct timespec *__ts, int __base)
+      __THROW;
 diff --git a/time/timespec_get.c b/time/timespec_get.c
 index b031e42ca2..26a044bca6 100644
 --- a/time/timespec_get.c
