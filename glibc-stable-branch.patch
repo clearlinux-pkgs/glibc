@@ -80,12 +80,16 @@ Sergey Kolosov (2):
       libsupport: Add xgetpeername
       socket: Add new test for connect
 
+Stafford Horne (1):
+      misc: Add support for Linux uio.h RWF_NOAPPEND flag
+
 Stefan Liebler (1):
       S390: Do not clobber r7 in clone [BZ #31402]
 
-Sunil K Pandey (2):
+Sunil K Pandey (3):
       x86-64: Simplify minimum ISA check ifdef conditional with if
       x86_64: Exclude SSE, AVX and FMA4 variants in libm multiarch
+      i386: Disable Intel Xeon Phi tests for GCC 15 and above (BZ 31782)
 
 Szabolcs Nagy (1):
       aarch64: fix check for SVE support in assembler
@@ -1671,6 +1675,21 @@ index fa5dd9d6ad..8d19e9dd73 100644
  @item
  If @code{_TIME_BITS} is defined to be 32, @code{time_t} is defined to
  be a 32-bit integer where that is supported.  This is not recommended,
+diff --git a/manual/llio.texi b/manual/llio.texi
+index 0b61d491f5..fae49d1433 100644
+--- a/manual/llio.texi
++++ b/manual/llio.texi
+@@ -1339,6 +1339,10 @@ will fail and set @code{errno} to @code{EAGAIN} if the operation would block.
+ 
+ @item RWF_APPEND
+ Per-IO synchronization as if the file was opened with @code{O_APPEND} flag.
++
++@item RWF_NOAPPEND
++This flag allows an offset to be honored, even if the file was opened with
++@code{O_APPEND} flag.
+ @end vtable
+ 
+ When the source file is compiled with @code{_FILE_OFFSET_BITS == 64} the
 diff --git a/manual/maint.texi b/manual/maint.texi
 index 89da704f45..04faa222e2 100644
 --- a/manual/maint.texi
@@ -1758,6 +1777,23 @@ index e6a0c1b8b2..2e45e94bc1 100644
  extern int pselect (int __nfds, fd_set *__restrict __readfds,
  		    fd_set *__restrict __writefds,
  		    fd_set *__restrict __exceptfds,
+diff --git a/misc/tst-preadvwritev2-common.c b/misc/tst-preadvwritev2-common.c
+index b5f19f002c..8e04ff7282 100644
+--- a/misc/tst-preadvwritev2-common.c
++++ b/misc/tst-preadvwritev2-common.c
+@@ -34,8 +34,11 @@
+ #ifndef RWF_APPEND
+ # define RWF_APPEND 0
+ #endif
++#ifndef RWF_NOAPPEND
++# define RWF_NOAPPEND 0
++#endif
+ #define RWF_SUPPORTED	(RWF_HIPRI | RWF_DSYNC | RWF_SYNC | RWF_NOWAIT \
+-			 | RWF_APPEND)
++			 | RWF_APPEND | RWF_NOAPPEND)
+ 
+ /* Generic uio_lim.h does not define IOV_MAX.  */
+ #ifndef IOV_MAX
 diff --git a/nscd/netgroupcache.c b/nscd/netgroupcache.c
 index 0c6e46f15c..01d554af9c 100644
 --- a/nscd/netgroupcache.c
@@ -6459,6 +6495,18 @@ index 09de0b4e3a..1012ed0317 100644
  # include <bits/types/struct_shmid64_ds_helper.h>
  #else
      struct ipc_perm shm_perm;		/* operation permission struct */
+diff --git a/sysdeps/unix/sysv/linux/bits/uio-ext.h b/sysdeps/unix/sysv/linux/bits/uio-ext.h
+index 7854cccef3..ead7a09156 100644
+--- a/sysdeps/unix/sysv/linux/bits/uio-ext.h
++++ b/sysdeps/unix/sysv/linux/bits/uio-ext.h
+@@ -47,6 +47,7 @@ extern ssize_t process_vm_writev (pid_t __pid, const struct iovec *__lvec,
+ #define RWF_SYNC	0x00000004 /* per-IO O_SYNC.  */
+ #define RWF_NOWAIT	0x00000008 /* per-IO nonblocking mode.  */
+ #define RWF_APPEND	0x00000010 /* per-IO O_APPEND.  */
++#define RWF_NOAPPEND	0x00000020 /* per-IO negation of O_APPEND */
+ 
+ __END_DECLS
+ 
 diff --git a/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h b/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
 index 4b4822d6d0..47a9f0aaff 100644
 --- a/sysdeps/unix/sysv/linux/csky/bits/struct_stat.h
@@ -8554,6 +8602,48 @@ index 85d0a8c943..7359149e17 100644
  
  /* Constants for bits in __x86_string_control:  */
  
+diff --git a/sysdeps/x86/tst-cpu-features-supports.c b/sysdeps/x86/tst-cpu-features-supports.c
+index 93008dac70..0f43ef2b2d 100644
+--- a/sysdeps/x86/tst-cpu-features-supports.c
++++ b/sysdeps/x86/tst-cpu-features-supports.c
+@@ -65,7 +65,7 @@ do_test (int argc, char **argv)
+ #endif
+   fails += CHECK_FEATURE_ACTIVE (avx, AVX);
+   fails += CHECK_FEATURE_ACTIVE (avx2, AVX2);
+-#if __GNUC_PREREQ (7, 0)
++#if __GNUC_PREREQ (7, 0) && !__GNUC_PREREQ (15, 0)
+   fails += CHECK_FEATURE_ACTIVE (avx5124fmaps, AVX512_4FMAPS);
+   fails += CHECK_FEATURE_ACTIVE (avx5124vnniw, AVX512_4VNNIW);
+ #endif
+@@ -92,14 +92,18 @@ do_test (int argc, char **argv)
+ #if __GNUC_PREREQ (6, 0)
+   fails += CHECK_FEATURE_ACTIVE (avx512bw, AVX512BW);
+   fails += CHECK_FEATURE_ACTIVE (avx512cd, AVX512CD);
++# if !__GNUC_PREREQ (15, 0)
+   fails += CHECK_FEATURE_ACTIVE (avx512er, AVX512ER);
++# endif
+   fails += CHECK_FEATURE_ACTIVE (avx512dq, AVX512DQ);
+ #endif
+ #if __GNUC_PREREQ (5, 0)
+   fails += CHECK_FEATURE_ACTIVE (avx512f, AVX512F);
+ #endif
+ #if __GNUC_PREREQ (6, 0)
++# if !__GNUC_PREREQ (15, 0)
+   fails += CHECK_FEATURE_ACTIVE (avx512pf, AVX512PF);
++# endif
+   fails += CHECK_FEATURE_ACTIVE (avx512vl, AVX512VL);
+ #endif
+ #if __GNUC_PREREQ (5, 0)
+@@ -148,7 +152,9 @@ do_test (int argc, char **argv)
+ #endif
+   fails += CHECK_FEATURE_ACTIVE (popcnt, POPCNT);
+ #if __GNUC_PREREQ (11, 0)
++# if !__GNUC_PREREQ (15, 0)
+   fails += CHECK_FEATURE_ACTIVE (prefetchwt1, PREFETCHWT1);
++# endif
+   fails += CHECK_FEATURE_ACTIVE (ptwrite, PTWRITE);
+   fails += CHECK_FEATURE_ACTIVE (rdpid, RDPID);
+   fails += CHECK_FEATURE_ACTIVE (rdrnd, RDRAND);
 diff --git a/sysdeps/x86/tst-gnu2-tls2.c b/sysdeps/x86/tst-gnu2-tls2.c
 new file mode 100644
 index 0000000000..de900a423b
