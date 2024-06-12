@@ -51,7 +51,7 @@ Gabi Falk (7):
       Add a test to check for duplicate definitions in the static library
       x86_64: Fix missing wcsncat function definition without multiarch (x86-64-v4)
 
-H.J. Lu (10):
+H.J. Lu (11):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
       x86-64: Update _dl_tlsdesc_dynamic to preserve AMX registers
@@ -62,6 +62,7 @@ H.J. Lu (10):
       elf: Also compile dl-misc.os with $(rtld-early-cflags)
       Force DT_RPATH for --enable-hardcoded-path-in-tests
       parse_fdinfo: Don't advance pointer twice [BZ #31798]
+      malloc/Makefile: Split and sort tests
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
@@ -69,8 +70,14 @@ Jakub Jelinek (1):
 Joe Ramsay (1):
       aarch64/fpu: Sync libmvec routines from 2.39 and before with AOR
 
+Joe Simmons-Talbott (1):
+      malloc: Improve aligned_alloc and calloc test coverage.
+
 Manjunath Matti (1):
       ﻿powerpc: Add HWCAP3/HWCAP4 data to TCB for Power Architecture.
+
+Michael Jeanson (1):
+      x86/cet: fix shadow stack test scripts
 
 Sam James (3):
       Revert "Add a test to check for duplicate definitions in the static library"
@@ -104,6 +111,9 @@ Xi Ruoyao (1):
 caiyinyu (2):
       LoongArch: Correct {__ieee754, _}_scalb -> {__ieee754, _}_scalbf
       LoongArch: Fix undefined `__memset_aligned` reference in ld.so linking.
+
+sayan paul (1):
+      malloc: New test to check malloc alternate path using memory obstruction
 
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
@@ -1679,6 +1689,499 @@ index 0000000000..1b7f7ff042
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/malloc/Makefile b/malloc/Makefile
+index c83ade5f10..cc14cf66c9 100644
+--- a/malloc/Makefile
++++ b/malloc/Makefile
+@@ -24,60 +24,95 @@ include ../Makeconfig
+ 
+ dist-headers := malloc.h
+ headers := $(dist-headers) obstack.h mcheck.h
+-tests := mallocbug tst-malloc tst-valloc tst-calloc tst-obstack \
+-	 tst-malloc-check tst-mallocfork tst-trim1 \
+-	 tst-malloc-usable tst-realloc tst-reallocarray tst-posix_memalign \
+-	 tst-pvalloc tst-pvalloc-fortify tst-memalign tst-mallopt \
+-	 tst-malloc-backtrace tst-malloc-thread-exit \
+-	 tst-malloc-thread-fail tst-malloc-fork-deadlock \
+-	 tst-mallocfork2 \
+-	 tst-mallocfork3 \
+-	 tst-interpose-nothread \
+-	 tst-interpose-thread \
+-	 tst-alloc_buffer \
+-	 tst-free-errno \
+-	 tst-malloc-tcache-leak \
+-	 tst-malloc_info tst-mallinfo2 \
+-	 tst-malloc-too-large \
+-	 tst-malloc-stats-cancellation \
+-	 tst-tcfree1 tst-tcfree2 tst-tcfree3 \
+-	 tst-safe-linking \
+-	 tst-mallocalign1 \
+-	 tst-memalign-2 \
+-	 tst-memalign-3 \
+-	 tst-aligned-alloc
++tests := \
++  mallocbug \
++  tst-aligned-alloc \
++  tst-aligned-alloc-random \
++  tst-alloc_buffer \
++  tst-calloc \
++  tst-free-errno \
++  tst-interpose-nothread \
++  tst-interpose-thread \
++  tst-malloc \
++  tst-malloc-alternate-path \
++  tst-malloc-backtrace \
++  tst-malloc-check \
++  tst-malloc-fork-deadlock \
++  tst-malloc-random \
++  tst-malloc-stats-cancellation \
++  tst-malloc-tcache-leak \
++  tst-malloc-thread-exit \
++  tst-malloc-thread-fail \
++  tst-malloc-too-large \
++  tst-malloc-usable \
++  tst-malloc_info tst-mallinfo2 \
++  tst-mallocalign1 \
++  tst-mallocfork \
++  tst-mallocfork2 \
++  tst-mallocfork3 \
++  tst-mallopt \
++  tst-memalign \
++  tst-memalign-2 \
++  tst-memalign-3 \
++  tst-obstack \
++  tst-posix_memalign \
++  tst-pvalloc \
++  tst-pvalloc-fortify \
++  tst-realloc \
++  tst-reallocarray \
++  tst-safe-linking \
++  tst-tcfree1 tst-tcfree2 tst-tcfree3 \
++  tst-trim1 \
++  tst-valloc \
++# tests
+ 
+ tests-static := \
+-	 tst-interpose-static-nothread \
+-	 tst-interpose-static-thread \
+-	 tst-aligned-alloc-static
++  tst-aligned-alloc-static \
++  tst-interpose-static-nothread \
++  tst-interpose-static-thread \
++# tests-static
+ 
+ # Test for the malloc_set_state symbol removed in glibc 2.25.
+ ifeq ($(have-GLIBC_2.23)$(build-shared),yesyes)
+-tests += tst-mallocstate tst-compathooks-off tst-compathooks-on
++tests += \
++  tst-compathooks-off \
++  tst-compathooks-on \
++  tst-mallocstate \
++# tests
+ endif
+ 
+ tests-internal := tst-scratch_buffer
+ 
+ # The dynarray framework is only available inside glibc.
+ tests-internal += \
+-	 tst-dynarray \
+-	 tst-dynarray-fail \
+-	 tst-dynarray-at-fail \
++  tst-dynarray \
++  tst-dynarray-at-fail \
++  tst-dynarray-fail \
++# tests-internal
+ 
+-tests += tst-malloc-usable-tunables tst-mxfast
++tests += \
++  tst-malloc-usable-tunables \
++  tst-mxfast \
++# tests
+ 
+ tests += $(tests-static)
+ test-srcs = tst-mtrace
+ 
+ # These tests either are run with MALLOC_CHECK_=3 by default or do not work
+ # with MALLOC_CHECK_=3 because they expect a specific failure.
+-tests-exclude-malloc-check = tst-malloc-check tst-malloc-usable \
+-	tst-mxfast tst-safe-linking \
+-	tst-compathooks-off tst-compathooks-on tst-memalign-2 tst-memalign-3 \
+-	tst-mallocfork2 \
+-	tst-mallocfork3 \
+-	tst-malloc-tcache-leak
++tests-exclude-malloc-check = \
++  tst-compathooks-off \
++  tst-compathooks-on \
++  tst-malloc-check \
++  tst-malloc-tcache-leak \
++  tst-malloc-usable \
++  tst-mallocfork2 \
++  tst-mallocfork3 \
++  tst-memalign-2 \
++  tst-memalign-3 \
++  tst-mxfast \
++  tst-safe-linking \
++# tests-exclude-malloc-check
+ 
+ # Run all tests with MALLOC_CHECK_=3
+ tests-malloc-check = $(filter-out $(tests-exclude-malloc-check) \
+@@ -87,18 +122,19 @@ tests-malloc-check = $(filter-out $(tests-exclude-malloc-check) \
+ # the Transparent Huge Pages support (1) or automatic huge page support (2).
+ # We need exclude some tests that define the ENV vars.
+ tests-exclude-hugetlb1 = \
+-	tst-compathooks-off \
+-	tst-compathooks-on \
+-	tst-interpose-nothread \
+-	tst-interpose-thread \
+-	tst-interpose-static-nothread \
+-	tst-interpose-static-thread \
+-	tst-malloc-usable \
+-	tst-malloc-usable-tunables \
+-	tst-mallocstate \
+-	tst-malloc-tcache-leak \
+-	tst-mallocfork2 \
+-	tst-mallocfork3
++  tst-compathooks-off \
++  tst-compathooks-on \
++  tst-interpose-nothread \
++  tst-interpose-static-nothread \
++  tst-interpose-static-thread \
++  tst-interpose-thread \
++  tst-malloc-tcache-leak \
++  tst-malloc-usable \
++  tst-malloc-usable-tunables \
++  tst-mallocfork2 \
++  tst-mallocfork3 \
++  tst-mallocstate \
++# tests-exclude-hugetlb1
+ # The tst-free-errno relies on the used malloc page size to mmap an
+ # overlapping region.
+ tests-exclude-hugetlb2 = \
+@@ -114,22 +150,25 @@ ifeq ($(have-GLIBC_2.23)$(build-shared),yesyes)
+ # Tests that don't play well with mcheck.  They are either bugs in mcheck or
+ # the tests expect specific internal behavior that is changed due to linking to
+ # libmcheck.a.
+-tests-exclude-mcheck = tst-mallocstate \
+-	tst-safe-linking \
+-	tst-malloc-backtrace \
+-	tst-malloc-fork-deadlock \
+-	tst-malloc-stats-cancellation \
+-	tst-malloc-tcache-leak \
+-	tst-malloc-thread-exit \
+-	tst-malloc-thread-fail \
+-	tst-malloc-usable-tunables \
+-	tst-malloc_info \
+-	tst-compathooks-off tst-compathooks-on \
+-	tst-memalign-2 \
+-	tst-memalign-3 \
+-	tst-mxfast \
+-	tst-mallocfork2 \
+-	tst-mallocfork3
++tests-exclude-mcheck = \
++  tst-compathooks-off \
++  tst-compathooks-on \
++  tst-malloc-backtrace \
++  tst-malloc-fork-deadlock \
++  tst-malloc-stats-cancellation \
++  tst-malloc-tcache-leak \
++  tst-malloc-thread-exit \
++  tst-malloc-thread-fail \
++  tst-malloc-usable-tunables \
++  tst-malloc_info \
++  tst-mallocfork2 \
++  tst-mallocfork3 \
++  tst-mallocstate \
++  tst-memalign-2 \
++  tst-memalign-3 \
++  tst-mxfast \
++  tst-safe-linking \
++# tests-exclude-mcheck
+ 
+ tests-mcheck = $(filter-out $(tests-exclude-mcheck) $(tests-static), $(tests))
+ endif
+@@ -157,12 +196,18 @@ extra-libs-others = $(extra-libs)
+ 
+ # Helper objects for some tests.
+ extra-test-objs += \
++  tst-aligned_alloc-lib.so \
+   tst-interpose-aux-nothread.o \
+   tst-interpose-aux-thread.o \
++# extra-test-objs
+ 
+ test-extras = \
+   tst-interpose-aux-nothread \
+   tst-interpose-aux-thread \
++# test-extras
++
++modules-names = \
++  tst-aligned_alloc-lib
+ 
+ libmemusage-routines = memusage
+ libmemusage-inhibit-o = $(filter-out .os,$(object-suffixes))
+@@ -370,3 +415,9 @@ tst-mallocstate-malloc-check-ENV = LD_PRELOAD=$(objpfx)libc_malloc_debug.so
+ # libc_malloc_debug.so.
+ $(objpfx)tst-mallocstate: $(objpfx)libc_malloc_debug.so
+ $(objpfx)tst-mallocstate-malloc-check: $(objpfx)libc_malloc_debug.so
++
++$(objpfx)tst-aligned-alloc-random.out: $(objpfx)tst-aligned_alloc-lib.so
++$(objpfx)tst-malloc-random.out: $(objpfx)tst-aligned_alloc-lib.so
++
++tst-aligned-alloc-random-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
++tst-malloc-random-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
+diff --git a/malloc/tst-aligned-alloc-random.c b/malloc/tst-aligned-alloc-random.c
+new file mode 100644
+index 0000000000..f2825ce38f
+--- /dev/null
++++ b/malloc/tst-aligned-alloc-random.c
+@@ -0,0 +1,43 @@
++/* Test for randomized malloc that calls aligned_alloc
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdlib.h>
++#include <support/check.h>
++#include <time.h>
++
++static int
++do_test (void)
++{
++  void *p1;
++  int i;
++
++  srandom (time (NULL));
++
++  for (i = 0; i < 1024; i++)
++  {
++    size_t size = random () & 0xffff;
++
++    p1 = malloc (size);
++    TEST_VERIFY (p1 != NULL);
++  }
++
++  return 0;
++}
++
++
++#include <support/test-driver.c>
+diff --git a/malloc/tst-aligned_alloc-lib.c b/malloc/tst-aligned_alloc-lib.c
+new file mode 100644
+index 0000000000..0205df5acf
+--- /dev/null
++++ b/malloc/tst-aligned_alloc-lib.c
+@@ -0,0 +1,72 @@
++/* Module used for improved aligned_alloc testing.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   Copyright The GNU Toolchain Authors.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <https://www.gnu.org/licenses/>.  */
++
++#include <array_length.h>
++#include <libc-symbols.h>
++#include <stdlib.h>
++
++extern void *__libc_malloc (size_t size);
++extern void *__libc_calloc (size_t n, size_t size);
++
++int aligned_alloc_count = 0;
++int libc_malloc_count = 0;
++int libc_calloc_count = 0;
++
++/* Get a random alignment value.  Biased towards the smaller values.  Must be
++   a power of 2. */
++static size_t get_random_alignment (void)
++{
++  size_t aligns[] = {
++    1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384
++  };
++
++  return aligns[random () % array_length (aligns)];
++}
++
++static void *get_random_alloc (size_t size)
++{
++  void *retval;
++  size_t align;
++
++  switch (random() % 3)
++  {
++    case 1:
++      align = get_random_alignment ();
++      retval = aligned_alloc (align, size);
++      aligned_alloc_count++;
++      break;
++    case 2:
++      retval = __libc_calloc (1, size);
++      libc_calloc_count++;
++      break;
++    default:
++      retval = __libc_malloc (size);
++      libc_malloc_count++;
++      break;
++  }
++
++  return retval;
++}
++
++
++void * __random_malloc (size_t size)
++{
++  return get_random_alloc (size);
++}
++strong_alias (__random_malloc, malloc)
+diff --git a/malloc/tst-malloc-alternate-path.c b/malloc/tst-malloc-alternate-path.c
+new file mode 100644
+index 0000000000..43ae916815
+--- /dev/null
++++ b/malloc/tst-malloc-alternate-path.c
+@@ -0,0 +1,72 @@
++/* Test that malloc uses mmap when sbrk or brk fails.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* This test sets up an obstruction to ensure that brk/sbrk fails to
++   grow the heap, then verifies that malloc uses mmap for allocations
++   instead.  */
++
++#include <unistd.h>
++#include <sys/mman.h>
++#include <stdlib.h>
++#include <libc-pointer-arith.h>
++#include <support/check.h>
++#include <stddef.h>
++#include <stdalign.h>
++
++#define LARGE_SIZE (10 * (1 << 20)) // 10 MB
++static long page_size;
++
++static int
++do_test (void)
++{
++  /* Get current program break.  */
++  void *current_brk = sbrk (0);
++
++  page_size = sysconf (_SC_PAGESIZE);
++
++  /* Round up to the next page boundary.  */
++  void *next_page_boundary = PTR_ALIGN_UP (current_brk, page_size);
++
++  /* Place a mapping using mmap at the next page boundary.  */
++  void *obstruction_addr
++  = mmap (next_page_boundary, page_size, PROT_READ,
++    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
++
++  /* Check if memory obstruction is set up correctly.  */
++  TEST_VERIFY_EXIT (obstruction_addr == next_page_boundary);
++
++  /* Try to extend the heap beyond the obstruction using sbrk */
++  int *ptr = sbrk (page_size);
++  TEST_VERIFY_EXIT (ptr == (void *) -1);
++
++  /* Attempt multiple small allocations using malloc.  */
++  for (size_t i = 0; i < page_size / alignof (max_align_t); i++)
++    {
++      TEST_VERIFY (malloc (alignof (max_align_t)));
++    }
++
++  /* Attempt to allocate a large block of memory using malloc.  */
++  TEST_VERIFY_EXIT (malloc (LARGE_SIZE) != NULL);
++
++  /* Check if malloc changed current program break.  */
++  TEST_VERIFY_EXIT (current_brk == sbrk (0));
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/malloc/tst-malloc-random.c b/malloc/tst-malloc-random.c
+new file mode 100644
+index 0000000000..762b70c918
+--- /dev/null
++++ b/malloc/tst-malloc-random.c
+@@ -0,0 +1,20 @@
++/* Test malloc with random calls to aligned_alloc and calloc.
++
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include "tst-malloc.c"
+diff --git a/malloc/tst-malloc.c b/malloc/tst-malloc.c
+index a7491d3d00..f7a6e4654c 100644
+--- a/malloc/tst-malloc.c
++++ b/malloc/tst-malloc.c
+@@ -18,7 +18,9 @@
+ #include <errno.h>
+ #include <malloc.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <libc-diag.h>
++#include <time.h>
+ 
+ static int errors = 0;
+ 
+@@ -35,6 +37,8 @@ do_test (void)
+   void *p, *q;
+   int save;
+ 
++  srandom (time (NULL));
++
+   errno = 0;
+ 
+   DIAG_PUSH_NEEDS_COMMENT;
 diff --git a/manual/creature.texi b/manual/creature.texi
 index fa5dd9d6ad..8d19e9dd73 100644
 --- a/manual/creature.texi
@@ -11541,6 +12044,45 @@ index 0000000000..1d636669ba
 +	.local	saved_rsi
 +	.comm	saved_rsi,8,8
 +	.section	.note.GNU-stack,"",@progbits
+diff --git a/sysdeps/x86_64/tst-shstk-legacy-1e-static.sh b/sysdeps/x86_64/tst-shstk-legacy-1e-static.sh
+index 46f1233757..0a9a164a3e 100755
+--- a/sysdeps/x86_64/tst-shstk-legacy-1e-static.sh
++++ b/sysdeps/x86_64/tst-shstk-legacy-1e-static.sh
+@@ -26,7 +26,7 @@ ${common_objpfx}elf/tst-shstk-legacy-1e-static
+ status=$?
+ if test $status -eq 77; then
+   exit 77
+-elif test $status == 139; then
++elif test $status -eq 139; then
+   exit 0
+ else
+   exit 1
+diff --git a/sysdeps/x86_64/tst-shstk-legacy-1e.sh b/sysdeps/x86_64/tst-shstk-legacy-1e.sh
+index 31212453d9..3dec5623e4 100755
+--- a/sysdeps/x86_64/tst-shstk-legacy-1e.sh
++++ b/sysdeps/x86_64/tst-shstk-legacy-1e.sh
+@@ -28,7 +28,7 @@ ${test_program_prefix} \
+ status=$?
+ if test $status -eq 77; then
+   exit 77
+-elif test $status == 139; then
++elif test $status -eq 139; then
+   exit 0
+ else
+   exit 1
+diff --git a/sysdeps/x86_64/tst-shstk-legacy-1g.sh b/sysdeps/x86_64/tst-shstk-legacy-1g.sh
+index e84087068e..249831e816 100755
+--- a/sysdeps/x86_64/tst-shstk-legacy-1g.sh
++++ b/sysdeps/x86_64/tst-shstk-legacy-1g.sh
+@@ -28,7 +28,7 @@ ${test_program_prefix} \
+ status=$?
+ if test $status -eq 77; then
+   exit 77
+-elif test $status == 139; then
++elif test $status -eq 139; then
+   exit 0
+ else
+   exit 1
 diff --git a/sysvipc/sys/msg.h b/sysvipc/sys/msg.h
 index d0388b0522..4178ad9955 100644
 --- a/sysvipc/sys/msg.h
