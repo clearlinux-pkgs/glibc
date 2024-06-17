@@ -14,8 +14,10 @@ Adhemerval Zanella (11):
 Amrita H S (1):
       ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
 
-Andreas K. Hüttel (1):
+Andreas K. Hüttel (3):
       Replace advisories directory
+      NEWS: update list of fixed bugs in 2.39
+      NEWS: update list of fixed CVEs in 2.39
 
 Andreas Schwab (1):
       Add tst-gnu2-tls2mod1 to test-internal-extras
@@ -51,7 +53,7 @@ Gabi Falk (7):
       Add a test to check for duplicate definitions in the static library
       x86_64: Fix missing wcsncat function definition without multiarch (x86-64-v4)
 
-H.J. Lu (11):
+H.J. Lu (13):
       x86-64: Save APX registers in ld.so trampoline
       x86: Update _dl_tlsdesc_dynamic to preserve caller-saved registers
       x86-64: Update _dl_tlsdesc_dynamic to preserve AMX registers
@@ -63,6 +65,8 @@ H.J. Lu (11):
       Force DT_RPATH for --enable-hardcoded-path-in-tests
       parse_fdinfo: Don't advance pointer twice [BZ #31798]
       malloc/Makefile: Split and sort tests
+      x86: Properly set MINIMUM_X86_ISA_LEVEL for i386 [BZ #31867]
+      x86: Properly set x86 minimum ISA level [BZ #31883]
 
 Jakub Jelinek (1):
       Use gcc __builtin_stdc_* builtins in stdbit.h if possible
@@ -78,6 +82,9 @@ Manjunath Matti (1):
 
 Michael Jeanson (1):
       x86/cet: fix shadow stack test scripts
+
+Mike FABIAN (1):
+      localedata: ssy_ER: Fix syntax error
 
 Sam James (3):
       Revert "Add a test to check for duplicate definitions in the static library"
@@ -162,6 +169,87 @@ index 7052b46df8..2e351c0321 100644
  # Print test summary for tests in $1 .sum file;
  # $2 is optional test identifier.
  # Fail if there are unexpected failures in the test results.
+diff --git a/NEWS b/NEWS
+index 1b89f9c010..06faac3b1f 100644
+--- a/NEWS
++++ b/NEWS
+@@ -5,6 +5,76 @@ See the end for copying conditions.
+ Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
+ using `glibc' in the "product" field.
+ 
++Version 2.39.1
++
++Security related changes:
++
++The following CVEs were fixed in this release:
++
++  GLIBC-SA-2024-0004:
++    ISO-2022-CN-EXT: fix out-of-bound writes when writing escape
++    sequence (CVE-2024-2961)
++
++  GLIBC-SA-2024-0005:
++    nscd: Stack-based buffer overflow in netgroup cache (CVE-2024-33599)
++
++  GLIBC-SA-2024-0006:
++    nscd: Null pointer crash after notfound response (CVE-2024-33600)
++
++  GLIBC-SA-2024-0007:
++    nscd: netgroup cache may terminate daemon on memory allocation
++    failure (CVE-2024-33601)
++
++  GLIBC-SA-2024-0008:
++    nscd: netgroup cache assumes NSS callback uses in-buffer strings
++    (CVE-2024-33602)
++
++The following bugs are resolved with this release:
++
++  [19622] network: Support aliasing with struct sockaddr
++  [30701] time: getutxent misbehaves on 32-bit x86 when _TIME_BITS=64
++  [30994] REP MOVSB performance suffers from page aliasing on Zen 4
++  [31339] libc: arm32 loader crash after cleanup in 2.36
++  [31325] mips: clone3 is wrong for o32
++  [31335] math: Compile glibc with -march=x86-64-v3 should disable FMA4
++    multi-arch version
++  [31402] libc: clone (NULL, NULL, ...) clobbers %r7 register on
++    s390{,x}
++  [31479] libc: Missing #include <sys/rseq.h> in sched_getcpu.c may
++    result in a loss of rseq acceleration
++  [31316] build: Fails test misc/tst-dirname "Didn't expect signal from
++    child: got `Illegal instruction'" on non SSE CPUs
++  [31371] x86-64: APX and Tile registers aren't preserved in ld.so 
++    trampoline
++  [31372] dynamic-link: _dl_tlsdesc_dynamic doesn't preserve all caller-
++    saved registers
++  [31429] build: Glibc failed to build with -march=x86-64-v3
++  [31501] dynamic-link: _dl_tlsdesc_dynamic_xsavec may clobber %rbx
++  [31640] dynamic-link: POWER10 ld.so crashes in
++    elf_machine_load_address with GCC 14
++  [31676] Configuring with CC="gcc -march=x86-64-v3"
++    --with-rtld-early-cflags=-march=x86-64 results in linker failure
++  [31677] nscd: nscd: netgroup cache: invalid memcpy under low
++    memory/storage conditions
++  [31678] nscd: nscd: Null pointer dereferences after failed netgroup
++    cache insertion
++  [31679] nscd: nscd: netgroup cache may terminate daemon on memory
++    allocation failure
++  [31680] nscd: nscd: netgroup cache assumes NSS callback uses in-buffer
++    strings
++  [31686] dynamic-link: Stack-based buffer overflow in
++    parse_tunables_string
++  [31719] dynamic-link: --enable-hardcoded-path-in-tests doesn't work
++    with -Wl,--enable-new-dtags
++  [31782] Test build failure with recent GCC trunk
++    (x86/tst-cpu-features-supports.c:69:3: error: parameter to builtin
++    not valid: avx5124fmaps)
++  [31798] pidfd_getpid.c is miscompiled by GCC 6.4
++  [31867] build: "CPU ISA level is lower than required" on SSE2-free
++    CPUs
++  [31883] build: ISA level support configure check relies on bashism /
++    is otherwise broken for arithmetic
++
+ Version 2.39
+ 
+ Major new features:
 diff --git a/advisories/GLIBC-SA-2023-0001 b/advisories/GLIBC-SA-2023-0001
 deleted file mode 100644
 index 3d19c91b6a..0000000000
@@ -1627,6 +1715,19 @@ index c5eacedd6a..1c7587d9c1 100644
  extern int utime (const char *__file,
  		  const struct utimbuf *__file_times)
       __THROW __nonnull ((1));
+diff --git a/localedata/locales/ssy_ER b/localedata/locales/ssy_ER
+index 05d94c9f10..43a16e0f54 100644
+--- a/localedata/locales/ssy_ER
++++ b/localedata/locales/ssy_ER
+@@ -106,7 +106,7 @@ country_ab3   "ERI"
+ country_num   232
+ country_car   "ER"
+ % country_isbn  unknown, Need ISO 2108
+-# https://en.wikipedia.org/wiki/Saho_language has "Saaho" as the endonym but CLDR has "Saho"
++% https://en.wikipedia.org/wiki/Saho_language has "Saaho" as the endonym but CLDR has "Saho"
+ lang_name     "Saho"
+ lang_ab       ""
+ lang_term     "ssy"
 diff --git a/login/Makefile b/login/Makefile
 index 1e22008a61..f91190e3dc 100644
 --- a/login/Makefile
@@ -8481,7 +8582,7 @@ index 70f652bca1..3f40aa76f9 100644
 -# define __WORDSIZE_TIME64_COMPAT32	0
  #endif
 diff --git a/sysdeps/x86/configure b/sysdeps/x86/configure
-index 1f4c2d67fd..d28d9bcb29 100644
+index 1f4c2d67fd..04c6ba3e6c 100644
 --- a/sysdeps/x86/configure
 +++ b/sysdeps/x86/configure
 @@ -98,6 +98,7 @@ printf "%s\n" "$libc_cv_have_x86_lahf_sahf" >&6; }
@@ -8492,7 +8593,7 @@ index 1f4c2d67fd..d28d9bcb29 100644
    fi
    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for MOVBE instruction support" >&5
  printf %s "checking for MOVBE instruction support... " >&6; }
-@@ -120,8 +121,47 @@ printf "%s\n" "$libc_cv_have_x86_movbe" >&6; }
+@@ -120,8 +121,53 @@ printf "%s\n" "$libc_cv_have_x86_movbe" >&6; }
    if test $libc_cv_have_x86_movbe = yes; then
      printf "%s\n" "#define HAVE_X86_MOVBE 1" >>confdefs.h
  
@@ -8514,8 +8615,12 @@ index 1f4c2d67fd..d28d9bcb29 100644
 +libc_cv_have_x86_isa_level=3
 +#elif MINIMUM_X86_ISA_LEVEL == 2
 +libc_cv_have_x86_isa_level=2
-+#else
++#elif defined __x86_64__
 +libc_cv_have_x86_isa_level=baseline
++#elif MINIMUM_X86_ISA_LEVEL == 1
++libc_cv_have_x86_isa_level=1
++#else
++libc_cv_have_x86_isa_level=0
 +#endif
 +EOF
 +		 eval `${CC-cc} $CFLAGS $CPPFLAGS $ISAFLAG -I$srcdir -E conftest.c | grep libc_cv_have_x86_isa_level`
@@ -8523,8 +8628,10 @@ index 1f4c2d67fd..d28d9bcb29 100644
  fi
 +{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $libc_cv_have_x86_isa_level" >&5
 +printf "%s\n" "$libc_cv_have_x86_isa_level" >&6; }
-+else
++elif test $base_machine = x86_64; then
 +  libc_cv_have_x86_isa_level=baseline
++else
++  libc_cv_have_x86_isa_level=0
 +fi
 +if test $libc_cv_have_x86_isa_level = baseline; then
 +  printf "%s\n" "#define MINIMUM_X86_ISA_LEVEL 1" >>confdefs.h
@@ -8541,7 +8648,7 @@ index 1f4c2d67fd..d28d9bcb29 100644
  enable-x86-isa-level = $libc_cv_include_x86_isa_level"
  
 diff --git a/sysdeps/x86/configure.ac b/sysdeps/x86/configure.ac
-index 437a50623b..5b0acd03d2 100644
+index 437a50623b..8a259d3971 100644
 --- a/sysdeps/x86/configure.ac
 +++ b/sysdeps/x86/configure.ac
 @@ -72,6 +72,7 @@ if test $libc_cv_include_x86_isa_level = yes; then
@@ -8552,7 +8659,7 @@ index 437a50623b..5b0acd03d2 100644
    fi
    AC_CACHE_CHECK([for MOVBE instruction support],
  		 libc_cv_have_x86_movbe, [dnl
-@@ -81,8 +82,36 @@ if test $libc_cv_include_x86_isa_level = yes; then
+@@ -81,8 +82,42 @@ if test $libc_cv_include_x86_isa_level = yes; then
      fi])
    if test $libc_cv_have_x86_movbe = yes; then
      AC_DEFINE(HAVE_X86_MOVBE)
@@ -8570,14 +8677,20 @@ index 437a50623b..5b0acd03d2 100644
 +libc_cv_have_x86_isa_level=3
 +#elif MINIMUM_X86_ISA_LEVEL == 2
 +libc_cv_have_x86_isa_level=2
-+#else
++#elif defined __x86_64__
 +libc_cv_have_x86_isa_level=baseline
++#elif MINIMUM_X86_ISA_LEVEL == 1
++libc_cv_have_x86_isa_level=1
++#else
++libc_cv_have_x86_isa_level=0
 +#endif
 +EOF
 +		 eval `${CC-cc} $CFLAGS $CPPFLAGS $ISAFLAG -I$srcdir -E conftest.c | grep libc_cv_have_x86_isa_level`
 +		 rm -rf conftest*])
-+else
++elif test $base_machine = x86_64; then
 +  libc_cv_have_x86_isa_level=baseline
++else
++  libc_cv_have_x86_isa_level=0
  fi
 +if test $libc_cv_have_x86_isa_level = baseline; then
 +  AC_DEFINE_UNQUOTED(MINIMUM_X86_ISA_LEVEL, 1)
@@ -8983,10 +9096,29 @@ index b9bf3115b6..cd7bd27cf3 100644
    unsigned int xsave_state_full_size;
    /* Data cache size for use in memory and string routines, typically
 diff --git a/sysdeps/x86/isa-level.h b/sysdeps/x86/isa-level.h
-index 11fe1ca90c..2c7f74212b 100644
+index 11fe1ca90c..03c1fe2bf5 100644
 --- a/sysdeps/x86/isa-level.h
 +++ b/sysdeps/x86/isa-level.h
-@@ -61,8 +61,10 @@
+@@ -35,7 +35,17 @@
+ # define __X86_ISA_V1 0
+ #endif
+ 
+-#if __X86_ISA_V1 && defined __GCC_HAVE_SYNC_COMPARE_AND_SWAP_16               \
++#ifdef __x86_64__
++# ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_16
++#  define __GCC_HAVE_SYNC_COMPARE_AND_SWAP
++# endif
++#else
++# ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
++#  define __GCC_HAVE_SYNC_COMPARE_AND_SWAP
++# endif
++#endif
++
++#if __X86_ISA_V1 && defined __GCC_HAVE_SYNC_COMPARE_AND_SWAP		      \
+     && defined HAVE_X86_LAHF_SAHF && defined __POPCNT__ && defined __SSE3__   \
+     && defined __SSSE3__ && defined __SSE4_1__ && defined __SSE4_2__
+ /* NB: ISAs in x86-64 ISA level v2 are used.  */
+@@ -61,8 +71,10 @@
  # define __X86_ISA_V4 0
  #endif
  
