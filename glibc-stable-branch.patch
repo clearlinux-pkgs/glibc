@@ -28,7 +28,7 @@ Carlos O'Donell (1):
 Charles Fol (1):
       iconv: ISO-2022-CN-EXT: fix out-of-bound writes when writing escape sequence (CVE-2024-2961)
 
-Florian Weimer (14):
+Florian Weimer (15):
       linux: Use rseq area unconditionally in sched_getcpu (bug 31479)
       i386: Use generic memrchr in libc (bug 31316)
       powerpc: Fix ld.so address determination for PCREL mode (bug 31640)
@@ -43,6 +43,7 @@ Florian Weimer (14):
       nscd: Use time_t for return type of addgetnetgrentX
       socket: Use may_alias on sockaddr structs (bug 19622)
       elf: Avoid some free (NULL) calls in _dl_update_slotinfo
+      Linux: Include <dl-symbol-redir-ifunc.h> in dl-sysdep.c
 
 Gabi Falk (7):
       i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk
@@ -7168,10 +7169,18 @@ index e3d758b163..ea2a58ecb1 100644
    GLRO(dl_fpu_control) = auxv_values[AT_FPUCW];
    _dl_random = (void *) auxv_values[AT_RANDOM];
 diff --git a/sysdeps/unix/sysv/linux/dl-sysdep.c b/sysdeps/unix/sysv/linux/dl-sysdep.c
-index ad3692d738..e1b14e9eb3 100644
+index ad3692d738..a8ec2d7c18 100644
 --- a/sysdeps/unix/sysv/linux/dl-sysdep.c
 +++ b/sysdeps/unix/sysv/linux/dl-sysdep.c
-@@ -197,6 +197,8 @@ _dl_show_auxv (void)
+@@ -40,6 +40,7 @@
+ #include <sys/utsname.h>
+ #include <tls.h>
+ #include <unistd.h>
++#include <dl-symbol-redir-ifunc.h>
+ 
+ #include <dl-machine.h>
+ #include <dl-hwcap-check.h>
+@@ -197,6 +198,8 @@ _dl_show_auxv (void)
  	  [AT_SYSINFO_EHDR - 2] =	{ "SYSINFO_EHDR:      0x", hex },
  	  [AT_RANDOM - 2] =		{ "RANDOM:            0x", hex },
  	  [AT_HWCAP2 - 2] =		{ "HWCAP2:            0x", hex },
