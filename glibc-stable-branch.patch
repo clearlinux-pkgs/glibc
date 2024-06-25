@@ -1,4 +1,4 @@
-Adhemerval Zanella (11):
+Adhemerval Zanella (12):
       arm: Remove wrong ldr from _dl_start_user (BZ 31339)
       mips: FIx clone3 implementation (BZ 31325)
       Ignore undefined symbols for -mtls-dialect=gnu2
@@ -10,6 +10,7 @@ Adhemerval Zanella (11):
       elf: Only process multiple tunable once (BZ 31686)
       Always define __USE_TIME_BITS64 when 64 bit time_t is used
       Reinstate generic features-time64.h
+      posix: Fix pidfd_spawn/pidfd_spawnp leak if execve fails (BZ 31695)
 
 Amrita H S (1):
       ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
@@ -171,10 +172,10 @@ index 7052b46df8..2e351c0321 100644
  # $2 is optional test identifier.
  # Fail if there are unexpected failures in the test results.
 diff --git a/NEWS b/NEWS
-index 1b89f9c010..06faac3b1f 100644
+index 1b89f9c010..2a40238d0a 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,76 @@ See the end for copying conditions.
+@@ -5,6 +5,77 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -237,6 +238,7 @@ index 1b89f9c010..06faac3b1f 100644
 +    strings
 +  [31686] dynamic-link: Stack-based buffer overflow in
 +    parse_tunables_string
++  [31695] libc: pidfd_spawn/pidfd_spawnp leak an fd if clone3 succeeds
 +  [31719] dynamic-link: --enable-hardcoded-path-in-tests doesn't work
 +    with -Wl,--enable-new-dtags
 +  [31782] Test build failure with recent GCC trunk
@@ -2912,6 +2914,104 @@ index edbb7b4392..1f44ee1145 100644
  /* PID is like waitpid.  Other args are like wait3.  */
  extern __pid_t wait4 (__pid_t __pid, int *__stat_loc, int __options,
  		      struct rusage *__usage) __THROWNL;
+diff --git a/posix/tst-spawn2.c b/posix/tst-spawn2.c
+index bb507204a2..b2bad3f1f7 100644
+--- a/posix/tst-spawn2.c
++++ b/posix/tst-spawn2.c
+@@ -26,6 +26,7 @@
+ #include <stdio.h>
+ 
+ #include <support/check.h>
++#include <support/descriptors.h>
+ #include <tst-spawn.h>
+ 
+ int
+@@ -38,38 +39,53 @@ do_test (void)
+   char * const args[] = { 0 };
+   PID_T_TYPE pid = -1;
+ 
+-  int ret = POSIX_SPAWN (&pid, program, 0, 0, args, environ);
+-  if (ret != ENOENT)
+-    {
+-      errno = ret;
+-      FAIL_EXIT1 ("posix_spawn: %m");
+-    }
+-
+-  /* POSIX states the value returned on pid variable in case of an error
+-     is not specified.  GLIBC will update the value iff the child
+-     execution is successful.  */
+-  if (pid != -1)
+-    FAIL_EXIT1 ("posix_spawn returned pid != -1 (%i)", (int) pid);
+-
+-  /* Check if no child is actually created.  */
+-  TEST_COMPARE (WAITID (P_ALL, 0, NULL, WEXITED), -1);
+-  TEST_COMPARE (errno, ECHILD);
+-
+-  /* Same as before, but with posix_spawnp.  */
+-  char *args2[] = { (char*) program, 0 };
+-
+-  ret = POSIX_SPAWNP (&pid, args2[0], 0, 0, args2, environ);
+-  if (ret != ENOENT)
+-    {
+-      errno = ret;
+-      FAIL_EXIT1 ("posix_spawnp: %m");
+-    }
+-
+-  if (pid != -1)
+-    FAIL_EXIT1 ("posix_spawnp returned pid != -1 (%i)", (int) pid);
+-
+-  TEST_COMPARE (WAITID (P_ALL, 0, NULL, WEXITED), -1);
+-  TEST_COMPARE (errno, ECHILD);
++  {
++    struct support_descriptors *descrs = support_descriptors_list ();
++
++    int ret = POSIX_SPAWN (&pid, program, 0, 0, args, environ);
++    if (ret != ENOENT)
++      {
++	errno = ret;
++	FAIL_EXIT1 ("posix_spawn: %m");
++      }
++
++    /* POSIX states the value returned on pid variable in case of an error
++       is not specified.  GLIBC will update the value iff the child
++       execution is successful.  */
++    if (pid != -1)
++      FAIL_EXIT1 ("posix_spawn returned pid != -1 (%i)", (int) pid);
++
++    /* Check if no child is actually created.  */
++    TEST_COMPARE (WAITID (P_ALL, 0, NULL, WEXITED), -1);
++    TEST_COMPARE (errno, ECHILD);
++
++    /* Also check if there is no leak descriptors.  */
++    support_descriptors_check (descrs);
++    support_descriptors_free (descrs);
++  }
++
++  {
++    /* Same as before, but with posix_spawnp.  */
++    char *args2[] = { (char*) program, 0 };
++
++    struct support_descriptors *descrs = support_descriptors_list ();
++
++    int ret = POSIX_SPAWNP (&pid, args2[0], 0, 0, args2, environ);
++    if (ret != ENOENT)
++      {
++	errno = ret;
++	FAIL_EXIT1 ("posix_spawnp: %m");
++      }
++
++    if (pid != -1)
++      FAIL_EXIT1 ("posix_spawnp returned pid != -1 (%i)", (int) pid);
++
++    TEST_COMPARE (WAITID (P_ALL, 0, NULL, WEXITED), -1);
++    TEST_COMPARE (errno, ECHILD);
++
++    support_descriptors_check (descrs);
++    support_descriptors_free (descrs);
++  }
+ 
+   return 0;
+ }
 diff --git a/resolv/netdb.h b/resolv/netdb.h
 index 14228b0d95..b7f473fafe 100644
 --- a/resolv/netdb.h
@@ -8055,6 +8155,40 @@ index 7562875ee2..ea103e5970 100644
 -# define __WORDSIZE_TIME64_COMPAT32	0
  #endif
 +#define __WORDSIZE_TIME64_COMPAT32	1
+diff --git a/sysdeps/unix/sysv/linux/spawni.c b/sysdeps/unix/sysv/linux/spawni.c
+index e8ed2babb9..f57e92815e 100644
+--- a/sysdeps/unix/sysv/linux/spawni.c
++++ b/sysdeps/unix/sysv/linux/spawni.c
+@@ -449,13 +449,22 @@ __spawnix (int *pid, const char *file,
+ 	 caller to actually collect it.  */
+       ec = args.err;
+       if (ec > 0)
+-	/* There still an unlikely case where the child is cancelled after
+-	   setting args.err, due to a positive error value.  Also there is
+-	   possible pid reuse race (where the kernel allocated the same pid
+-	   to an unrelated process).  Unfortunately due synchronization
+-	   issues where the kernel might not have the process collected
+-	   the waitpid below can not use WNOHANG.  */
+-	__waitpid (new_pid, NULL, 0);
++	{
++	  /* There still an unlikely case where the child is cancelled after
++	     setting args.err, due to a positive error value.  Also there is
++	     possible pid reuse race (where the kernel allocated the same pid
++	     to an unrelated process).  Unfortunately due synchronization
++	     issues where the kernel might not have the process collected
++	     the waitpid below can not use WNOHANG.  */
++	  __waitid (use_pidfd ? P_PIDFD : P_PID,
++		    use_pidfd ? args.pidfd : new_pid,
++		    NULL,
++		    WEXITED);
++	  /* For pidfd we need to also close the file descriptor for the case
++	     where execve fails.  */
++	  if (use_pidfd)
++	    __close_nocancel_nostatus (args.pidfd);
++	}
+     }
+   else
+     ec = errno;
 diff --git a/sysdeps/unix/sysv/linux/sys/epoll.h b/sysdeps/unix/sysv/linux/sys/epoll.h
 index 9b51e3bd14..fc8dce45c8 100644
 --- a/sysdeps/unix/sysv/linux/sys/epoll.h
