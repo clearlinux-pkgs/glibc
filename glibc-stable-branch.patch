@@ -1,4 +1,4 @@
-Adhemerval Zanella (12):
+Adhemerval Zanella (16):
       arm: Remove wrong ldr from _dl_start_user (BZ 31339)
       mips: FIx clone3 implementation (BZ 31325)
       Ignore undefined symbols for -mtls-dialect=gnu2
@@ -11,6 +11,10 @@ Adhemerval Zanella (12):
       Always define __USE_TIME_BITS64 when 64 bit time_t is used
       Reinstate generic features-time64.h
       posix: Fix pidfd_spawn/pidfd_spawnp leak if execve fails (BZ 31695)
+      math: Fix i386 and m68k fmod/fmodf on static build (BZ 31488)
+      math: Fix i386 and m68k exp10 on static build (BZ 31775)
+      math: Fix isnanf128 static build (BZ 31774)
+      math: Provide missing math symbols on libc.a (BZ 31781)
 
 Amrita H S (1):
       ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
@@ -6001,6 +6005,55 @@ index 84e6686eba..f2139fc172 100644
  float128: 1
  ldouble: 1
  
+diff --git a/sysdeps/i386/fpu/w_exp10_compat.c b/sysdeps/i386/fpu/w_exp10_compat.c
+index b53455386e..49a0e03385 100644
+--- a/sysdeps/i386/fpu/w_exp10_compat.c
++++ b/sysdeps/i386/fpu/w_exp10_compat.c
+@@ -1,3 +1,8 @@
+ /* i386 provides an optimized __ieee754_exp10.  */
+-#define NO_COMPAT_NEEDED 1
+-#include <math/w_exp10_compat.c>
++#ifdef SHARED
++# define NO_COMPAT_NEEDED 1
++# include <math/w_exp10_compat.c>
++#else
++# include <math-type-macros-double.h>
++# include <w_exp10_template.c>
++#endif
+diff --git a/sysdeps/i386/fpu/w_fmod_compat.c b/sysdeps/i386/fpu/w_fmod_compat.c
+index 5ac9995ffd..528bfc2a13 100644
+--- a/sysdeps/i386/fpu/w_fmod_compat.c
++++ b/sysdeps/i386/fpu/w_fmod_compat.c
+@@ -7,8 +7,9 @@
+ # define LIBM_SVID_COMPAT 1
+ # undef compat_symbol
+ # define compat_symbol(a, b, c, d)
+-#endif
+-#include <math/w_fmod_compat.c>
+-#ifdef SHARED
++# include <math/w_fmod_compat.c>
+ libm_alias_double (__fmod_compat, fmod)
++#else
++#include <math-type-macros-double.h>
++#include <w_fmod_template.c>
+ #endif
+diff --git a/sysdeps/i386/fpu/w_fmodf_compat.c b/sysdeps/i386/fpu/w_fmodf_compat.c
+index cc417e07d3..5a61693e51 100644
+--- a/sysdeps/i386/fpu/w_fmodf_compat.c
++++ b/sysdeps/i386/fpu/w_fmodf_compat.c
+@@ -7,8 +7,9 @@
+ # define LIBM_SVID_COMPAT 1
+ # undef compat_symbol
+ # define compat_symbol(a, b, c, d)
+-#endif
+-#include <math/w_fmodf_compat.c>
+-#ifdef SHARED
++# include <math/w_fmodf_compat.c>
+ libm_alias_float (__fmod_compat, fmod)
++#else
++#include <math-type-macros-float.h>
++#include <w_fmod_template.c>
+ #endif
 diff --git a/sysdeps/i386/i586/memcpy.S b/sysdeps/i386/i586/memcpy.S
 index 3e26f112d6..79856d498a 100644
 --- a/sysdeps/i386/i586/memcpy.S
@@ -6058,6 +6111,93 @@ index d9dae04171..e123f87435 100644
  
  END (__memrchr_sse2)
 -strong_alias (__memrchr_sse2, __GI___memrchr)
+ #endif
+diff --git a/sysdeps/ieee754/float128/s_isnanf128.c b/sysdeps/ieee754/float128/s_isnanf128.c
+index 59f71533ce..b73a4e80d7 100644
+--- a/sysdeps/ieee754/float128/s_isnanf128.c
++++ b/sysdeps/ieee754/float128/s_isnanf128.c
+@@ -11,7 +11,11 @@
+ #include "../ldbl-128/s_isnanl.c"
+ #if !IS_IN (libm)
+ #include <float128-abi.h>
++#ifdef SHARED
+ hidden_ver (__isnanf128_impl, __isnanf128)
++#else
++strong_alias (__isnanf128_impl, __isnanf128)
++#endif
+ _weak_alias (__isnanf128_impl, isnanl)
+ versioned_symbol (libc, __isnanf128_impl, __isnanf128, GLIBC_2_34);
+ #if (SHLIB_COMPAT (libc, FLOAT128_VERSION_M, GLIBC_2_34))
+diff --git a/sysdeps/ieee754/ldbl-64-128/s_copysignl.c b/sysdeps/ieee754/ldbl-64-128/s_copysignl.c
+index 11b42d04ba..80137847d3 100644
+--- a/sysdeps/ieee754/ldbl-64-128/s_copysignl.c
++++ b/sysdeps/ieee754/ldbl-64-128/s_copysignl.c
+@@ -1,10 +1,10 @@
+ #include <math_ldbl_opt.h>
+ #include <libm-alias-ldouble.h>
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ # undef libm_alias_ldouble
+ # define libm_alias_ldouble(from, to)
+ #endif
+ #include <sysdeps/ieee754/ldbl-128/s_copysignl.c>
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ long_double_symbol (libc, __copysignl, copysignl);
+ #endif
+diff --git a/sysdeps/ieee754/ldbl-64-128/s_frexpl.c b/sysdeps/ieee754/ldbl-64-128/s_frexpl.c
+index 73ac41e40c..f5f7d349f7 100644
+--- a/sysdeps/ieee754/ldbl-64-128/s_frexpl.c
++++ b/sysdeps/ieee754/ldbl-64-128/s_frexpl.c
+@@ -1,10 +1,10 @@
+ #include <math_ldbl_opt.h>
+ #include <libm-alias-ldouble.h>
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ # undef libm_alias_ldouble
+ # define libm_alias_ldouble(from, to)
+ #endif
+ #include <sysdeps/ieee754/ldbl-128/s_frexpl.c>
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ long_double_symbol (libc, __frexpl, frexpl);
+ #endif
+diff --git a/sysdeps/ieee754/ldbl-64-128/s_modfl.c b/sysdeps/ieee754/ldbl-64-128/s_modfl.c
+index 7d7aeae111..ba3d31334a 100644
+--- a/sysdeps/ieee754/ldbl-64-128/s_modfl.c
++++ b/sysdeps/ieee754/ldbl-64-128/s_modfl.c
+@@ -1,10 +1,10 @@
+ #include <math_ldbl_opt.h>
+ #include <libm-alias-ldouble.h>
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ # undef libm_alias_ldouble
+ # define libm_alias_ldouble(from, to)
+ #endif
+ #include <sysdeps/ieee754/ldbl-128/s_modfl.c>
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ long_double_symbol (libc, __modfl, modfl);
+ #endif
+diff --git a/sysdeps/ieee754/ldbl-opt/s_ldexpl.c b/sysdeps/ieee754/ldbl-opt/s_ldexpl.c
+index 1afbe7d8ad..932cc4341c 100644
+--- a/sysdeps/ieee754/ldbl-opt/s_ldexpl.c
++++ b/sysdeps/ieee754/ldbl-opt/s_ldexpl.c
+@@ -17,13 +17,13 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ # define declare_mgen_alias(f,t)
+ #endif
+ #include <math-type-macros-ldouble.h>
+ #include <s_ldexp_template.c>
+ 
+-#if IS_IN (libc)
++#if IS_IN (libc) && defined SHARED
+ long_double_symbol (libc, __ldexpl, ldexpl);
+ long_double_symbol (libc, __wrap_scalbnl, scalbnl);
  #endif
 diff --git a/sysdeps/loongarch/fpu/e_scalbf.c b/sysdeps/loongarch/fpu/e_scalbf.c
 index 9f05485236..7c0395fbb5 100644
@@ -6207,6 +6347,54 @@ index 0000000000..6ecbfe7c86
 +#define __WORDSIZE_TIME64_COMPAT32	1
 +#define __WORDSIZE32_SIZE_ULONG		0
 +#define __WORDSIZE32_PTRDIFF_LONG	0
+diff --git a/sysdeps/m68k/m680x0/fpu/w_exp10_compat.c b/sysdeps/m68k/m680x0/fpu/w_exp10_compat.c
+index 0d3e718626..350f2e4b4d 100644
+--- a/sysdeps/m68k/m680x0/fpu/w_exp10_compat.c
++++ b/sysdeps/m68k/m680x0/fpu/w_exp10_compat.c
+@@ -1,3 +1,8 @@
+ /* m68k provides an optimized __ieee754_exp10.  */
+-#define NO_COMPAT_NEEDED 1
+-#include <math/w_exp10_compat.c>
++#ifdef SHARED
++# define NO_COMPAT_NEEDED 1
++# include <math/w_exp10_compat.c>
++#else
++# include <math-type-macros-double.h>
++# include <w_exp10_template.c>
++#endif
+diff --git a/sysdeps/m68k/m680x0/fpu/w_fmod_compat.c b/sysdeps/m68k/m680x0/fpu/w_fmod_compat.c
+index 527d4fbed2..57f38091e6 100644
+--- a/sysdeps/m68k/m680x0/fpu/w_fmod_compat.c
++++ b/sysdeps/m68k/m680x0/fpu/w_fmod_compat.c
+@@ -7,8 +7,9 @@
+ # define LIBM_SVID_COMPAT 1
+ # undef compat_symbol
+ # define compat_symbol(a, b, c, d)
+-#endif
+ #include <math/w_fmod_compat.c>
+-#ifdef SHARED
+ libm_alias_double (__fmod_compat, fmod)
++#else
++#include <math-type-macros-double.h>
++#include <w_fmod_template.c>
+ #endif
+diff --git a/sysdeps/m68k/m680x0/fpu/w_fmodf_compat.c b/sysdeps/m68k/m680x0/fpu/w_fmodf_compat.c
+index 5043586b91..88db07f443 100644
+--- a/sysdeps/m68k/m680x0/fpu/w_fmodf_compat.c
++++ b/sysdeps/m68k/m680x0/fpu/w_fmodf_compat.c
+@@ -7,8 +7,9 @@
+ # define LIBM_SVID_COMPAT 1
+ # undef compat_symbol
+ # define compat_symbol(a, b, c, d)
+-#endif
+-#include <math/w_fmodf_compat.c>
+-#ifdef SHARED
++# include <math/w_fmodf_compat.c>
+ libm_alias_float (__fmod_compat, fmod)
++#else
++#include <math-type-macros-float.h>
++#include <w_fmod_template.c>
+ #endif
 diff --git a/sysdeps/m68k/utmp-size.h b/sysdeps/m68k/utmp-size.h
 new file mode 100644
 index 0000000000..5946685819
