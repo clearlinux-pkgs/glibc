@@ -1,4 +1,4 @@
-Adhemerval Zanella (16):
+Adhemerval Zanella (17):
       arm: Remove wrong ldr from _dl_start_user (BZ 31339)
       mips: FIx clone3 implementation (BZ 31325)
       Ignore undefined symbols for -mtls-dialect=gnu2
@@ -15,6 +15,7 @@ Adhemerval Zanella (16):
       math: Fix i386 and m68k exp10 on static build (BZ 31775)
       math: Fix isnanf128 static build (BZ 31774)
       math: Provide missing math symbols on libc.a (BZ 31781)
+      stdlib: fix arc4random fallback to /dev/urandom (BZ 31612)
 
 Amrita H S (1):
       ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
@@ -176,10 +177,10 @@ index 7052b46df8..2e351c0321 100644
  # $2 is optional test identifier.
  # Fail if there are unexpected failures in the test results.
 diff --git a/NEWS b/NEWS
-index 1b89f9c010..2a40238d0a 100644
+index 1b89f9c010..4eadd9e51d 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,77 @@ See the end for copying conditions.
+@@ -5,6 +5,79 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -228,6 +229,8 @@ index 1b89f9c010..2a40238d0a 100644
 +    saved registers
 +  [31429] build: Glibc failed to build with -march=x86-64-v3
 +  [31501] dynamic-link: _dl_tlsdesc_dynamic_xsavec may clobber %rbx
++  [31612] libc: arc4random fails to fallback to /dev/urandom if
++    getrandom is not present
 +  [31640] dynamic-link: POWER10 ld.so crashes in
 +    elf_machine_load_address with GCC 14
 +  [31676] Configuring with CC="gcc -march=x86-64-v3"
@@ -3313,6 +3316,19 @@ index d587f054d1..9898cc5d8a 100644
    tst-stdc_bit_ceil \
    tst-stdc_bit_floor \
    tst-stdc_bit_width \
+diff --git a/stdlib/arc4random.c b/stdlib/arc4random.c
+index 3ae8fc1302..7818cb9cf6 100644
+--- a/stdlib/arc4random.c
++++ b/stdlib/arc4random.c
+@@ -51,7 +51,7 @@ __arc4random_buf (void *p, size_t n)
+ 	  n -= l;
+ 	  continue; /* Interrupted by a signal; keep going.  */
+ 	}
+-      else if (l == -ENOSYS)
++      else if (l < 0 && errno == ENOSYS)
+ 	break; /* No syscall, so fallback to /dev/urandom.  */
+       arc4random_getrandom_failure ();
+     }
 diff --git a/stdlib/stdbit.h b/stdlib/stdbit.h
 index f334eb174d..2801590c63 100644
 --- a/stdlib/stdbit.h
