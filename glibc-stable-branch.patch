@@ -105,8 +105,9 @@ Sergey Kolosov (2):
 Stafford Horne (1):
       misc: Add support for Linux uio.h RWF_NOAPPEND flag
 
-Stefan Liebler (1):
+Stefan Liebler (2):
       S390: Do not clobber r7 in clone [BZ #31402]
+      s390x: Fix segfault in wcsncmp [BZ #31934]
 
 Sunil K Pandey (3):
       x86-64: Simplify minimum ISA check ifdef conditional with if
@@ -7134,6 +7135,34 @@ index 0000000000..8f21ebe1b6
 @@ -0,0 +1,2 @@
 +#define UTMP_SIZE 384
 +#define LASTLOG_SIZE 292
+diff --git a/sysdeps/s390/wcsncmp-vx.S b/sysdeps/s390/wcsncmp-vx.S
+index bf6dfa6bc2..8b081567a2 100644
+--- a/sysdeps/s390/wcsncmp-vx.S
++++ b/sysdeps/s390/wcsncmp-vx.S
+@@ -59,14 +59,7 @@ ENTRY(WCSNCMP_Z13)
+ 	sllg	%r4,%r4,2	/* Convert character-count to byte-count.  */
+ 	locgrne	%r4,%r1		/* Use max byte-count, if bit 0/1 was one.  */
+ 
+-	/* Check first character without vector load.  */
+-	lghi	%r5,4		/* current_len = 4 bytes.  */
+-	/* Check s1/2[0].  */
+-	lt	%r0,0(%r2)
+-	l	%r1,0(%r3)
+-	je	.Lend_cmp_one_char
+-	crjne	%r0,%r1,.Lend_cmp_one_char
+-
++	lghi	%r5,0		/* current_len = 0 bytes.  */
+ .Lloop:
+ 	vlbb	%v17,0(%r5,%r3),6 /* Load s2 to block boundary.  */
+ 	vlbb	%v16,0(%r5,%r2),6 /* Load s1 to block boundary.  */
+@@ -167,7 +160,6 @@ ENTRY(WCSNCMP_Z13)
+ 	srl	%r4,2		/* And convert it to character-index.  */
+ 	vlgvf	%r0,%v16,0(%r4)	/* Load character-values.  */
+ 	vlgvf	%r1,%v17,0(%r4)
+-.Lend_cmp_one_char:
+ 	cr	%r0,%r1
+ 	je	.Lend_equal
+ 	lghi	%r2,1
 diff --git a/sysdeps/sh/bits/wordsize.h b/sysdeps/sh/bits/wordsize.h
 new file mode 100644
 index 0000000000..6ecbfe7c86
