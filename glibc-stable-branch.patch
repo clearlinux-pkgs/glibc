@@ -1,4 +1,4 @@
-Adhemerval Zanella (17):
+Adhemerval Zanella (18):
       arm: Remove wrong ldr from _dl_start_user (BZ 31339)
       mips: FIx clone3 implementation (BZ 31325)
       Ignore undefined symbols for -mtls-dialect=gnu2
@@ -16,6 +16,7 @@ Adhemerval Zanella (17):
       math: Fix isnanf128 static build (BZ 31774)
       math: Provide missing math symbols on libc.a (BZ 31781)
       stdlib: fix arc4random fallback to /dev/urandom (BZ 31612)
+      elf: Make dl-rseq-symbols Linux only
 
 Amrita H S (1):
       ﻿powerpc: Placeholder and infrastructure/build support to add Power11 related changes.
@@ -34,7 +35,7 @@ Carlos O'Donell (1):
 Charles Fol (1):
       iconv: ISO-2022-CN-EXT: fix out-of-bound writes when writing escape sequence (CVE-2024-2961)
 
-Florian Weimer (15):
+Florian Weimer (16):
       linux: Use rseq area unconditionally in sched_getcpu (bug 31479)
       i386: Use generic memrchr in libc (bug 31316)
       powerpc: Fix ld.so address determination for PCREL mode (bug 31640)
@@ -50,6 +51,7 @@ Florian Weimer (15):
       socket: Use may_alias on sockaddr structs (bug 19622)
       elf: Avoid some free (NULL) calls in _dl_update_slotinfo
       Linux: Include <dl-symbol-redir-ifunc.h> in dl-sysdep.c
+      Linux: Make __rseq_size useful for feature detection (bug 31965)
 
 Gabi Falk (7):
       i586: Fix multiple definitions of __memcpy_chk and __mempcpy_chk
@@ -87,8 +89,9 @@ Joe Simmons-Talbott (1):
 Manjunath Matti (1):
       ﻿powerpc: Add HWCAP3/HWCAP4 data to TCB for Power Architecture.
 
-Michael Jeanson (1):
+Michael Jeanson (2):
       x86/cet: fix shadow stack test scripts
+      nptl: fix potential merge of __rseq_* relro symbols
 
 Mike FABIAN (1):
       localedata: ssy_ER: Fix syntax error
@@ -178,14 +181,19 @@ index 7052b46df8..2e351c0321 100644
  # $2 is optional test identifier.
  # Fail if there are unexpected failures in the test results.
 diff --git a/NEWS b/NEWS
-index 1b89f9c010..4eadd9e51d 100644
+index 1b89f9c010..18f902daac 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,79 @@ See the end for copying conditions.
+@@ -5,6 +5,85 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
 +Version 2.39.1
++
++Deprecated and removed features, and other changes affecting compatibility:
++
++* __rseq_size now denotes the size of the active rseq area (20 bytes
++  initially), not the size of struct rseq (32 bytes initially).
 +
 +Security related changes:
 +
@@ -257,6 +265,7 @@ index 1b89f9c010..4eadd9e51d 100644
 +    CPUs
 +  [31883] build: ISA level support configure check relies on bashism /
 +    is otherwise broken for arithmetic
++  [31965] rseq extension mechanism does not work as intended
 +
  Version 2.39
  
@@ -2360,6 +2369,25 @@ index fe41c671d8..6c75ed9a20 100644
  
  @deftypefun {unsigned int} stdc_leading_zeros_uc (unsigned char @var{x})
  @deftypefunx {unsigned int} stdc_leading_zeros_us (unsigned short @var{x})
+diff --git a/manual/threads.texi b/manual/threads.texi
+index e5544ff3da..25e99c9606 100644
+--- a/manual/threads.texi
++++ b/manual/threads.texi
+@@ -1007,8 +1007,12 @@ This variable is either zero (if restartable sequence registration
+ failed or has been disabled) or the size of the restartable sequence
+ registration.  This can be different from the size of @code{struct rseq}
+ if the kernel has extended the size of the registration.  If
+-registration is successful, @code{__rseq_size} is at least 32 (the
+-initial size of @code{struct rseq}).
++registration is successful, @code{__rseq_size} is at least 20 (the
++initially active size of @code{struct rseq}).
++
++Previous versions of @theglibc{} set this to 32 even if the kernel only
++supported the initial area of 20 bytes because the value included unused
++padding at the end of the restartable sequence area.
+ @end deftypevar
+ 
+ @deftypevar {unsigned int} __rseq_flags
 diff --git a/misc/sys/cdefs.h b/misc/sys/cdefs.h
 index 520231dbea..399ee7d24c 100644
 --- a/misc/sys/cdefs.h
@@ -6571,6 +6599,43 @@ index 0000000000..8f21ebe1b6
 @@ -0,0 +1,2 @@
 +#define UTMP_SIZE 384
 +#define LASTLOG_SIZE 292
+diff --git a/sysdeps/nptl/dl-tls_init_tp.c b/sysdeps/nptl/dl-tls_init_tp.c
+index 092c274f36..7803e19fd1 100644
+--- a/sysdeps/nptl/dl-tls_init_tp.c
++++ b/sysdeps/nptl/dl-tls_init_tp.c
+@@ -45,8 +45,6 @@ rtld_mutex_dummy (pthread_mutex_t *lock)
+ #endif
+ 
+ const unsigned int __rseq_flags;
+-const unsigned int __rseq_size attribute_relro;
+-const ptrdiff_t __rseq_offset attribute_relro;
+ 
+ void
+ __tls_pre_init_tp (void)
+@@ -104,12 +102,7 @@ __tls_init_tp (void)
+     bool do_rseq = true;
+     do_rseq = TUNABLE_GET (rseq, int, NULL);
+     if (rseq_register_current_thread (pd, do_rseq))
+-      {
+-        /* We need a writable view of the variables.  They are in
+-           .data.relro and are not yet write-protected.  */
+-        extern unsigned int size __asm__ ("__rseq_size");
+-        size = sizeof (pd->rseq_area);
+-      }
++      _rseq_size = RSEQ_AREA_SIZE_INITIAL_USED;
+ 
+ #ifdef RSEQ_SIG
+     /* This should be a compile-time constant, but the current
+@@ -117,8 +110,7 @@ __tls_init_tp (void)
+        all targets support __thread_pointer, so set __rseq_offset only
+        if the rseq registration may have happened because RSEQ_SIG is
+        defined.  */
+-    extern ptrdiff_t offset __asm__ ("__rseq_offset");
+-    offset = (char *) &pd->rseq_area - (char *) __thread_pointer ();
++    _rseq_offset = (char *) &pd->rseq_area - (char *) __thread_pointer ();
+ #endif
+   }
+ 
 diff --git a/sysdeps/nptl/pthread.h b/sysdeps/nptl/pthread.h
 index 1607fdf29a..3d4f4a756c 100644
 --- a/sysdeps/nptl/pthread.h
@@ -7243,6 +7308,21 @@ index 0000000000..8f21ebe1b6
 @@ -0,0 +1,2 @@
 +#define UTMP_SIZE 384
 +#define LASTLOG_SIZE 292
+diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
+index 415aa1f14d..6ab9b90123 100644
+--- a/sysdeps/unix/sysv/linux/Makefile
++++ b/sysdeps/unix/sysv/linux/Makefile
+@@ -615,6 +615,10 @@ tests += \
+ endif
+ 
+ ifeq ($(subdir),elf)
++dl-routines += \
++  dl-rseq-symbols \
++  # dl-routines
++
+ sysdep-rtld-routines += \
+   dl-brk \
+   dl-getcwd \
 diff --git a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c b/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
 index b1a3f673f0..c0b047bc0d 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
@@ -7501,6 +7581,76 @@ index e3d758b163..ea2a58ecb1 100644
    GLRO(dl_clktck) = auxv_values[AT_CLKTCK];
    GLRO(dl_fpu_control) = auxv_values[AT_FPUCW];
    _dl_random = (void *) auxv_values[AT_RANDOM];
+diff --git a/sysdeps/unix/sysv/linux/dl-rseq-symbols.S b/sysdeps/unix/sysv/linux/dl-rseq-symbols.S
+new file mode 100644
+index 0000000000..b4bba06a99
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/dl-rseq-symbols.S
+@@ -0,0 +1,64 @@
++/* Define symbols used by rseq.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++
++#if __WORDSIZE == 64
++#define RSEQ_OFFSET_SIZE	8
++#else
++#define RSEQ_OFFSET_SIZE	4
++#endif
++
++/* Some targets define a macro to denote the zero register.  */
++#undef zero
++
++/* Define 2 symbols: '__rseq_size' is public const and '_rseq_size' (an
++   alias of '__rseq_size') is hidden and writable for internal use by the
++   dynamic linker which will initialize the value both symbols point to
++   before copy relocations take place. */
++
++	.globl	__rseq_size
++	.type	__rseq_size, %object
++	.size	__rseq_size, 4
++	.hidden _rseq_size
++	.globl	_rseq_size
++	.type	_rseq_size, %object
++	.size	_rseq_size, 4
++	.section .data.rel.ro
++	.balign 4
++__rseq_size:
++_rseq_size:
++	.zero	4
++
++/* Define 2 symbols: '__rseq_offset' is public const and '_rseq_offset' (an
++   alias of '__rseq_offset') is hidden and writable for internal use by the
++   dynamic linker which will initialize the value both symbols point to
++   before copy relocations take place. */
++
++	.globl	__rseq_offset
++	.type	__rseq_offset, %object
++	.size	__rseq_offset, RSEQ_OFFSET_SIZE
++	.hidden _rseq_offset
++	.globl	_rseq_offset
++	.type	_rseq_offset, %object
++	.size	_rseq_offset, RSEQ_OFFSET_SIZE
++	.section .data.rel.ro
++	.balign RSEQ_OFFSET_SIZE
++__rseq_offset:
++_rseq_offset:
++	.zero	RSEQ_OFFSET_SIZE
 diff --git a/sysdeps/unix/sysv/linux/dl-sysdep.c b/sysdeps/unix/sysv/linux/dl-sysdep.c
 index ad3692d738..a8ec2d7c18 100644
 --- a/sysdeps/unix/sysv/linux/dl-sysdep.c
@@ -8176,6 +8326,47 @@ index a4705daf1c..6a00cd88cd 100644
        case AT_PLATFORM:
  	_dl_platform = (void *) av->a_un.a_val;
  	break;
+diff --git a/sysdeps/unix/sysv/linux/rseq-internal.h b/sysdeps/unix/sysv/linux/rseq-internal.h
+index 48eebc1e16..7ea935b4ad 100644
+--- a/sysdeps/unix/sysv/linux/rseq-internal.h
++++ b/sysdeps/unix/sysv/linux/rseq-internal.h
+@@ -25,15 +25,34 @@
+ #include <stdio.h>
+ #include <sys/rseq.h>
+ 
++/* 32 is the initially required value for the area size.  The
++   actually used rseq size may be less (20 bytes initially).  */
++#define RSEQ_AREA_SIZE_INITIAL 32
++#define RSEQ_AREA_SIZE_INITIAL_USED 20
++
++/* The variables are in .data.relro but are not yet write-protected.  */
++extern unsigned int _rseq_size attribute_hidden;
++extern ptrdiff_t _rseq_offset attribute_hidden;
++
+ #ifdef RSEQ_SIG
+ static inline bool
+ rseq_register_current_thread (struct pthread *self, bool do_rseq)
+ {
+   if (do_rseq)
+     {
++      unsigned int size;
++#if IS_IN (rtld)
++      /* Use the hidden symbol in ld.so.  */
++      size = _rseq_size;
++#else
++      size = __rseq_size;
++#endif
++      if (size < RSEQ_AREA_SIZE_INITIAL)
++        /* The initial implementation used only 20 bytes out of 32,
++           but still expected size 32.  */
++        size = RSEQ_AREA_SIZE_INITIAL;
+       int ret = INTERNAL_SYSCALL_CALL (rseq, &self->rseq_area,
+-                                       sizeof (self->rseq_area),
+-                                       0, RSEQ_SIG);
++                                       size, 0, RSEQ_SIG);
+       if (!INTERNAL_SYSCALL_ERROR_P (ret))
+         return true;
+     }
 diff --git a/sysdeps/unix/sysv/linux/s390/bits/struct_stat.h b/sysdeps/unix/sysv/linux/s390/bits/struct_stat.h
 index 9911c47bb2..e5c9024fb2 100644
 --- a/sysdeps/unix/sysv/linux/s390/bits/struct_stat.h
@@ -8610,6 +8801,41 @@ index 470676ab2b..2bc7124983 100644
 -#define TEST_FUNCTION do_test ()
 -#include "../test-skeleton.c"
 +#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/tst-rseq.c b/sysdeps/unix/sysv/linux/tst-rseq.c
+index 2c90409ba0..08a9533130 100644
+--- a/sysdeps/unix/sysv/linux/tst-rseq.c
++++ b/sysdeps/unix/sysv/linux/tst-rseq.c
+@@ -29,6 +29,7 @@
+ # include <stdlib.h>
+ # include <string.h>
+ # include <syscall.h>
++# include <sys/auxv.h>
+ # include <thread_pointer.h>
+ # include <tls.h>
+ # include "tst-rseq.h"
+@@ -42,7 +43,8 @@ do_rseq_main_test (void)
+   TEST_COMPARE (__rseq_flags, 0);
+   TEST_VERIFY ((char *) __thread_pointer () + __rseq_offset
+                == (char *) &pd->rseq_area);
+-  TEST_COMPARE (__rseq_size, sizeof (pd->rseq_area));
++  /* The current implementation only supports the initial size.  */
++  TEST_COMPARE (__rseq_size, 20);
+ }
+ 
+ static void
+@@ -52,6 +54,12 @@ do_rseq_test (void)
+     {
+       FAIL_UNSUPPORTED ("kernel does not support rseq, skipping test");
+     }
++  printf ("info: __rseq_size: %u\n", __rseq_size);
++  printf ("info: __rseq_offset: %td\n", __rseq_offset);
++  printf ("info: __rseq_flags: %u\n", __rseq_flags);
++  printf ("info: getauxval (AT_RSEQ_FEATURE_SIZE): %ld\n",
++          getauxval (AT_RSEQ_FEATURE_SIZE));
++  printf ("info: getauxval (AT_RSEQ_ALIGN): %ld\n", getauxval (AT_RSEQ_ALIGN));
+   do_rseq_main_test ();
+ }
+ #else /* RSEQ_SIG */
 diff --git a/sysdeps/unix/sysv/linux/x86/bits/struct_stat.h b/sysdeps/unix/sysv/linux/x86/bits/struct_stat.h
 index 21aa315d8d..810d6566f0 100644
 --- a/sysdeps/unix/sysv/linux/x86/bits/struct_stat.h
