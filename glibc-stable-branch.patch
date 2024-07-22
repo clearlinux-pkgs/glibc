@@ -86,6 +86,9 @@ Joe Ramsay (1):
 Joe Simmons-Talbott (1):
       malloc: Improve aligned_alloc and calloc test coverage.
 
+John David Anglin (1):
+      Fix usage of _STACK_GROWS_DOWN and _STACK_GROWS_UP defines [BZ 31989]
+
 Manjunath Matti (1):
       ﻿powerpc: Add HWCAP3/HWCAP4 data to TCB for Power Architecture.
 
@@ -2049,6 +2052,19 @@ index c83ade5f10..cc14cf66c9 100644
 +
 +tst-aligned-alloc-random-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
 +tst-malloc-random-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
+diff --git a/malloc/memusage.c b/malloc/memusage.c
+index e8ae80dc74..f80225b95a 100644
+--- a/malloc/memusage.c
++++ b/malloc/memusage.c
+@@ -172,7 +172,7 @@ update_data (struct header *result, size_t len, size_t old_len)
+     start_sp = __thread_stack_pointer ();
+ 
+   uintptr_t sp = __thread_stack_pointer ();
+-#ifdef _STACK_GROWS_UP
++#if _STACK_GROWS_UP
+   /* This can happen in threads where we didn't catch the thread's
+      stack early enough.  */
+   if (__glibc_unlikely (sp < start_sp))
 diff --git a/malloc/tst-aligned-alloc-random.c b/malloc/tst-aligned-alloc-random.c
 new file mode 100644
 index 0000000000..f2825ce38f
@@ -4357,6 +4373,28 @@ index 0000000000..536841ca8a
 +#endif
 +
 +#include <support/test-driver.c>
+diff --git a/stdlib/tst-swapcontext2.c b/stdlib/tst-swapcontext2.c
+index f679755649..a9c1dc827c 100644
+--- a/stdlib/tst-swapcontext2.c
++++ b/stdlib/tst-swapcontext2.c
+@@ -85,7 +85,7 @@ do_test (void)
+ {
+   /* ____longjmp_chk has  */
+ #if 0
+-#ifdef _STACK_GROWS_DOWN
++#if _STACK_GROWS_DOWN
+ #define called_from(this, saved) ((this) < (saved))
+ #else
+ #define called_from(this, saved) ((this) > (saved))
+@@ -98,7 +98,7 @@ do_test (void)
+   /* Arrange stacks for uctx_func1 and uctx_func2 so that called_from
+      is true when setjmp is called from uctx_func1 and longjmp is called
+      from uctx_func2.  */
+-#ifdef _STACK_GROWS_DOWN
++#if _STACK_GROWS_DOWN
+ # define UCTX_FUNC1_STACK	1
+ # define UCTX_FUNC2_STACK	0
+ #else
 diff --git a/support/Makefile b/support/Makefile
 index 362a51f882..aa57207bdc 100644
 --- a/support/Makefile
@@ -7323,6 +7361,19 @@ index 415aa1f14d..6ab9b90123 100644
  sysdep-rtld-routines += \
    dl-brk \
    dl-getcwd \
+diff --git a/sysdeps/unix/sysv/linux/____longjmp_chk.c b/sysdeps/unix/sysv/linux/____longjmp_chk.c
+index 0896dc5755..3c66a4638e 100644
+--- a/sysdeps/unix/sysv/linux/____longjmp_chk.c
++++ b/sysdeps/unix/sysv/linux/____longjmp_chk.c
+@@ -23,7 +23,7 @@
+ #include <stdio.h>
+ #include <stackinfo.h>
+ 
+-#ifdef _STACK_GROWS_DOWN
++#if _STACK_GROWS_DOWN
+ #define called_from(this, saved) ((this) < (saved))
+ #else
+ #define called_from(this, saved) ((this) > (saved))
 diff --git a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c b/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
 index b1a3f673f0..c0b047bc0d 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/cpu-features.c
