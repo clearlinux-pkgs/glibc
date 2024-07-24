@@ -1,6 +1,12 @@
 Andreas K. Hüttel (1):
       Replace advisories directory
 
+Florian Weimer (4):
+      resolv: Allow short error responses to match any query (bug 31890)
+      resolv: Do not wait for non-existing second DNS response after error (bug 30081)
+      manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
+      Fix version number in NEWS file
+
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
 index 0000000000..d4e33f2df3
@@ -9,6 +15,24 @@ index 0000000000..d4e33f2df3
 @@ -0,0 +1,2 @@
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
+diff --git a/NEWS b/NEWS
+index 31281ac408..6b62f55658 100644
+--- a/NEWS
++++ b/NEWS
+@@ -5,6 +5,13 @@ See the end for copying conditions.
+ Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
+ using `glibc' in the "product" field.
+ 
++Version 2.40.1
++
++The following bugs are resolved with this release:
++
++  [30081] resolv: Do not wait for non-existing second DNS response after error
++  [31890] resolv: Allow short error responses to match any DNS query
++
+ Version 2.40
+ 
+ Major new features:
 diff --git a/advisories/GLIBC-SA-2023-0001 b/advisories/GLIBC-SA-2023-0001
 deleted file mode 100644
 index 3d19c91b6a..0000000000
@@ -427,3 +451,394 @@ index b8f8a829ca..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/manual/dynlink.texi b/manual/dynlink.texi
+index 03565d4fb0..1500a53de6 100644
+--- a/manual/dynlink.texi
++++ b/manual/dynlink.texi
+@@ -993,21 +993,21 @@ The dynamic segment should also mention @code{BIND_NOW} on the
+ enough).
+ 
+ @item
+-For shared objects (not main programs), if the program header has a
+-@code{PT_TLS} segment, the dynamic segment (as shown by @samp{readelf
+--dW}) should contain the @code{STATIC_TLS} flag on the @code{FLAGS}
+-line.
+-
+-If @code{STATIC_TLS} is missing in shared objects, ensure that the
+-appropriate relocations for GNU2 TLS descriptors are used (for example,
++Ensure that only static TLS relocations (thread-pointer relative offset
++locations) are used, for example @code{R_AARCH64_TLS_TPREL} and
++@code{X86_64_TPOFF64}.  As the second-best option, and only if
++compatibility with non-hardened applications using @code{dlopen} is
++needed, GNU2 TLS descriptor relocations can be used (for example,
+ @code{R_AARCH64_TLSDESC} or @code{R_X86_64_TLSDESC}).
+ 
+ @item
+-There should not be a reference to the symbols @code{__tls_get_addr},
+-@code{__tls_get_offset}, @code{__tls_get_addr_opt} in the dynamic symbol
+-table (in the @samp{readelf -sDW} output).  Thread-local storage must be
+-accessed using the initial-exec (static) model, or using GNU2 TLS
+-descriptors.
++There should not be references to the traditional TLS function symbols
++@code{__tls_get_addr}, @code{__tls_get_offset},
++@code{__tls_get_addr_opt} in the dynamic symbol table (in the
++@samp{readelf -sDW} output).  Supporting global dynamic TLS relocations
++(such as @code{R_AARCH64_TLS_DTPMOD}, @code{R_AARCH64_TLS_DTPREL},
++@code{R_X86_64_DTPMOD64}, @code{R_X86_64_DTPOFF64}) should not be used,
++either.
+ 
+ @item
+ Likewise, the functions @code{dlopen}, @code{dlmopen}, @code{dlclose}
+diff --git a/resolv/Makefile b/resolv/Makefile
+index 5f44f5896b..abff7fc007 100644
+--- a/resolv/Makefile
++++ b/resolv/Makefile
+@@ -106,6 +106,8 @@ tests += \
+   tst-resolv-nondecimal \
+   tst-resolv-res_init-multi \
+   tst-resolv-search \
++  tst-resolv-semi-failure \
++  tst-resolv-short-response \
+   tst-resolv-trailing \
+ 
+ # This test calls __res_context_send directly, which is not exported
+@@ -299,6 +301,10 @@ $(objpfx)tst-resolv-nondecimal: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-qtypes: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-rotate: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-search: $(objpfx)libresolv.so $(shared-thread-library)
++$(objpfx)tst-resolv-semi-failure: $(objpfx)libresolv.so \
++  $(shared-thread-library)
++$(objpfx)tst-resolv-short-response: $(objpfx)libresolv.so \
++  $(shared-thread-library)
+ $(objpfx)tst-resolv-trailing: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-threads: $(objpfx)libresolv.so $(shared-thread-library)
+ $(objpfx)tst-resolv-txnid-collision: $(objpfx)libresolv.a \
+diff --git a/resolv/res_send.c b/resolv/res_send.c
+index ea7cf192b2..9c77613f37 100644
+--- a/resolv/res_send.c
++++ b/resolv/res_send.c
+@@ -1199,19 +1199,30 @@ send_dg(res_state statp,
+ 		}
+ 
+ 		/* Check for the correct header layout and a matching
+-		   question.  */
++		   question.  Some recursive resolvers send REFUSED
++		   without copying back the question section
++		   (producing a response that is only HFIXEDSZ bytes
++		   long).  Skip query matching in this case.  */
++		bool thisansp_error = (anhp->rcode == SERVFAIL ||
++				       anhp->rcode == NOTIMP ||
++				       anhp->rcode == REFUSED);
++		bool skip_query_match = (*thisresplenp == HFIXEDSZ
++					 && ntohs (anhp->qdcount) == 0
++					 && thisansp_error);
+ 		int matching_query = 0; /* Default to no matching query.  */
+ 		if (!recvresp1
+ 		    && anhp->id == hp->id
+-		    && __libc_res_queriesmatch (buf, buf + buflen,
+-						*thisansp,
+-						*thisansp + *thisanssizp))
++		    && (skip_query_match
++			|| __libc_res_queriesmatch (buf, buf + buflen,
++						    *thisansp,
++						    *thisansp + *thisanssizp)))
+ 		  matching_query = 1;
+ 		if (!recvresp2
+ 		    && anhp->id == hp2->id
+-		    && __libc_res_queriesmatch (buf2, buf2 + buflen2,
+-						*thisansp,
+-						*thisansp + *thisanssizp))
++		    && (skip_query_match
++			|| __libc_res_queriesmatch (buf2, buf2 + buflen2,
++						    *thisansp,
++						    *thisansp + *thisanssizp)))
+ 		  matching_query = 2;
+ 		if (matching_query == 0)
+ 		  /* Spurious UDP packet.  Drop it and continue
+@@ -1221,15 +1232,13 @@ send_dg(res_state statp,
+ 		    goto wait;
+ 		  }
+ 
+-		if (anhp->rcode == SERVFAIL ||
+-		    anhp->rcode == NOTIMP ||
+-		    anhp->rcode == REFUSED) {
++		if (thisansp_error) {
+ 		next_ns:
+ 			if (recvresp1 || (buf2 != NULL && recvresp2)) {
+ 			  *resplen2 = 0;
+ 			  return resplen;
+ 			}
+-			if (buf2 != NULL)
++			if (buf2 != NULL && !single_request)
+ 			  {
+ 			    /* No data from the first reply.  */
+ 			    resplen = 0;
+diff --git a/resolv/tst-resolv-semi-failure.c b/resolv/tst-resolv-semi-failure.c
+new file mode 100644
+index 0000000000..aa9798b5a7
+--- /dev/null
++++ b/resolv/tst-resolv-semi-failure.c
+@@ -0,0 +1,133 @@
++/* Test parallel failure/success responses (bug 30081).
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <resolv.h>
++#include <support/check.h>
++#include <support/resolv_test.h>
++#include <support/check_nss.h>
++
++/* The rcode in the initial response.  */
++static volatile int rcode;
++
++/* Whether to fail the initial A query (!fail_aaaa) or the initial
++   AAAA query (fail_aaaa).  */
++static volatile bool fail_aaaa;
++
++static void
++response (const struct resolv_response_context *ctx,
++          struct resolv_response_builder *b,
++          const char *qname, uint16_t qclass, uint16_t qtype)
++{
++  /* Handle the failing query.  */
++  if ((fail_aaaa && qtype == T_AAAA) && ctx->server_index == 0)
++    {
++      struct resolv_response_flags flags = {.rcode = rcode};
++      resolv_response_init (b, flags);
++      return;
++    }
++
++  /* Otherwise produce a response.  */
++  resolv_response_init (b, (struct resolv_response_flags) {});
++  resolv_response_add_question (b, qname, qclass, qtype);
++  resolv_response_section (b, ns_s_an);
++  resolv_response_open_record (b, qname, qclass, qtype, 0);
++  switch (qtype)
++    {
++    case T_A:
++      {
++        char ipv4[4] = {192, 0, 2, 17};
++        resolv_response_add_data (b, &ipv4, sizeof (ipv4));
++      }
++      break;
++    case T_AAAA:
++      {
++        char ipv6[16]
++          = {0x20, 0x01, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
++        resolv_response_add_data (b, &ipv6, sizeof (ipv6));
++      }
++      break;
++    default:
++      FAIL_EXIT1 ("unexpected TYPE%d query", qtype);
++    }
++  resolv_response_close_record (b);
++}
++
++static void
++check_one (void)
++{
++
++  /* The buggy 1-second query timeout results in 30 seconds of delay,
++     which triggers are test timeout failure.  */
++  for (int i = 0;  i < 30; ++i)
++    {
++      static const struct addrinfo hints =
++        {
++          .ai_family = AF_UNSPEC,
++          .ai_socktype = SOCK_STREAM,
++        };
++      struct addrinfo *ai;
++      int ret = getaddrinfo ("www.example", "80", &hints, &ai);
++      const char *expected;
++      if (ret == 0 && ai->ai_next != NULL)
++        expected = ("address: STREAM/TCP 192.0.2.17 80\n"
++                    "address: STREAM/TCP 2001:db8::1 80\n");
++      else
++        /* Only one response because the AAAA lookup failure is
++           treated as an ignoreable error.  */
++        expected = "address: STREAM/TCP 192.0.2.17 80\n";
++      check_addrinfo ("www.example", ai, ret, expected);
++      if (ret == 0)
++        freeaddrinfo (ai);
++    }
++}
++
++static int
++do_test (void)
++{
++  for (int do_single_lookup = 0; do_single_lookup < 2; ++do_single_lookup)
++    {
++      struct resolv_test *aux = resolv_test_start
++        ((struct resolv_redirect_config)
++         {
++           .response_callback = response,
++         });
++
++      if (do_single_lookup)
++        _res.options |= RES_SNGLKUP;
++
++      for (int do_fail_aaaa = 0; do_fail_aaaa < 2; ++do_fail_aaaa)
++        {
++          fail_aaaa = do_fail_aaaa;
++
++          rcode = 2; /* SERVFAIL.  */
++          check_one ();
++
++          rcode = 4; /* NOTIMP.  */
++          check_one ();
++
++          rcode = 5; /* REFUSED.  */
++          check_one ();
++        }
++
++      resolv_test_end (aux);
++    }
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/resolv/tst-resolv-short-response.c b/resolv/tst-resolv-short-response.c
+new file mode 100644
+index 0000000000..be354ae1c7
+--- /dev/null
++++ b/resolv/tst-resolv-short-response.c
+@@ -0,0 +1,124 @@
++/* Test for spurious timeouts with short 12-byte responses (bug 31890).
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <resolv.h>
++#include <support/check.h>
++#include <support/resolv_test.h>
++#include <support/check_nss.h>
++
++/* The rcode in the initial response.  */
++static volatile int rcode;
++
++static void
++response (const struct resolv_response_context *ctx,
++          struct resolv_response_builder *b,
++          const char *qname, uint16_t qclass, uint16_t qtype)
++{
++  switch (ctx->server_index)
++    {
++    case 0:
++      /* First server times out.  */
++      struct resolv_response_flags flags = {.rcode = rcode};
++      resolv_response_init (b, flags);
++      break;
++    case 1:
++      /* Second server sends reply.  */
++      resolv_response_init (b, (struct resolv_response_flags) {});
++      resolv_response_add_question (b, qname, qclass, qtype);
++      resolv_response_section (b, ns_s_an);
++      resolv_response_open_record (b, qname, qclass, qtype, 0);
++      switch (qtype)
++        {
++        case T_A:
++          {
++            char ipv4[4] = {192, 0, 2, 17};
++            resolv_response_add_data (b, &ipv4, sizeof (ipv4));
++          }
++          break;
++        case T_AAAA:
++          {
++            char ipv6[16]
++              = {0x20, 0x01, 0xd, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
++            resolv_response_add_data (b, &ipv6, sizeof (ipv6));
++          }
++          break;
++        default:
++          FAIL_EXIT1 ("unexpected TYPE%d query", qtype);
++        }
++      resolv_response_close_record (b);
++      break;
++    default:
++      FAIL_EXIT1 ("unexpected query to server %d", ctx->server_index);
++    }
++}
++
++static void
++check_one (void)
++{
++
++  /* The buggy 1-second query timeout results in 30 seconds of delay,
++     which triggers a test timeout failure.  */
++  for (int i = 0;  i < 10; ++i)
++    {
++      check_hostent ("www.example", gethostbyname ("www.example"),
++                     "name: www.example\n"
++                     "address: 192.0.2.17\n");
++      check_hostent ("www.example", gethostbyname2 ("www.example", AF_INET6),
++                     "name: www.example\n"
++                     "address: 2001:db8::1\n");
++      static const struct addrinfo hints =
++        {
++          .ai_family = AF_UNSPEC,
++          .ai_socktype = SOCK_STREAM,
++        };
++      struct addrinfo *ai;
++      int ret = getaddrinfo ("www.example", "80", &hints, &ai);
++      check_addrinfo ("www.example", ai, ret,
++                      "address: STREAM/TCP 192.0.2.17 80\n"
++                      "address: STREAM/TCP 2001:db8::1 80\n");
++      if (ret == 0)
++        freeaddrinfo (ai);
++    }
++}
++
++static int
++do_test (void)
++{
++  struct resolv_test *aux = resolv_test_start
++    ((struct resolv_redirect_config)
++     {
++       .response_callback = response,
++     });
++
++  _res.options |= RES_SNGLKUP;
++
++  rcode = 2; /* SERVFAIL.  */
++  check_one ();
++
++  rcode = 4; /* NOTIMP.  */
++  check_one ();
++
++  rcode = 5; /* REFUSED.  */
++  check_one ();
++
++  resolv_test_end (aux);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
