@@ -1,11 +1,18 @@
 Andreas K. Hüttel (1):
       Replace advisories directory
 
+Arjun Shankar (1):
+      manual/stdio: Clarify putc and putwc
+
 Florian Weimer (4):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
       Fix version number in NEWS file
+
+Miguel Martín (2):
+      malloc: avoid global locks in tst-aligned_alloc-lib.c
+      malloc: add multi-threaded tests for aligned_alloc/calloc/malloc
 
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
@@ -451,6 +458,292 @@ index b8f8a829ca..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/malloc/Makefile b/malloc/Makefile
+index 02aff1bd1d..98d507a6eb 100644
+--- a/malloc/Makefile
++++ b/malloc/Makefile
+@@ -28,6 +28,8 @@ tests := \
+   mallocbug \
+   tst-aligned-alloc \
+   tst-aligned-alloc-random \
++  tst-aligned-alloc-random-thread \
++  tst-aligned-alloc-random-thread-cross \
+   tst-alloc_buffer \
+   tst-calloc \
+   tst-free-errno \
+@@ -151,6 +153,8 @@ ifeq ($(have-GLIBC_2.23)$(build-shared),yesyes)
+ # the tests expect specific internal behavior that is changed due to linking to
+ # libmcheck.a.
+ tests-exclude-mcheck = \
++  tst-aligned-alloc-random-thread \
++  tst-aligned-alloc-random-thread-cross \
+   tst-compathooks-off \
+   tst-compathooks-on \
+   tst-malloc-backtrace \
+@@ -415,7 +419,11 @@ $(objpfx)tst-mallocstate: $(objpfx)libc_malloc_debug.so
+ $(objpfx)tst-mallocstate-malloc-check: $(objpfx)libc_malloc_debug.so
+ 
+ $(objpfx)tst-aligned-alloc-random.out: $(objpfx)tst-aligned_alloc-lib.so
++$(objpfx)tst-aligned-alloc-random-thread.out: $(objpfx)tst-aligned_alloc-lib.so
++$(objpfx)tst-aligned-alloc-random-thread-cross.out: $(objpfx)tst-aligned_alloc-lib.so
+ $(objpfx)tst-malloc-random.out: $(objpfx)tst-aligned_alloc-lib.so
+ 
+ tst-aligned-alloc-random-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
++tst-aligned-alloc-random-thread-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
++tst-aligned-alloc-random-thread-cross-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
+ tst-malloc-random-ENV = LD_PRELOAD=$(objpfx)tst-aligned_alloc-lib.so
+diff --git a/malloc/tst-aligned-alloc-random-thread-cross.c b/malloc/tst-aligned-alloc-random-thread-cross.c
+new file mode 100644
+index 0000000000..360ecc56ee
+--- /dev/null
++++ b/malloc/tst-aligned-alloc-random-thread-cross.c
+@@ -0,0 +1,19 @@
++/* multi-threaded memory allocation and cross-thread deallocation test.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <https://www.gnu.org/licenses/>.  */
++#define CROSS_THREAD_DEALLOC
++#include "tst-aligned-alloc-random-thread.c"
+diff --git a/malloc/tst-aligned-alloc-random-thread.c b/malloc/tst-aligned-alloc-random-thread.c
+new file mode 100644
+index 0000000000..e95f79250a
+--- /dev/null
++++ b/malloc/tst-aligned-alloc-random-thread.c
+@@ -0,0 +1,145 @@
++/* multi-threaded memory allocation/deallocation test.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/support.h>
++#include <support/xthread.h>
++#include <support/test-driver.h>
++#include <sys/sysinfo.h>
++#include <unistd.h>
++
++#ifndef ITERATIONS
++#  define ITERATIONS 16
++#endif
++
++#ifndef NUM_THREADS
++#  define NUM_THREADS 8
++#endif
++
++#ifndef NUM_ALLOCATIONS
++#  define NUM_ALLOCATIONS 2048
++#endif
++
++static pthread_barrier_t barrier;
++
++__thread unsigned int seed;
++
++typedef struct
++{
++  int id;
++  pthread_t thread;
++} thread;
++
++thread threads[NUM_THREADS];
++
++void *allocations[NUM_THREADS][NUM_ALLOCATIONS];
++
++void
++run_thread_dealloc (int id)
++{
++  for (int i = 0; i < NUM_ALLOCATIONS; i++)
++    {
++      free (allocations[id][i]);
++      allocations[id][i] = NULL;
++    }
++}
++
++void
++run_thread_alloc (int id)
++{
++  size_t msb, size;
++  for (int i = 0; i < NUM_ALLOCATIONS; i++)
++    {
++      msb = 1 << rand_r (&seed) % 16;
++      size = msb + rand_r (&seed) % msb;
++      allocations[id][i] = malloc (size);
++      TEST_VERIFY_EXIT (allocations[id][i] != NULL);
++    }
++}
++
++void *
++run_allocations (void *arg)
++{
++  int id = *((int *) arg);
++  seed = time (NULL) + id;
++
++  /* Stage 1: First half o the threads allocating memory and the second
++   * half waiting for them to finish
++   */
++  if (id < NUM_THREADS / 2)
++    run_thread_alloc (id);
++
++  xpthread_barrier_wait (&barrier);
++
++  /* Stage 2: Half of the threads allocationg memory and the other
++   * half deallocating:
++   * - In the non cross-thread dealloc scenario the first half will be
++   *   deallocating the memory allocated by themselves in stage 1 and the
++   *   second half will be allocating memory.
++   * - In the cross-thread dealloc scenario the first half will continue
++   *   to allocate memory and the second half will deallocate the memory
++   *   allocated by the first half in stage 1.
++   */
++  if (id < NUM_THREADS / 2)
++#ifndef CROSS_THREAD_DEALLOC
++    run_thread_dealloc (id);
++#else
++    run_thread_alloc (id + NUM_THREADS / 2);
++#endif
++  else
++#ifndef CROSS_THREAD_DEALLOC
++    run_thread_alloc (id);
++#else
++    run_thread_dealloc (id - NUM_THREADS / 2);
++#endif
++
++  xpthread_barrier_wait (&barrier);
++
++  // Stage 3: Second half of the threads deallocating and the first half
++  // waiting for them to finish.
++  if (id >= NUM_THREADS / 2)
++    run_thread_dealloc (id);
++
++  return NULL;
++}
++
++static int
++do_test (void)
++{
++  xpthread_barrier_init (&barrier, NULL, NUM_THREADS);
++
++  for (int i = 0; i < ITERATIONS; i++)
++    {
++      for (int t = 0; t < NUM_THREADS; t++)
++	{
++	  threads[t].id = t;
++	  threads[t].thread
++	      = xpthread_create (NULL, run_allocations, &threads[t].id);
++	}
++
++      for (int t = 0; t < NUM_THREADS; t++)
++	xpthread_join (threads[t].thread);
++    }
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/malloc/tst-aligned_alloc-lib.c b/malloc/tst-aligned_alloc-lib.c
+index 0205df5acf..9ef1f839c1 100644
+--- a/malloc/tst-aligned_alloc-lib.c
++++ b/malloc/tst-aligned_alloc-lib.c
+@@ -17,37 +17,38 @@
+    License along with the GNU C Library; see the file COPYING.LIB.  If
+    not, see <https://www.gnu.org/licenses/>.  */
+ 
+-#include <array_length.h>
+ #include <libc-symbols.h>
+ #include <stdlib.h>
++#include <time.h>
+ 
+ extern void *__libc_malloc (size_t size);
+ extern void *__libc_calloc (size_t n, size_t size);
+ 
++__thread unsigned int seed = 0;
++
+ int aligned_alloc_count = 0;
+ int libc_malloc_count = 0;
+ int libc_calloc_count = 0;
+ 
+-/* Get a random alignment value.  Biased towards the smaller values.  Must be
+-   a power of 2. */
+-static size_t get_random_alignment (void)
+-{
+-  size_t aligns[] = {
+-    1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384
+-  };
+-
+-  return aligns[random () % array_length (aligns)];
+-}
+-
+-static void *get_random_alloc (size_t size)
++static void *
++get_random_alloc (size_t size)
+ {
+   void *retval;
+   size_t align;
++  struct timespec tp;
+ 
+-  switch (random() % 3)
+-  {
++  if (seed == 0)
++    {
++      clock_gettime (CLOCK_REALTIME, &tp);
++      seed = tp.tv_nsec;
++    }
++
++  switch (rand_r (&seed) % 3)
++    {
+     case 1:
+-      align = get_random_alignment ();
++      /* Get a random alignment value.  Biased towards the smaller
++       * values up to 16384. Must be a power of 2. */
++      align = 1 << rand_r (&seed) % 15;
+       retval = aligned_alloc (align, size);
+       aligned_alloc_count++;
+       break;
+@@ -59,13 +60,13 @@ static void *get_random_alloc (size_t size)
+       retval = __libc_malloc (size);
+       libc_malloc_count++;
+       break;
+-  }
++    }
+ 
+   return retval;
+ }
+ 
+-
+-void * __random_malloc (size_t size)
++void *
++__random_malloc (size_t size)
+ {
+   return get_random_alloc (size);
+ }
 diff --git a/manual/dynlink.texi b/manual/dynlink.texi
 index 03565d4fb0..1500a53de6 100644
 --- a/manual/dynlink.texi
@@ -489,6 +782,38 @@ index 03565d4fb0..1500a53de6 100644
  
  @item
  Likewise, the functions @code{dlopen}, @code{dlmopen}, @code{dlclose}
+diff --git a/manual/stdio.texi b/manual/stdio.texi
+index f5e289d58a..f9529a098d 100644
+--- a/manual/stdio.texi
++++ b/manual/stdio.texi
+@@ -903,21 +903,21 @@ This function is a GNU extension.
+ @deftypefun int putc (int @var{c}, FILE *@var{stream})
+ @standards{ISO, stdio.h}
+ @safety{@prelim{}@mtsafe{}@asunsafe{@asucorrupt{}}@acunsafe{@acucorrupt{} @aculock{}}}
+-This is just like @code{fputc}, except that most systems implement it as
++This is just like @code{fputc}, except that it may be implemented as
+ a macro, making it faster.  One consequence is that it may evaluate the
+ @var{stream} argument more than once, which is an exception to the
+-general rule for macros.  @code{putc} is usually the best function to
+-use for writing a single character.
++general rule for macros.  Therefore, @var{stream} should never be an
++expression with side-effects.
+ @end deftypefun
+ 
+ @deftypefun wint_t putwc (wchar_t @var{wc}, FILE *@var{stream})
+ @standards{ISO, wchar.h}
+ @safety{@prelim{}@mtsafe{}@asunsafe{@asucorrupt{}}@acunsafe{@acucorrupt{} @aculock{}}}
+-This is just like @code{fputwc}, except that it can be implement as
++This is just like @code{fputwc}, except that it may be implemented as
+ a macro, making it faster.  One consequence is that it may evaluate the
+ @var{stream} argument more than once, which is an exception to the
+-general rule for macros.  @code{putwc} is usually the best function to
+-use for writing a single wide character.
++general rule for macros.  Therefore, @var{stream} should never be an
++expression with side-effects.
+ @end deftypefun
+ 
+ @deftypefun int putc_unlocked (int @var{c}, FILE *@var{stream})
 diff --git a/resolv/Makefile b/resolv/Makefile
 index 5f44f5896b..abff7fc007 100644
 --- a/resolv/Makefile
