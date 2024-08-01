@@ -4,11 +4,18 @@ Andreas K. Hüttel (1):
 Arjun Shankar (1):
       manual/stdio: Clarify putc and putwc
 
-Florian Weimer (4):
+Florian Weimer (6):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
       Fix version number in NEWS file
+      Enhance test coverage for strnlen, wcsnlen
+      Enhanced test coverage for strncmp, wcsncmp
+
+H.J. Lu (3):
+      linux: Update the mremap C implementation [BZ #31968]
+      mremap: Update manual entry
+      Add mremap tests
 
 Lukas Bulwahn (1):
       manual: make setrlimit() description less ambiguous
@@ -26,10 +33,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..6b62f55658 100644
+index 31281ac408..8da0408ad9 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,13 @@ See the end for copying conditions.
+@@ -5,6 +5,15 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -38,7 +45,9 @@ index 31281ac408..6b62f55658 100644
 +The following bugs are resolved with this release:
 +
 +  [30081] resolv: Do not wait for non-existing second DNS response after error
++  [31968] mremap implementation in C does not handle arguments correctly
 +  [31890] resolv: Allow short error responses to match any DNS query
++  [31968] mremap implementation in C does not handle arguments correctly
 +
  Version 2.40
  
@@ -785,6 +794,74 @@ index 03565d4fb0..1500a53de6 100644
  
  @item
  Likewise, the functions @code{dlopen}, @code{dlmopen}, @code{dlclose}
+diff --git a/manual/llio.texi b/manual/llio.texi
+index 6f0a48609b..ea84196abd 100644
+--- a/manual/llio.texi
++++ b/manual/llio.texi
+@@ -1892,7 +1892,7 @@ There is no existing mapping in at least part of the given region.
+ 
+ @end deftypefun
+ 
+-@deftypefun {void *} mremap (void *@var{address}, size_t @var{length}, size_t @var{new_length}, int @var{flag})
++@deftypefun {void *} mremap (void *@var{address}, size_t @var{length}, size_t @var{new_length}, int @var{flag}, ... /* void *@var{new_address} */)
+ @standards{GNU, sys/mman.h}
+ @safety{@prelim{}@mtsafe{}@assafe{}@acsafe{}}
+ 
+@@ -1901,12 +1901,40 @@ area. @var{address} and @var{length} must cover a region entirely mapped
+ in the same @code{mmap} statement.  A new mapping with the same
+ characteristics will be returned with the length @var{new_length}.
+ 
+-One option is possible, @code{MREMAP_MAYMOVE}.  If it is given in
+-@var{flags}, the system may remove the existing mapping and create a new
+-one of the desired length in another location.
++Possible flags are
+ 
+-The address of the resulting mapping is returned, or @math{-1}.  Possible
+-error codes include:
++@table @code
++
++@item MREMAP_MAYMOVE
++If it is given in @var{flags}, the system may remove the existing mapping
++and create a new one of the desired length in another location.
++
++@item MREMAP_FIXED
++If it is given in @var{flags}, @code{mremap} accepts a fifth argument,
++@code{void *new_address}, which specifies a page-aligned address to
++which the mapping must be moved.  Any previous mapping at the address
++range specified by @var{new_address} and @var{new_size} is unmapped.
++
++@code{MREMAP_FIXED} must be used together with @code{MREMAP_MAYMOVE}.
++
++@item MREMAP_DONTUNMAP
++If it is given in @var{flags}, @code{mremap} accepts a fifth argument,
++@code{void *new_address}, which specifies a page-aligned address.  Any
++previous mapping at the address range specified by @var{new_address} and
++@var{new_size} is unmapped.  If @var{new_address} is @code{NULL}, the
++kernel chooses the page-aligned address at which to create the mapping.
++Otherwise, the kernel takes it as a hint about where to place the mapping.
++The mapping at the address range specified by @var{old_address} and
++@var{old_size} isn't unmapped.
++
++@code{MREMAP_DONTUNMAP} must be used together with @code{MREMAP_MAYMOVE}.
++@var{old_size} must be the same as @var{new_size}.  This flag bit is
++Linux-specific.
++
++@end table
++
++The address of the resulting mapping is returned, or @code{MAP_FAILED}.
++Possible error codes include:
+ 
+ @table @code
+ 
+@@ -1915,7 +1943,7 @@ There is no existing mapping in at least part of the original region, or
+ the region covers two or more distinct mappings.
+ 
+ @item EINVAL
+-The address given is misaligned or inappropriate.
++Any arguments are inappropriate, including unknown @var{flags} values.
+ 
+ @item EAGAIN
+ The region has pages locked, and if extended it would exceed the
 diff --git a/manual/resource.texi b/manual/resource.texi
 index c9b21dedeb..25966bcb64 100644
 --- a/manual/resource.texi
@@ -832,6 +909,131 @@ index f5e289d58a..f9529a098d 100644
  @end deftypefun
  
  @deftypefun int putc_unlocked (int @var{c}, FILE *@var{stream})
+diff --git a/misc/Makefile b/misc/Makefile
+index 5d17c562fe..7b7f8351bf 100644
+--- a/misc/Makefile
++++ b/misc/Makefile
+@@ -257,6 +257,8 @@ tests := \
+   tst-mntent-blank-passno \
+   tst-mntent-escape \
+   tst-mntent2 \
++  tst-mremap1 \
++  tst-mremap2 \
+   tst-preadvwritev \
+   tst-preadvwritev2 \
+   tst-preadvwritev64 \
+diff --git a/misc/tst-mremap1.c b/misc/tst-mremap1.c
+new file mode 100644
+index 0000000000..0469991a6c
+--- /dev/null
++++ b/misc/tst-mremap1.c
+@@ -0,0 +1,46 @@
++/* Test mremap with MREMAP_MAYMOVE.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <sys/mman.h>
++#include <support/xstdlib.h>
++#include <support/xunistd.h>
++#include <support/check.h>
++#include <support/test-driver.h>
++
++static int
++do_test (void)
++{
++  size_t old_size = getpagesize ();
++  char *old_addr = xmmap (NULL, old_size, PROT_READ | PROT_WRITE,
++			  MAP_PRIVATE | MAP_ANONYMOUS, -1);
++  old_addr[0] = 1;
++  old_addr[old_size - 1] = 2;
++
++  /* Test MREMAP_MAYMOVE.  */
++  size_t new_size = old_size + old_size;
++  char *new_addr = mremap (old_addr, old_size, new_size, MREMAP_MAYMOVE);
++  TEST_VERIFY_EXIT (new_addr != MAP_FAILED);
++  new_addr[0] = 1;
++  new_addr[new_size - 1] = 2;
++  xmunmap (new_addr, new_size);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/misc/tst-mremap2.c b/misc/tst-mremap2.c
+new file mode 100644
+index 0000000000..45be7f0369
+--- /dev/null
++++ b/misc/tst-mremap2.c
+@@ -0,0 +1,54 @@
++/* Test mremap with MREMAP_FIXED.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <sys/mman.h>
++#include <support/xstdlib.h>
++#include <support/xunistd.h>
++#include <support/test-driver.h>
++#include <mremap-failure.h>
++
++static int
++do_test (void)
++{
++  size_t old_size = getpagesize ();
++  size_t new_size = old_size + old_size;
++  char *old_addr = xmmap (NULL, old_size, PROT_READ | PROT_WRITE,
++			  MAP_PRIVATE | MAP_ANONYMOUS, -1);
++  old_addr[0] = 1;
++  old_addr[old_size - 1] = 2;
++
++  char *fixed_addr = xmmap (NULL, new_size, PROT_READ | PROT_WRITE,
++			    MAP_PRIVATE | MAP_ANONYMOUS, -1);
++  fixed_addr[0] = 1;
++  fixed_addr[new_size - 1] = 2;
++
++  /* Test MREMAP_FIXED.  */
++  char *new_addr = mremap (old_addr, old_size, new_size,
++			   MREMAP_FIXED | MREMAP_MAYMOVE,
++			   fixed_addr);
++  if (new_addr == MAP_FAILED)
++    return mremap_failure_exit (errno);
++  new_addr[0] = 1;
++  new_addr[new_size - 1] = 2;
++  xmunmap (new_addr, new_size);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/resolv/Makefile b/resolv/Makefile
 index 5f44f5896b..abff7fc007 100644
 --- a/resolv/Makefile
@@ -1185,3 +1387,600 @@ index 0000000000..be354ae1c7
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/string/Makefile b/string/Makefile
+index 8f31fa49e6..1dff405c27 100644
+--- a/string/Makefile
++++ b/string/Makefile
+@@ -184,6 +184,7 @@ tests := \
+   test-strncpy \
+   test-strndup \
+   test-strnlen \
++  test-strnlen-nonarray \
+   test-strpbrk \
+   test-strrchr \
+   test-strspn \
+@@ -235,7 +236,10 @@ tests-unsupported += $(tests-translation)
+ endif
+ 
+ # This test allocates a lot of memory and can run for a long time.
+-xtests = tst-strcoll-overflow
++xtests += tst-strcoll-overflow
++
++# This test runs for a long time.
++xtests += test-strncmp-nonarray
+ 
+ # This test needs libdl.
+ ifeq (yes,$(build-shared))
+diff --git a/string/test-Xncmp-nonarray.c b/string/test-Xncmp-nonarray.c
+new file mode 100644
+index 0000000000..9f3a3ca75d
+--- /dev/null
++++ b/string/test-Xncmp-nonarray.c
+@@ -0,0 +1,183 @@
++/* Test non-array inputs to string comparison functions.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* This skeleton file is included from string/test-strncmp-nonarray.c and
++   wcsmbs/test-wcsncmp-nonarray.c to test that reading of the arrays stops
++   at the first null character.
++
++   TEST_IDENTIFIER must be the test function identifier.  TEST_NAME is
++   the same as a string.
++
++   CHAR must be defined as the character type.  */
++
++#include <array_length.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/next_to_fault.h>
++#include <support/test-driver.h>
++#include <sys/param.h>
++#include <unistd.h>
++
++/* Much shorter than test-Xnlen-nonarray.c because of deeply nested loops.  */
++enum { buffer_length = 80 };
++
++/* The test buffer layout follows what is described test-Xnlen-nonarray.c,
++   except that there two buffers, left and right.  The variables
++   a_count, zero_count, start_offset are all duplicated.  */
++
++/* Return the maximum string length for a string that starts at
++   start_offset.  */
++static int
++string_length (int a_count, int start_offset)
++{
++  if (start_offset == buffer_length || start_offset >= a_count)
++    return 0;
++  else
++    return a_count - start_offset;
++}
++
++/* This is the valid maximum length argument computation for
++   strnlen/wcsnlen.  See text-Xnlen-nonarray.c.  */
++static int
++maximum_length (int start_offset, int zero_count)
++{
++  if (start_offset == buffer_length)
++    return 0;
++  else if (zero_count > 0)
++    /* Effectively unbounded, but we need to stop fairly low,
++       otherwise testing takes too long.  */
++    return buffer_length + 32;
++  else
++    return buffer_length - start_offset;
++}
++
++typedef __typeof (TEST_IDENTIFIER) *proto_t;
++
++#define TEST_MAIN
++#include "test-string.h"
++
++IMPL (TEST_IDENTIFIER, 1)
++
++static int
++test_main (void)
++{
++  TEST_VERIFY_EXIT (sysconf (_SC_PAGESIZE) >= buffer_length);
++  test_init ();
++
++  struct support_next_to_fault left_ntf
++    = support_next_to_fault_allocate (buffer_length * sizeof (CHAR));
++  CHAR *left_buffer = (CHAR *) left_ntf.buffer;
++  struct support_next_to_fault right_ntf
++    = support_next_to_fault_allocate (buffer_length * sizeof (CHAR));
++  CHAR *right_buffer = (CHAR *) right_ntf.buffer;
++
++  FOR_EACH_IMPL (impl, 0)
++    {
++      printf ("info: testing %s\n", impl->name);
++      for (size_t i = 0; i < buffer_length; ++i)
++        left_buffer[i] = 'A';
++
++      for (int left_zero_count = 0; left_zero_count <= buffer_length;
++           ++left_zero_count)
++        {
++          if (left_zero_count > 0)
++            left_buffer[buffer_length - left_zero_count] = 0;
++          int left_a_count = buffer_length - left_zero_count;
++          for (size_t i = 0; i < buffer_length; ++i)
++            right_buffer[i] = 'A';
++          for (int right_zero_count = 0; right_zero_count <= buffer_length;
++               ++right_zero_count)
++            {
++              if (right_zero_count > 0)
++                right_buffer[buffer_length - right_zero_count] = 0;
++              int right_a_count = buffer_length - right_zero_count;
++              for (int left_start_offset = 0;
++                   left_start_offset <= buffer_length;
++                   ++left_start_offset)
++                {
++                  CHAR *left_start_pointer = left_buffer + left_start_offset;
++                  int left_maxlen
++                    = maximum_length (left_start_offset, left_zero_count);
++                  int left_length
++                    = string_length (left_a_count, left_start_offset);
++                  for (int right_start_offset = 0;
++                       right_start_offset <= buffer_length;
++                       ++right_start_offset)
++                    {
++                      CHAR *right_start_pointer
++                        = right_buffer + right_start_offset;
++                      int right_maxlen
++                        = maximum_length (right_start_offset, right_zero_count);
++                      int right_length
++                        = string_length (right_a_count, right_start_offset);
++
++                      /* Maximum length is modelled after strnlen/wcsnlen,
++                         and must be valid for both pointer arguments at
++                         the same time.  */
++                      int maxlen = MIN (left_maxlen, right_maxlen);
++
++                      for (int length_argument = 0; length_argument <= maxlen;
++                           ++length_argument)
++                        {
++                          if (test_verbose)
++                            {
++                              printf ("left: zero_count=%d"
++                                      " a_count=%d start_offset=%d\n",
++                                      left_zero_count, left_a_count,
++                                      left_start_offset);
++                              printf ("right: zero_count=%d"
++                                      " a_count=%d start_offset=%d\n",
++                                      right_zero_count, right_a_count,
++                                      right_start_offset);
++                              printf ("length argument: %d\n",
++                                      length_argument);
++                            }
++
++                          /* Effective lengths bounded by length argument.
++                             The effective length determines the
++                             outcome of the comparison.  */
++                          int left_effective
++                            = MIN (left_length, length_argument);
++                          int right_effective
++                            = MIN (right_length, length_argument);
++                          if (left_effective == right_effective)
++                            TEST_COMPARE (CALL (impl,
++                                                left_start_pointer,
++                                                right_start_pointer,
++                                                length_argument), 0);
++                          else if (left_effective < right_effective)
++                            TEST_COMPARE (CALL (impl,
++                                                left_start_pointer,
++                                                right_start_pointer,
++                                                length_argument) < 0, 1);
++                          else
++                            TEST_COMPARE (CALL (impl,
++                                                left_start_pointer,
++                                                right_start_pointer,
++                                                length_argument) > 0, 1);
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/string/test-Xnlen-nonarray.c b/string/test-Xnlen-nonarray.c
+new file mode 100644
+index 0000000000..499bef2041
+--- /dev/null
++++ b/string/test-Xnlen-nonarray.c
+@@ -0,0 +1,133 @@
++/* Test non-array inputs to string length functions.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* This skeleton file is included from string/test-strnlen-nonarray.c
++   and wcsmbs/test-wcsnlen-nonarray.c to test that reading of the array
++   stops at the first null character.
++
++   TEST_IDENTIFIER must be the test function identifier.  TEST_NAME is
++   the same as a string.
++
++   CHAR must be defined as the character type.  */
++
++#include <array_length.h>
++#include <string.h>
++#include <support/check.h>
++#include <support/next_to_fault.h>
++#include <support/test-driver.h>
++#include <sys/param.h>
++#include <unistd.h>
++
++typedef __typeof (TEST_IDENTIFIER) *proto_t;
++
++#define TEST_MAIN
++#include "test-string.h"
++
++IMPL (TEST_IDENTIFIER, 1)
++
++static int
++test_main (void)
++{
++  enum { buffer_length = 256 };
++  TEST_VERIFY_EXIT (sysconf (_SC_PAGESIZE) >= buffer_length);
++
++  test_init ();
++
++  /* Buffer layout: There are a_count 'A' character followed by
++     zero_count null character, for a total of buffer_length
++     character:
++
++     AAAAA...AAAAA 00000 ... 00000 (unmapped page follows)
++     \           / \             /
++       (a_count)     (zero_count)
++       \___ (buffer_length) ___/
++          ^
++          |
++          start_offset
++
++    The buffer length does not change, but a_count (and thus _zero)
++    and start_offset vary.
++
++    If start_offset == buffer_length, only 0 is a valid length
++    argument.  The result is 0.
++
++    Otherwwise, if zero_count > 0 (if there a null characters in the
++    buffer), then any length argument is valid.  If start_offset <
++    a_count (i.e., there is a non-null character at start_offset), the
++    result is the minimum of a_count - start_offset and the length
++    argument.  Otherwise the result is 0.
++
++    Otherwise, there are no null characters before the unmapped page.
++    The length argument must not be greater than buffer_length -
++    start_offset, and the result is the length argument.  */
++
++  struct support_next_to_fault ntf
++    = support_next_to_fault_allocate (buffer_length * sizeof (CHAR));
++  CHAR *buffer = (CHAR *) ntf.buffer;
++
++  FOR_EACH_IMPL (impl, 0)
++    {
++      printf ("info: testing %s\n", impl->name);
++      for (size_t i = 0; i < buffer_length; ++i)
++        buffer[i] = 'A';
++
++      for (int zero_count = 0; zero_count <= buffer_length; ++zero_count)
++        {
++          if (zero_count > 0)
++            buffer[buffer_length - zero_count] = 0;
++          int a_count = buffer_length - zero_count;
++          for (int start_offset = 0; start_offset <= buffer_length;
++               ++start_offset)
++            {
++              CHAR *start_pointer = buffer + start_offset;
++              if (start_offset == buffer_length)
++                TEST_COMPARE (CALL (impl, buffer + start_offset, 0), 0);
++              else if (zero_count > 0)
++                for (int length_argument = 0;
++                     length_argument <= 2 * buffer_length;
++                     ++length_argument)
++                  {
++                    if (test_verbose)
++                      printf ("zero_count=%d a_count=%d start_offset=%d"
++                              " length_argument=%d\n",
++                              zero_count, a_count, start_offset,
++                              length_argument);
++                    if (start_offset < a_count)
++                      TEST_COMPARE (CALL (impl, start_pointer, length_argument),
++                                    MIN (a_count - start_offset,
++                                         length_argument));
++                    else
++                      TEST_COMPARE (CALL (impl, start_pointer, length_argument),
++                                    0);
++                  }
++              else
++                for (int length_argument = 0;
++                     length_argument <= buffer_length - start_offset;
++                     ++length_argument)
++                  TEST_COMPARE (CALL (impl, start_pointer, length_argument),
++                                length_argument);
++            }
++        }
++    }
++
++  support_next_to_fault_free (&ntf);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/string/test-strncmp-nonarray.c b/string/test-strncmp-nonarray.c
+new file mode 100644
+index 0000000000..581e52d01b
+--- /dev/null
++++ b/string/test-strncmp-nonarray.c
+@@ -0,0 +1,4 @@
++#define TEST_IDENTIFIER strncmp
++#define TEST_NAME "strncmp"
++typedef char CHAR;
++#include "test-Xncmp-nonarray.c"
+diff --git a/string/test-strnlen-nonarray.c b/string/test-strnlen-nonarray.c
+new file mode 100644
+index 0000000000..0ad05756d9
+--- /dev/null
++++ b/string/test-strnlen-nonarray.c
+@@ -0,0 +1,4 @@
++#define TEST_IDENTIFIER strnlen
++#define TEST_NAME "strnlen"
++typedef char CHAR;
++#include "test-Xnlen-nonarray.c"
+diff --git a/sysdeps/generic/mremap-failure.h b/sysdeps/generic/mremap-failure.h
+new file mode 100644
+index 0000000000..bc0d476368
+--- /dev/null
++++ b/sysdeps/generic/mremap-failure.h
+@@ -0,0 +1,25 @@
++/* mremap failure handling.  Generic version.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* Return exit value on mremap failure with errno ERR.  */
++
++static int
++mremap_failure_exit (int err)
++{
++  return EXIT_FAILURE;
++}
+diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
+index 097b5a26fc..59998c7af4 100644
+--- a/sysdeps/unix/sysv/linux/Makefile
++++ b/sysdeps/unix/sysv/linux/Makefile
+@@ -206,6 +206,7 @@ tests += \
+   tst-getauxval \
+   tst-gettid \
+   tst-gettid-kill \
++  tst-linux-mremap1 \
+   tst-memfd_create \
+   tst-misalign-clone \
+   tst-mlock2 \
+diff --git a/sysdeps/unix/sysv/linux/mremap-failure.h b/sysdeps/unix/sysv/linux/mremap-failure.h
+new file mode 100644
+index 0000000000..c99ab30ca9
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/mremap-failure.h
+@@ -0,0 +1,30 @@
++/* mremap failure handling.  Linux version.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/check.h>
++
++/* Return exit value on mremap failure with errno ERR.  */
++
++static int
++mremap_failure_exit (int err)
++{
++  if (err != EINVAL)
++    return EXIT_FAILURE;
++
++  return EXIT_UNSUPPORTED;
++}
+diff --git a/sysdeps/unix/sysv/linux/mremap.c b/sysdeps/unix/sysv/linux/mremap.c
+index 4f770799c4..1ada5c1f40 100644
+--- a/sysdeps/unix/sysv/linux/mremap.c
++++ b/sysdeps/unix/sysv/linux/mremap.c
+@@ -20,6 +20,12 @@
+ #include <sysdep.h>
+ #include <stdarg.h>
+ #include <stddef.h>
++#include <errno.h>
++
++#define MREMAP_KNOWN_BITS \
++  (MREMAP_MAYMOVE \
++   | MREMAP_FIXED \
++   | MREMAP_DONTUNMAP)
+ 
+ void *
+ __mremap (void *addr, size_t old_len, size_t new_len, int flags, ...)
+@@ -27,7 +33,13 @@ __mremap (void *addr, size_t old_len, size_t new_len, int flags, ...)
+   va_list va;
+   void *new_addr = NULL;
+ 
+-  if (flags & MREMAP_FIXED)
++  if (flags & ~(MREMAP_KNOWN_BITS))
++    {
++      __set_errno (EINVAL);
++      return MAP_FAILED;
++    }
++
++  if (flags & (MREMAP_FIXED | MREMAP_DONTUNMAP))
+     {
+       va_start (va, flags);
+       new_addr = va_arg (va, void *);
+diff --git a/sysdeps/unix/sysv/linux/tst-linux-mremap1.c b/sysdeps/unix/sysv/linux/tst-linux-mremap1.c
+new file mode 100644
+index 0000000000..408e8af2ab
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/tst-linux-mremap1.c
+@@ -0,0 +1,63 @@
++/* Test mremap with MREMAP_DONTUNMAP.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <sys/mman.h>
++#include <support/xstdlib.h>
++#include <support/xunistd.h>
++#include <support/check.h>
++#include <support/test-driver.h>
++#include <mremap-failure.h>
++
++static int
++do_test (void)
++{
++  size_t old_size = getpagesize ();
++  size_t new_size = old_size;
++  char *old_addr = xmmap (NULL, old_size, PROT_READ | PROT_WRITE,
++			  MAP_PRIVATE | MAP_ANONYMOUS, -1);
++  old_addr[0] = 1;
++  old_addr[old_size - 1] = 2;
++
++  /* Create an available 64-page mmap region.  */
++  size_t fixed_size = old_size * 64;
++  char *fixed_addr = xmmap (NULL, fixed_size, PROT_READ | PROT_WRITE,
++			    MAP_PRIVATE | MAP_ANONYMOUS, -1);
++  xmunmap (fixed_addr, fixed_size);
++
++  /* Add 3 * pagesize.  */
++  fixed_size += 3 * old_size;
++
++  /* Test MREMAP_DONTUNMAP.  It should return FIXED_ADDR created above.  */
++  char *new_addr = mremap (old_addr, old_size, new_size,
++			   MREMAP_DONTUNMAP | MREMAP_MAYMOVE,
++			   fixed_addr);
++  if (new_addr == MAP_FAILED)
++    return mremap_failure_exit (errno);
++  TEST_VERIFY_EXIT (fixed_addr == new_addr);
++  old_addr[0] = 3;
++  old_addr[old_size - 1] = 4;
++  new_addr[0] = 1;
++  new_addr[new_size - 1] = 2;
++  xmunmap (new_addr, new_size);
++  xmunmap (old_addr, old_size);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
+index 1cddd8cc6d..63adf0e8ef 100644
+--- a/wcsmbs/Makefile
++++ b/wcsmbs/Makefile
+@@ -160,6 +160,7 @@ tests := \
+   test-wcsncmp \
+   test-wcsncpy \
+   test-wcsnlen \
++  test-wcsnlen-nonarray \
+   test-wcspbrk \
+   test-wcsrchr \
+   test-wcsspn \
+@@ -205,6 +206,10 @@ tests := \
+   wcsmbs-tst1 \
+   # tests
+ 
++# This test runs for a long time.
++xtests += test-wcsncmp-nonarray
++
++
+ include ../Rules
+ 
+ ifeq ($(run-built-tests),yes)
+diff --git a/wcsmbs/test-wcsncmp-nonarray.c b/wcsmbs/test-wcsncmp-nonarray.c
+new file mode 100644
+index 0000000000..1ad9ebd8fd
+--- /dev/null
++++ b/wcsmbs/test-wcsncmp-nonarray.c
+@@ -0,0 +1,5 @@
++#include <wchar.h>
++#define TEST_IDENTIFIER wcsncmp
++#define TEST_NAME "wcsncmp"
++typedef wchar_t CHAR;
++#include "../string/test-Xncmp-nonarray.c"
+diff --git a/wcsmbs/test-wcsnlen-nonarray.c b/wcsmbs/test-wcsnlen-nonarray.c
+new file mode 100644
+index 0000000000..a4b21fecd3
+--- /dev/null
++++ b/wcsmbs/test-wcsnlen-nonarray.c
+@@ -0,0 +1,5 @@
++#include <wchar.h>
++#define TEST_IDENTIFIER wcsnlen
++#define TEST_NAME "wcsnlen"
++typedef wchar_t CHAR;
++#include "../string/test-Xnlen-nonarray.c"
