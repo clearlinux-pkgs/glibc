@@ -4,13 +4,14 @@ Andreas K. Hüttel (1):
 Arjun Shankar (1):
       manual/stdio: Clarify putc and putwc
 
-Florian Weimer (6):
+Florian Weimer (7):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
       Fix version number in NEWS file
       Enhance test coverage for strnlen, wcsnlen
       Enhanced test coverage for strncmp, wcsncmp
+      resolv: Fix tst-resolv-short-response for older GCC (bug 32042)
 
 H.J. Lu (3):
       linux: Update the mremap C implementation [BZ #31968]
@@ -1259,10 +1260,10 @@ index 0000000000..aa9798b5a7
 +#include <support/test-driver.c>
 diff --git a/resolv/tst-resolv-short-response.c b/resolv/tst-resolv-short-response.c
 new file mode 100644
-index 0000000000..be354ae1c7
+index 0000000000..9b06b0c176
 --- /dev/null
 +++ b/resolv/tst-resolv-short-response.c
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,126 @@
 +/* Test for spurious timeouts with short 12-byte responses (bug 31890).
 +   Copyright (C) 2024 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -1298,8 +1299,10 @@ index 0000000000..be354ae1c7
 +    {
 +    case 0:
 +      /* First server times out.  */
-+      struct resolv_response_flags flags = {.rcode = rcode};
-+      resolv_response_init (b, flags);
++      {
++        struct resolv_response_flags flags = {.rcode = rcode};
++        resolv_response_init (b, flags);
++      }
 +      break;
 +    case 1:
 +      /* Second server sends reply.  */
