@@ -4,7 +4,7 @@ Andreas K. Hüttel (1):
 Arjun Shankar (1):
       manual/stdio: Clarify putc and putwc
 
-Florian Weimer (7):
+Florian Weimer (8):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
@@ -12,6 +12,7 @@ Florian Weimer (7):
       Enhance test coverage for strnlen, wcsnlen
       Enhanced test coverage for strncmp, wcsncmp
       resolv: Fix tst-resolv-short-response for older GCC (bug 32042)
+      x86: Tunables may incorrectly set Prefer_PMINUB_for_stringop (bug 32047)
 
 H.J. Lu (3):
       linux: Update the mremap C implementation [BZ #31968]
@@ -1942,6 +1943,18 @@ index 0000000000..408e8af2ab
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/x86/cpu-tunables.c b/sysdeps/x86/cpu-tunables.c
+index ae9dcd6180..ccc6b64dc2 100644
+--- a/sysdeps/x86/cpu-tunables.c
++++ b/sysdeps/x86/cpu-tunables.c
+@@ -248,6 +248,7 @@ TUNABLE_CALLBACK (set_hwcaps) (tunable_val_t *valp)
+ 	    CHECK_GLIBC_IFUNC_PREFERRED_BOTH (n, cpu_features,
+ 					      Avoid_Non_Temporal_Memset, 25);
+ 	  }
++	  break;
+ 	case 26:
+ 	    {
+ 	      CHECK_GLIBC_IFUNC_PREFERRED_NEED_BOTH
 diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
 index 1cddd8cc6d..63adf0e8ef 100644
 --- a/wcsmbs/Makefile
