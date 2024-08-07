@@ -1,8 +1,12 @@
 Andreas K. Hüttel (1):
       Replace advisories directory
 
-Arjun Shankar (1):
+Andreas Schwab (1):
+      Fix name space violation in fortify wrappers (bug 32052)
+
+Arjun Shankar (2):
       manual/stdio: Clarify putc and putwc
+      manual/stdio: Further clarify putc, putwc, getc, and getwc
 
 Florian Weimer (8):
       resolv: Allow short error responses to match any query (bug 31890)
@@ -35,10 +39,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..8da0408ad9 100644
+index 31281ac408..b9eb4a558b 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,15 @@ See the end for copying conditions.
+@@ -5,6 +5,16 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -50,6 +54,7 @@ index 31281ac408..8da0408ad9 100644
 +  [31968] mremap implementation in C does not handle arguments correctly
 +  [31890] resolv: Allow short error responses to match any DNS query
 +  [31968] mremap implementation in C does not handle arguments correctly
++  [32052] Name space violation in fortify wrappers
 +
  Version 2.40
  
@@ -472,6 +477,95 @@ index b8f8a829ca..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/libio/bits/stdio2.h b/libio/bits/stdio2.h
+index 91a80dd7c6..4b8bc35bdf 100644
+--- a/libio/bits/stdio2.h
++++ b/libio/bits/stdio2.h
+@@ -308,14 +308,14 @@ fgets (__fortify_clang_overload_arg (char *, __restrict, __s), int __n,
+ 			      "fgets called with bigger size than length of "
+ 			      "destination buffer")
+ {
+-  size_t sz = __glibc_objsize (__s);
+-  if (__glibc_safe_or_unknown_len (__n, sizeof (char), sz))
++  size_t __sz = __glibc_objsize (__s);
++  if (__glibc_safe_or_unknown_len (__n, sizeof (char), __sz))
+     return __fgets_alias (__s, __n, __stream);
+ #if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, sizeof (char), sz))
+-    return __fgets_chk_warn (__s, sz, __n, __stream);
++  if (__glibc_unsafe_len (__n, sizeof (char), __sz))
++    return __fgets_chk_warn (__s, __sz, __n, __stream);
+ #endif
+-  return __fgets_chk (__s, sz, __n, __stream);
++  return __fgets_chk (__s, __sz, __n, __stream);
+ }
+ 
+ __fortify_function __wur __nonnull ((4)) __attribute_overloadable__ size_t
+@@ -326,14 +326,14 @@ fread (__fortify_clang_overload_arg (void *, __restrict, __ptr),
+ 			      "fread called with bigger size * n than length "
+ 			      "of destination buffer")
+ {
+-  size_t sz = __glibc_objsize0 (__ptr);
+-  if (__glibc_safe_or_unknown_len (__n, __size, sz))
++  size_t __sz = __glibc_objsize0 (__ptr);
++  if (__glibc_safe_or_unknown_len (__n, __size, __sz))
+     return __fread_alias (__ptr, __size, __n, __stream);
+ #if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, __size, sz))
+-    return __fread_chk_warn (__ptr, sz, __size, __n, __stream);
++  if (__glibc_unsafe_len (__n, __size, __sz))
++    return __fread_chk_warn (__ptr, __sz, __size, __n, __stream);
+ #endif
+-  return __fread_chk (__ptr, sz, __size, __n, __stream);
++  return __fread_chk (__ptr, __sz, __size, __n, __stream);
+ }
+ 
+ #ifdef __USE_GNU
+@@ -345,14 +345,14 @@ fgets_unlocked (__fortify_clang_overload_arg (char *, __restrict, __s),
+ 			      "fgets called with bigger size than length of "
+ 			      "destination buffer")
+ {
+-  size_t sz = __glibc_objsize (__s);
+-  if (__glibc_safe_or_unknown_len (__n, sizeof (char), sz))
++  size_t __sz = __glibc_objsize (__s);
++  if (__glibc_safe_or_unknown_len (__n, sizeof (char), __sz))
+     return __fgets_unlocked_alias (__s, __n, __stream);
+ #if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, sizeof (char), sz))
+-    return __fgets_unlocked_chk_warn (__s, sz, __n, __stream);
++  if (__glibc_unsafe_len (__n, sizeof (char), __sz))
++    return __fgets_unlocked_chk_warn (__s, __sz, __n, __stream);
+ #endif
+-  return __fgets_unlocked_chk (__s, sz, __n, __stream);
++  return __fgets_unlocked_chk (__s, __sz, __n, __stream);
+ }
+ #endif
+ 
+@@ -366,8 +366,8 @@ fread_unlocked (__fortify_clang_overload_arg0 (void *, __restrict, __ptr),
+ 			      "fread_unlocked called with bigger size * n than "
+ 			      "length of destination buffer")
+ {
+-  size_t sz = __glibc_objsize0 (__ptr);
+-  if (__glibc_safe_or_unknown_len (__n, __size, sz))
++  size_t __sz = __glibc_objsize0 (__ptr);
++  if (__glibc_safe_or_unknown_len (__n, __size, __sz))
+     {
+ # ifdef __USE_EXTERN_INLINES
+       if (__builtin_constant_p (__size)
+@@ -393,10 +393,10 @@ fread_unlocked (__fortify_clang_overload_arg0 (void *, __restrict, __ptr),
+       return __fread_unlocked_alias (__ptr, __size, __n, __stream);
+     }
+ # if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, __size, sz))
+-    return __fread_unlocked_chk_warn (__ptr, sz, __size, __n, __stream);
++  if (__glibc_unsafe_len (__n, __size, __sz))
++    return __fread_unlocked_chk_warn (__ptr, __sz, __size, __n, __stream);
+ # endif
+-  return __fread_unlocked_chk (__ptr, sz, __size, __n, __stream);
++  return __fread_unlocked_chk (__ptr, __sz, __size, __n, __stream);
+ 
+ }
+ #endif
 diff --git a/malloc/Makefile b/malloc/Makefile
 index 02aff1bd1d..98d507a6eb 100644
 --- a/malloc/Makefile
@@ -880,37 +974,64 @@ index c9b21dedeb..25966bcb64 100644
  The return value is @code{0} on success and @code{-1} on failure.  The
  following @code{errno} error condition is possible:
 diff --git a/manual/stdio.texi b/manual/stdio.texi
-index f5e289d58a..f9529a098d 100644
+index f5e289d58a..8517653507 100644
 --- a/manual/stdio.texi
 +++ b/manual/stdio.texi
-@@ -903,21 +903,21 @@ This function is a GNU extension.
+@@ -903,21 +903,17 @@ This function is a GNU extension.
  @deftypefun int putc (int @var{c}, FILE *@var{stream})
  @standards{ISO, stdio.h}
  @safety{@prelim{}@mtsafe{}@asunsafe{@asucorrupt{}}@acunsafe{@acucorrupt{} @aculock{}}}
 -This is just like @code{fputc}, except that most systems implement it as
-+This is just like @code{fputc}, except that it may be implemented as
- a macro, making it faster.  One consequence is that it may evaluate the
- @var{stream} argument more than once, which is an exception to the
+-a macro, making it faster.  One consequence is that it may evaluate the
+-@var{stream} argument more than once, which is an exception to the
 -general rule for macros.  @code{putc} is usually the best function to
 -use for writing a single character.
-+general rule for macros.  Therefore, @var{stream} should never be an
-+expression with side-effects.
++This is just like @code{fputc}, except that it may be implemented as
++a macro and may evaluate the @var{stream} argument more than once.
++Therefore, @var{stream} should never be an expression with side-effects.
  @end deftypefun
  
  @deftypefun wint_t putwc (wchar_t @var{wc}, FILE *@var{stream})
  @standards{ISO, wchar.h}
  @safety{@prelim{}@mtsafe{}@asunsafe{@asucorrupt{}}@acunsafe{@acucorrupt{} @aculock{}}}
 -This is just like @code{fputwc}, except that it can be implement as
-+This is just like @code{fputwc}, except that it may be implemented as
- a macro, making it faster.  One consequence is that it may evaluate the
- @var{stream} argument more than once, which is an exception to the
+-a macro, making it faster.  One consequence is that it may evaluate the
+-@var{stream} argument more than once, which is an exception to the
 -general rule for macros.  @code{putwc} is usually the best function to
 -use for writing a single wide character.
-+general rule for macros.  Therefore, @var{stream} should never be an
-+expression with side-effects.
++This is just like @code{fputwc}, except that it may be implemented as
++a macro and may evaluate the @var{stream} argument more than once.
++Therefore, @var{stream} should never be an expression with side-effects.
  @end deftypefun
  
  @deftypefun int putc_unlocked (int @var{c}, FILE *@var{stream})
+@@ -1110,20 +1106,17 @@ This function is a GNU extension.
+ @deftypefun int getc (FILE *@var{stream})
+ @standards{ISO, stdio.h}
+ @safety{@prelim{}@mtsafe{}@asunsafe{@asucorrupt{}}@acunsafe{@aculock{} @acucorrupt{}}}
+-This is just like @code{fgetc}, except that it is permissible (and
+-typical) for it to be implemented as a macro that evaluates the
+-@var{stream} argument more than once.  @code{getc} is often highly
+-optimized, so it is usually the best function to use to read a single
+-character.
++This is just like @code{fgetc}, except that it may be implemented as
++a macro and may evaluate the @var{stream} argument more than once.
++Therefore, @var{stream} should never be an expression with side-effects.
+ @end deftypefun
+ 
+ @deftypefun wint_t getwc (FILE *@var{stream})
+ @standards{ISO, wchar.h}
+ @safety{@prelim{}@mtsafe{}@asunsafe{@asucorrupt{}}@acunsafe{@aculock{} @acucorrupt{}}}
+-This is just like @code{fgetwc}, except that it is permissible for it to
+-be implemented as a macro that evaluates the @var{stream} argument more
+-than once.  @code{getwc} can be highly optimized, so it is usually the
+-best function to use to read a single wide character.
++This is just like @code{fgetwc}, except that it may be implemented as
++a macro and may evaluate the @var{stream} argument more than once.
++Therefore, @var{stream} should never be an expression with side-effects.
+ @end deftypefun
+ 
+ @deftypefun int getc_unlocked (FILE *@var{stream})
 diff --git a/misc/Makefile b/misc/Makefile
 index 5d17c562fe..7b7f8351bf 100644
 --- a/misc/Makefile
@@ -1391,6 +1512,75 @@ index 0000000000..9b06b0c176
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/socket/bits/socket2.h b/socket/bits/socket2.h
+index 04780f320e..bd91647f37 100644
+--- a/socket/bits/socket2.h
++++ b/socket/bits/socket2.h
+@@ -37,14 +37,14 @@ recv (int __fd, __fortify_clang_overload_arg0 (void *, ,__buf), size_t __n,
+ 					      "recv called with bigger length than "
+ 					      "size of destination buffer")
+ {
+-  size_t sz = __glibc_objsize0 (__buf);
+-  if (__glibc_safe_or_unknown_len (__n, sizeof (char), sz))
++  size_t __sz = __glibc_objsize0 (__buf);
++  if (__glibc_safe_or_unknown_len (__n, sizeof (char), __sz))
+     return __recv_alias (__fd, __buf, __n, __flags);
+ #if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, sizeof (char), sz))
+-    return __recv_chk_warn (__fd, __buf, __n, sz, __flags);
++  if (__glibc_unsafe_len (__n, sizeof (char), __sz))
++    return __recv_chk_warn (__fd, __buf, __n, __sz, __flags);
+ #endif
+-  return __recv_chk (__fd, __buf, __n, sz, __flags);
++  return __recv_chk (__fd, __buf, __n, __sz, __flags);
+ }
+ 
+ extern ssize_t __recvfrom_chk (int __fd, void *__restrict __buf, size_t __n,
+@@ -71,13 +71,13 @@ recvfrom (int __fd, __fortify_clang_overload_arg0 (void *, __restrict, __buf),
+ 					      "recvfrom called with bigger length "
+ 					      "than size of destination buffer")
+ {
+-  size_t sz = __glibc_objsize0 (__buf);
+-  if (__glibc_safe_or_unknown_len (__n, sizeof (char), sz))
++  size_t __sz = __glibc_objsize0 (__buf);
++  if (__glibc_safe_or_unknown_len (__n, sizeof (char), __sz))
+     return __recvfrom_alias (__fd, __buf, __n, __flags, __addr, __addr_len);
+ #if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, sizeof (char), sz))
+-    return __recvfrom_chk_warn (__fd, __buf, __n, sz, __flags, __addr,
++  if (__glibc_unsafe_len (__n, sizeof (char), __sz))
++    return __recvfrom_chk_warn (__fd, __buf, __n, __sz, __flags, __addr,
+ 				__addr_len);
+ #endif
+-  return __recvfrom_chk (__fd, __buf, __n, sz, __flags, __addr, __addr_len);
++  return __recvfrom_chk (__fd, __buf, __n, __sz, __flags, __addr, __addr_len);
+ }
+diff --git a/stdlib/bits/stdlib.h b/stdlib/bits/stdlib.h
+index 1557b862b1..9c78ecf458 100644
+--- a/stdlib/bits/stdlib.h
++++ b/stdlib/bits/stdlib.h
+@@ -43,16 +43,16 @@ __NTH (realpath (const char *__restrict __name,
+ 					     "bytes long buffer")
+ #endif
+ {
+-  size_t sz = __glibc_objsize (__resolved);
++  size_t __sz = __glibc_objsize (__resolved);
+ 
+-  if (sz == (size_t) -1)
++  if (__sz == (size_t) -1)
+     return __realpath_alias (__name, __resolved);
+ 
+ #if !__fortify_use_clang && defined _LIBC_LIMITS_H_ && defined PATH_MAX
+-  if (__glibc_unsafe_len (PATH_MAX, sizeof (char), sz))
+-    return __realpath_chk_warn (__name, __resolved, sz);
++  if (__glibc_unsafe_len (PATH_MAX, sizeof (char), __sz))
++    return __realpath_chk_warn (__name, __resolved, __sz);
+ #endif
+-  return __realpath_chk (__name, __resolved, sz);
++  return __realpath_chk (__name, __resolved, __sz);
+ }
+ 
+ 
 diff --git a/string/Makefile b/string/Makefile
 index 8f31fa49e6..1dff405c27 100644
 --- a/string/Makefile
@@ -1978,6 +2168,131 @@ index 1cddd8cc6d..63adf0e8ef 100644
  include ../Rules
  
  ifeq ($(run-built-tests),yes)
+diff --git a/wcsmbs/bits/wchar2.h b/wcsmbs/bits/wchar2.h
+index 9fdff47ee2..43c6b63027 100644
+--- a/wcsmbs/bits/wchar2.h
++++ b/wcsmbs/bits/wchar2.h
+@@ -74,9 +74,9 @@ __fortify_function __attribute_overloadable__ wchar_t *
+ __NTH (wcscpy (__fortify_clang_overload_arg (wchar_t *, __restrict, __dest),
+ 	       const wchar_t *__restrict __src))
+ {
+-  size_t sz = __glibc_objsize (__dest);
+-  if (sz != (size_t) -1)
+-    return __wcscpy_chk (__dest, __src, sz / sizeof (wchar_t));
++  size_t __sz = __glibc_objsize (__dest);
++  if (__sz != (size_t) -1)
++    return __wcscpy_chk (__dest, __src, __sz / sizeof (wchar_t));
+   return __wcscpy_alias (__dest, __src);
+ }
+ 
+@@ -84,9 +84,9 @@ __fortify_function __attribute_overloadable__ wchar_t *
+ __NTH (wcpcpy (__fortify_clang_overload_arg (wchar_t *, __restrict, __dest),
+ 	       const wchar_t *__restrict __src))
+ {
+-  size_t sz = __glibc_objsize (__dest);
+-  if (sz != (size_t) -1)
+-    return __wcpcpy_chk (__dest, __src, sz / sizeof (wchar_t));
++  size_t __sz = __glibc_objsize (__dest);
++  if (__sz != (size_t) -1)
++    return __wcpcpy_chk (__dest, __src, __sz / sizeof (wchar_t));
+   return __wcpcpy_alias (__dest, __src);
+ }
+ 
+@@ -118,9 +118,9 @@ __fortify_function __attribute_overloadable__ wchar_t *
+ __NTH (wcscat (__fortify_clang_overload_arg (wchar_t *, __restrict, __dest),
+ 	       const wchar_t *__restrict __src))
+ {
+-  size_t sz = __glibc_objsize (__dest);
+-  if (sz != (size_t) -1)
+-    return __wcscat_chk (__dest, __src, sz / sizeof (wchar_t));
++  size_t __sz = __glibc_objsize (__dest);
++  if (__sz != (size_t) -1)
++    return __wcscat_chk (__dest, __src, __sz / sizeof (wchar_t));
+   return __wcscat_alias (__dest, __src);
+ }
+ 
+@@ -128,9 +128,9 @@ __fortify_function __attribute_overloadable__ wchar_t *
+ __NTH (wcsncat (__fortify_clang_overload_arg (wchar_t *, __restrict, __dest),
+ 	       const wchar_t *__restrict __src, size_t __n))
+ {
+-  size_t sz = __glibc_objsize (__dest);
+-  if (sz != (size_t) -1)
+-    return __wcsncat_chk (__dest, __src, __n, sz / sizeof (wchar_t));
++  size_t __sz = __glibc_objsize (__dest);
++  if (__sz != (size_t) -1)
++    return __wcsncat_chk (__dest, __src, __n, __sz / sizeof (wchar_t));
+   return __wcsncat_alias (__dest, __src, __n);
+ }
+ 
+@@ -170,10 +170,10 @@ __fortify_function int
+ __NTH (swprintf (wchar_t *__restrict __s, size_t __n,
+ 		 const wchar_t *__restrict __fmt, ...))
+ {
+-  size_t sz = __glibc_objsize (__s);
+-  if (sz != (size_t) -1 || __USE_FORTIFY_LEVEL > 1)
++  size_t __sz = __glibc_objsize (__s);
++  if (__sz != (size_t) -1 || __USE_FORTIFY_LEVEL > 1)
+     return __swprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+-			   sz / sizeof (wchar_t), __fmt, __va_arg_pack ());
++			   __sz / sizeof (wchar_t), __fmt, __va_arg_pack ());
+   return __swprintf_alias (__s, __n, __fmt, __va_arg_pack ());
+ }
+ #elif __fortify_use_clang
+@@ -206,10 +206,10 @@ __fortify_function int
+ __NTH (vswprintf (wchar_t *__restrict __s, size_t __n,
+ 		  const wchar_t *__restrict __fmt, __gnuc_va_list __ap))
+ {
+-  size_t sz = __glibc_objsize (__s);
+-  if (sz != (size_t) -1 || __USE_FORTIFY_LEVEL > 1)
++  size_t __sz = __glibc_objsize (__s);
++  if (__sz != (size_t) -1 || __USE_FORTIFY_LEVEL > 1)
+     return __vswprintf_chk (__s, __n,  __USE_FORTIFY_LEVEL - 1,
+-			    sz / sizeof (wchar_t), __fmt, __ap);
++			    __sz / sizeof (wchar_t), __fmt, __ap);
+   return __vswprintf_alias (__s, __n, __fmt, __ap);
+ }
+ 
+@@ -257,14 +257,14 @@ fgetws (__fortify_clang_overload_arg (wchar_t *, __restrict, __s), int __n,
+ 					      "fgetws called with length bigger "
+ 					      "than size of destination buffer")
+ {
+-  size_t sz = __glibc_objsize (__s);
+-  if (__glibc_safe_or_unknown_len (__n, sizeof (wchar_t), sz))
++  size_t __sz = __glibc_objsize (__s);
++  if (__glibc_safe_or_unknown_len (__n, sizeof (wchar_t), __sz))
+     return __fgetws_alias (__s, __n, __stream);
+ #if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, sizeof (wchar_t), sz))
+-    return __fgetws_chk_warn (__s, sz / sizeof (wchar_t), __n, __stream);
++  if (__glibc_unsafe_len (__n, sizeof (wchar_t), __sz))
++    return __fgetws_chk_warn (__s, __sz / sizeof (wchar_t), __n, __stream);
+ #endif
+-  return __fgetws_chk (__s, sz / sizeof (wchar_t), __n, __stream);
++  return __fgetws_chk (__s, __sz / sizeof (wchar_t), __n, __stream);
+ }
+ 
+ #ifdef __USE_GNU
+@@ -275,15 +275,15 @@ fgetws_unlocked (__fortify_clang_overload_arg (wchar_t *, __restrict, __s),
+ 					      "fgetws_unlocked called with length bigger "
+ 					      "than size of destination buffer")
+ {
+-  size_t sz = __glibc_objsize (__s);
+-  if (__glibc_safe_or_unknown_len (__n, sizeof (wchar_t), sz))
++  size_t __sz = __glibc_objsize (__s);
++  if (__glibc_safe_or_unknown_len (__n, sizeof (wchar_t), __sz))
+     return __fgetws_unlocked_alias (__s, __n, __stream);
+ # if !__fortify_use_clang
+-  if (__glibc_unsafe_len (__n, sizeof (wchar_t), sz))
+-    return __fgetws_unlocked_chk_warn (__s, sz / sizeof (wchar_t), __n,
++  if (__glibc_unsafe_len (__n, sizeof (wchar_t), __sz))
++    return __fgetws_unlocked_chk_warn (__s, __sz / sizeof (wchar_t), __n,
+ 				       __stream);
+ # endif
+-  return __fgetws_unlocked_chk (__s, sz / sizeof (wchar_t), __n, __stream);
++  return __fgetws_unlocked_chk (__s, __sz / sizeof (wchar_t), __n, __stream);
+ }
+ #endif
+ 
 diff --git a/wcsmbs/test-wcsncmp-nonarray.c b/wcsmbs/test-wcsncmp-nonarray.c
 new file mode 100644
 index 0000000000..1ad9ebd8fd
