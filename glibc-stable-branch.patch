@@ -8,7 +8,7 @@ Arjun Shankar (2):
       manual/stdio: Clarify putc and putwc
       manual/stdio: Further clarify putc, putwc, getc, and getwc
 
-Florian Weimer (8):
+Florian Weimer (9):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
@@ -17,6 +17,7 @@ Florian Weimer (8):
       Enhanced test coverage for strncmp, wcsncmp
       resolv: Fix tst-resolv-short-response for older GCC (bug 32042)
       x86: Tunables may incorrectly set Prefer_PMINUB_for_stringop (bug 32047)
+      support: Add options list terminator to the test driver
 
 H.J. Lu (3):
       linux: Update the mremap C implementation [BZ #31968]
@@ -1953,6 +1954,18 @@ index 0000000000..0ad05756d9
 +#define TEST_NAME "strnlen"
 +typedef char CHAR;
 +#include "test-Xnlen-nonarray.c"
+diff --git a/support/test-driver.c b/support/test-driver.c
+index f4c3e4d666..04ceebc08f 100644
+--- a/support/test-driver.c
++++ b/support/test-driver.c
+@@ -155,6 +155,7 @@ main (int argc, char **argv)
+     {
+       CMDLINE_OPTIONS
+       TEST_DEFAULT_OPTIONS
++      { 0, }
+     };
+   test_config.options = &options;
+ #endif
 diff --git a/sysdeps/generic/mremap-failure.h b/sysdeps/generic/mremap-failure.h
 new file mode 100644
 index 0000000000..bc0d476368
