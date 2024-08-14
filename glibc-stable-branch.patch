@@ -19,10 +19,12 @@ Florian Weimer (9):
       x86: Tunables may incorrectly set Prefer_PMINUB_for_stringop (bug 32047)
       support: Add options list terminator to the test driver
 
-H.J. Lu (3):
+H.J. Lu (5):
       linux: Update the mremap C implementation [BZ #31968]
       mremap: Update manual entry
       Add mremap tests
+      x86-64: Remove sysdeps/x86_64/x32/dl-machine.h
+      x32/cet: Support shadow stack during startup for Linux 6.10
 
 Lukas Bulwahn (1):
       manual: make setrlimit() description less ambiguous
@@ -2146,6 +2148,50 @@ index 0000000000..408e8af2ab
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/x86_64/dl-cet.h b/sysdeps/unix/sysv/linux/x86_64/dl-cet.h
+index 1fe3133406..b4f7e6c9cd 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/dl-cet.h
++++ b/sysdeps/unix/sysv/linux/x86_64/dl-cet.h
+@@ -92,9 +92,9 @@ dl_cet_ibt_enabled (void)
+ 	# Pass GL(dl_x86_feature_1) to _dl_cet_setup_features.\n\
+ 	movl %edx, %edi\n\
+ 	# Align stack for the _dl_cet_setup_features call.\n\
+-	andq $-16, %rsp\n\
++	and $-16, %" RSP_LP "\n\
+ 	call _dl_cet_setup_features\n\
+ 	# Restore %rax and %rsp from %r12 and %r13.\n\
+-	movq %r12, %rax\n\
+-	movq %r13, %rsp\n\
++	mov %" R12_LP ", %" RAX_LP "\n\
++	mov %" R13_LP ", %" RSP_LP "\n\
+ "
+diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h b/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
+index 3040a47d72..df3e22236d 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
++++ b/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
+@@ -155,6 +155,7 @@
+ #define __NR_lsm_set_self_attr 1073742284
+ #define __NR_lstat 1073741830
+ #define __NR_madvise 1073741852
++#define __NR_map_shadow_stack 1073742277
+ #define __NR_mbind 1073742061
+ #define __NR_membarrier 1073742148
+ #define __NR_memfd_create 1073742143
+diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h b/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h
+index 98124169e6..47fa8af4ce 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h
++++ b/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h
+@@ -15,6 +15,10 @@
+    License along with the GNU C Library; if not, see
+    <http://www.gnu.org/licenses/>.  */
+ 
++#ifndef __NR_map_shadow_stack
++# define __NR_map_shadow_stack 1073742277
++#endif
++
+ /* X32 uses the same 64-bit syscall interface for set_thread_area.   */
+ #ifndef __NR_set_thread_area
+ # define __NR_set_thread_area 1073742029
 diff --git a/sysdeps/x86/cpu-tunables.c b/sysdeps/x86/cpu-tunables.c
 index ae9dcd6180..ccc6b64dc2 100644
 --- a/sysdeps/x86/cpu-tunables.c
@@ -2158,6 +2204,155 @@ index ae9dcd6180..ccc6b64dc2 100644
  	case 26:
  	    {
  	      CHECK_GLIBC_IFUNC_PREFERRED_NEED_BOTH
+diff --git a/sysdeps/x86_64/dl-machine.h b/sysdeps/x86_64/dl-machine.h
+index a6de3793e4..4f12955875 100644
+--- a/sysdeps/x86_64/dl-machine.h
++++ b/sysdeps/x86_64/dl-machine.h
+@@ -139,37 +139,37 @@ elf_machine_runtime_setup (struct link_map *l, struct r_scope_elem *scope[],
+ .globl _start\n\
+ .globl _dl_start_user\n\
+ _start:\n\
+-	movq %rsp, %rdi\n\
++	mov %" RSP_LP ", %" RDI_LP "\n\
+ 	call _dl_start\n\
+ _dl_start_user:\n\
+ 	# Save the user entry point address in %r12.\n\
+-	movq %rax, %r12\n\
++	mov %" RAX_LP ", %" R12_LP "\n\
+ 	# Save %rsp value in %r13.\n\
+-	movq %rsp, %r13\n\
++	mov %" RSP_LP ", % " R13_LP "\n\
+ "\
+ 	RTLD_START_ENABLE_X86_FEATURES \
+ "\
+ 	# Read the original argument count.\n\
+-	movq (%rsp), %rdx\n\
++	mov (%rsp), %" RDX_LP "\n\
+ 	# Call _dl_init (struct link_map *main_map, int argc, char **argv, char **env)\n\
+ 	# argc -> rsi\n\
+-	movq %rdx, %rsi\n\
++	mov %" RDX_LP ", %" RSI_LP "\n\
+ 	# And align stack for the _dl_init call. \n\
+-	andq $-16, %rsp\n\
++	and $-16, %" RSP_LP "\n\
+ 	# _dl_loaded -> rdi\n\
+-	movq _rtld_local(%rip), %rdi\n\
++	mov _rtld_local(%rip), %" RDI_LP "\n\
+ 	# env -> rcx\n\
+-	leaq 16(%r13,%rdx,8), %rcx\n\
++	lea 2*" LP_SIZE "(%r13,%rdx," LP_SIZE "), %" RCX_LP "\n\
+ 	# argv -> rdx\n\
+-	leaq 8(%r13), %rdx\n\
++	lea " LP_SIZE "(%r13), %" RDX_LP "\n\
+ 	# Clear %rbp to mark outermost frame obviously even for constructors.\n\
+ 	xorl %ebp, %ebp\n\
+ 	# Call the function to run the initializers.\n\
+ 	call _dl_init\n\
+ 	# Pass our finalizer function to the user in %rdx, as per ELF ABI.\n\
+-	leaq _dl_fini(%rip), %rdx\n\
++	lea _dl_fini(%rip), %" RDX_LP "\n\
+ 	# And make sure %rsp points to argc stored on the stack.\n\
+-	movq %r13, %rsp\n\
++	mov %" R13_LP ", %" RSP_LP "\n\
+ 	# Jump to the user's entry point.\n\
+ 	jmp *%r12\n\
+ .previous\n\
+@@ -234,8 +234,13 @@ elf_machine_plt_value (struct link_map *map, const ElfW(Rela) *reloc,
+ 
+ 
+ /* Names of the architecture-specific auditing callback functions.  */
++#ifdef __LP64__
+ #define ARCH_LA_PLTENTER x86_64_gnu_pltenter
+ #define ARCH_LA_PLTEXIT x86_64_gnu_pltexit
++#else
++#define ARCH_LA_PLTENTER x32_gnu_pltenter
++#define ARCH_LA_PLTEXIT x32_gnu_pltexit
++#endif
+ 
+ #endif /* !dl_machine_h */
+ 
+diff --git a/sysdeps/x86_64/x32/dl-machine.h b/sysdeps/x86_64/x32/dl-machine.h
+deleted file mode 100644
+index c35cee9261..0000000000
+--- a/sysdeps/x86_64/x32/dl-machine.h
++++ /dev/null
+@@ -1,76 +0,0 @@
+-/* Machine-dependent ELF dynamic relocation inline functions.  x32 version.
+-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+-   This file is part of the GNU C Library.
+-
+-   The GNU C Library is free software; you can redistribute it and/or
+-   modify it under the terms of the GNU Lesser General Public
+-   License as published by the Free Software Foundation; either
+-   version 2.1 of the License, or (at your option) any later version.
+-
+-   The GNU C Library is distributed in the hope that it will be useful,
+-   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-   Lesser General Public License for more details.
+-
+-   You should have received a copy of the GNU Lesser General Public
+-   License along with the GNU C Library; if not, see
+-   <https://www.gnu.org/licenses/>.  */
+-
+-/* Must allow <sysdeps/x86_64/dl-machine.h> to be included more than once.
+-   See #ifdef RESOLVE_MAP in sysdeps/x86_64/dl-machine.h.  */
+-#include <sysdeps/x86_64/dl-machine.h>
+-
+-#ifndef _X32_DL_MACHINE_H
+-#define _X32_DL_MACHINE_H
+-
+-#undef ARCH_LA_PLTENTER
+-#undef ARCH_LA_PLTEXIT
+-#undef RTLD_START
+-
+-/* Names of the architecture-specific auditing callback functions.  */
+-#define ARCH_LA_PLTENTER x32_gnu_pltenter
+-#define ARCH_LA_PLTEXIT x32_gnu_pltexit
+-
+-/* Initial entry point code for the dynamic linker.
+-   The C function `_dl_start' is the real entry point;
+-   its return value is the user program's entry point.  */
+-#define RTLD_START asm ("\n\
+-.text\n\
+-	.p2align 4\n\
+-.globl _start\n\
+-.globl _dl_start_user\n\
+-_start:\n\
+-	movl %esp, %edi\n\
+-	call _dl_start\n\
+-_dl_start_user:\n\
+-	# Save the user entry point address in %r12.\n\
+-	movl %eax, %r12d\n\
+-	# Read the original argument count.\n\
+-	movl (%rsp), %edx\n\
+-	# Call _dl_init (struct link_map *main_map, int argc, char **argv, char **env)\n\
+-	# argc -> rsi\n\
+-	movl %edx, %esi\n\
+-	# Save %rsp value in %r13.\n\
+-	movl %esp, %r13d\n\
+-	# And align stack for the _dl_init call.\n\
+-	and $-16, %esp\n\
+-	# _dl_loaded -> rdi\n\
+-	movl _rtld_local(%rip), %edi\n\
+-	# env -> rcx\n\
+-	lea 8(%r13,%rdx,4), %ecx\n\
+-	# argv -> rdx\n\
+-	lea 4(%r13), %edx\n\
+-	# Clear %rbp to mark outermost frame obviously even for constructors.\n\
+-	xorl %ebp, %ebp\n\
+-	# Call the function to run the initializers.\n\
+-	call _dl_init\n\
+-	# Pass our finalizer function to the user in %rdx, as per ELF ABI.\n\
+-	lea _dl_fini(%rip), %edx\n\
+-	# And make sure %rsp points to argc stored on the stack.\n\
+-	movl %r13d, %esp\n\
+-	# Jump to the user's entry point.\n\
+-	jmp *%r12\n\
+-.previous\n\
+-");
+-
+-#endif /* !_X32_DL_MACHINE_H */
 diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
 index 1cddd8cc6d..63adf0e8ef 100644
 --- a/wcsmbs/Makefile
