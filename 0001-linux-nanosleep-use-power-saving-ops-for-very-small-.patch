@@ -1,0 +1,160 @@
+From 4a78d228bb7368485ed6611f5dfc2ee068d3ae74 Mon Sep 17 00:00:00 2001
+From: Colin Ian King <colin.king@intel.com>
+Date: Tue, 3 Sep 2024 09:34:36 +0000
+Subject: [PATCH] linux/nanosleep: use power saving ops for very small delays
+
+Small delays don't benefit from calling the nanosleep system call
+as the system call is a large overhead. For systems with a default
+performance cpu freq governor it's more power efficient and accurate
+to use CPU delay instructions to perform small delays. For very
+small delays use nop, then pause, them tpause and fall back to
+nanosleep. For small delays this is not only more power efficient
+but also far more accurate.
+
+Signed-off-by: Colin Ian King <colin.king@intel.com>;
+---
+ sysdeps/unix/sysv/linux/nanosleep.c | 121 ++++++++++++++++++++++++++++
+ 1 file changed, 121 insertions(+)
+
+diff --git a/sysdeps/unix/sysv/linux/nanosleep.c b/sysdeps/unix/sysv/linux/nanosleep.c
+index fac93074aa..0db435b454 100644
+--- a/sysdeps/unix/sysv/linux/nanosleep.c
++++ b/sysdeps/unix/sysv/linux/nanosleep.c
+@@ -19,6 +19,125 @@
+ #include <time.h>
+ #include <errno.h>
+ 
++#ifdef __x86_64__
++#include <inttypes.h>
++#include "cpuid.h"
++
++static inline void __tpause(const uint32_t cycles, const uint32_t tpause_type)
++{
++  __asm__ __volatile__ (
++            "rdtsc\n"
++            "addl %[cycles], %%eax\n"
++            "adcl $0, %%edx\n"
++            "tpause %[ctrl]"
++            :
++            : [ctrl] "r"(tpause_type), [cycles] "r"(cycles)
++            : "rax", "rdx");
++}
++
++static int __nanosleep64_x86_tpause(const struct __timespec64 *req, struct __timespec64 *rem)
++{
++  int ret;
++
++  if (req->tv_sec < 1)
++    {
++      int64_t req_ns = req->tv_nsec;
++
++      if (req_ns < 10)
++        {
++	  /* very short delays, just do a nop */
++          __asm__ __volatile__ ("nop\n" ::: "memory");
++          return 0;
++        }
++      else if (req_ns < 50)
++        {
++	  /* short delays, just do a pause, Pentium 4 or less will be a nop */
++          __asm__ __volatile__ ("pause\n" ::: "memory");
++          return 0;
++        }
++      else if (req_ns < 3000)
++        {
++          /*
++	   *  delays less than 3000 ns it is more power efficient
++	   *  to estimate the tpause ticks and peform one or
++	   *  two tpause delays with a slop of ~100 ns than
++	   *  peform a clock nanosleep
++	   */
++          do
++	    {
++              uint64_t tsc_delay;
++              struct timespec ts1, ts2;
++              long diff;
++
++              ret = clock_gettime(CLOCK_REALTIME, &ts1);
++
++              /* tsc_delay = 2.25 x required ns as fast estimate */
++              tsc_delay = (req_ns << 1) + (req_ns >> 2);
++              __tpause((uint32_t)tsc_delay, 1);
++              ret = clock_gettime(CLOCK_REALTIME, &ts2);
++              diff = (long)(ts2.tv_sec - ts1.tv_sec) * 1000000000;
++              diff += (long)(ts2.tv_nsec - ts1.tv_nsec);
++              req_ns -= diff;
++            }
++          while (req_ns > 100);
++          return 0;
++        }
++    }
++
++  ret = __clock_nanosleep_time64 (CLOCK_REALTIME, 0, req, rem);
++  if (ret != 0)
++    {
++      __set_errno (ret);
++      return -1;
++    }
++  return 0;
++}
++
++static int __nanosleep64_x86(const struct timespec *req, struct timespec *rem)
++{
++  int ret;
++
++  if (req->tv_sec < 1)
++    {
++      int64_t req_ns = req->tv_nsec;
++
++      if (req_ns < 10)
++        {
++	  /* very short delays, just do a nop */
++          __asm__ __volatile__("nop\n" ::: "memory");
++          return 0;
++        }
++      else if (req_ns < 50)
++        {
++	  /* short delays, just do a pause, Pentium 4 or less will be a nop */
++          __asm__ __volatile__("pause\n" ::: "memory");
++          return 0;
++        }
++    }
++
++  ret = __clock_nanosleep_time64 (CLOCK_REALTIME, 0, req, rem);
++  if (ret != 0)
++    {
++      __set_errno (ret);
++      return -1;
++    }
++  return 0;
++}
++
++static int (*__nanosleep_x86_resolver(const struct __timespec64 *req, struct __timespec64 *rem))
++	(const struct __timespec64 *req, struct __timespec64 *rem)
++{
++	unsigned int eax, ebx, ecx, edx;
++	return (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx) && ((ecx >> 5) & 1))
++		? __nanosleep64_x86_tpause
++		: __nanosleep64_x86;
++}
++
++int __nanosleep64(const struct __timespec64 *req, struct __timespec64 *rem)
++    __attribute__ ((ifunc("__nanosleep_x86_resolver")));
++
++#else
++
+ int
+ __nanosleep64 (const struct __timespec64 *req, struct __timespec64 *rem)
+ {
+@@ -30,6 +149,8 @@ __nanosleep64 (const struct __timespec64 *req, struct __timespec64 *rem)
+     }
+   return 0;
+ }
++#endif
++
+ #if __TIMESIZE != 64
+ libc_hidden_def (__nanosleep64)
+ 
+-- 
+2.43.0
+

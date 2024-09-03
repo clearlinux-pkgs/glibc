@@ -46,6 +46,7 @@ Patch55: 	disable-vectorization-even-more.patch
 Patch62:	limit-avx512-freq-damage.patch
 
 Patch63:	utf8-locale-naming.patch
+Patch64:	0001-linux-nanosleep-use-power-saving-ops-for-very-small-.patch
 
 # cves: patches 101 through 200
 
@@ -227,7 +228,7 @@ GNU C library extra components.
 
 %patch62 -p1
 %patch63 -p1
-
+%patch64 -p1
 
 %patch9 -p1
 
