@@ -8,7 +8,7 @@ Arjun Shankar (2):
       manual/stdio: Clarify putc and putwc
       manual/stdio: Further clarify putc, putwc, getc, and getwc
 
-Florian Weimer (11):
+Florian Weimer (15):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
@@ -20,6 +20,10 @@ Florian Weimer (11):
       support: Add options list terminator to the test driver
       Define __libc_initial for the static libc
       string: strerror, strsignal cannot use buffer after dlmopen (bug 32026)
+      elf: Clarify and invert second argument of _dl_allocate_tls_init
+      elf: Avoid re-initializing already allocated TLS in dlopen (bug 31717)
+      elf: Fix tst-dlopen-tlsreinit1.out test dependency
+      debug: Fix read error handling in pcprofiledump
 
 H.J. Lu (5):
       linux: Update the mremap C implementation [BZ #31968]
@@ -44,10 +48,11 @@ Miguel Martín (2):
 Noah Goldstein (1):
       x86: Fix bug in strchrnul-evex512 [BZ #32078]
 
-Siddhesh Poyarekar (3):
+Siddhesh Poyarekar (4):
       Make tst-ungetc use libsupport
       ungetc: Fix uninitialized read when putting into unused streams [BZ #27821]
       ungetc: Fix backup buffer leak on program exit [BZ #27821]
+      libio: Attempt wide backup free only for non-legacy code
 
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
@@ -58,10 +63,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..10a125bc66 100644
+index 31281ac408..9033335db1 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,17 @@ See the end for copying conditions.
+@@ -5,6 +5,19 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -69,12 +74,14 @@ index 31281ac408..10a125bc66 100644
 +
 +The following bugs are resolved with this release:
 +
++  [27821] ungetc: Fix backup buffer leak on program exit
 +  [30081] resolv: Do not wait for non-existing second DNS response after error
-+  [31968] mremap implementation in C does not handle arguments correctly
++  [31717] elf: Avoid re-initializing already allocated TLS in dlopen
 +  [31890] resolv: Allow short error responses to match any DNS query
 +  [31968] mremap implementation in C does not handle arguments correctly
 +  [32026] strerror/strsignal TLS not handled correctly for secondary namespaces
 +  [32052] Name space violation in fortify wrappers
++  [32137] libio: Attempt wide backup free only for non-legacy code
 +
  Version 2.40
  
@@ -497,6 +504,130 @@ index b8f8a829ca..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/debug/pcprofiledump.c b/debug/pcprofiledump.c
+index 049a9c2744..94530f0cf9 100644
+--- a/debug/pcprofiledump.c
++++ b/debug/pcprofiledump.c
+@@ -75,6 +75,44 @@ static struct argp argp =
+   options, parse_opt, args_doc, doc, NULL, more_help
+ };
+ 
++/* Try to read SIZE bytes from FD and store them on BUF.  Terminate
++   the process upon read error.  Also terminate the process if less
++   than SIZE bytes are remaining in the file.  If !IN_HEADER, do not
++   terminate the process if the end of the file is encountered
++   immediately, before any bytes are read.
++
++   Returns true if SIZE bytes have been read, and false if no bytes
++   have been read due to an end-of-file condition.  */
++static bool
++read_exactly (int fd, void *buffer, size_t size, bool in_header)
++{
++  char *p = buffer;
++  char *end = p + size;
++  while (p < end)
++    {
++      ssize_t ret = TEMP_FAILURE_RETRY (read (fd, p, end - p));
++      if (ret < 0)
++	{
++	  if (in_header)
++	    error (EXIT_FAILURE, errno, _("cannot read header"));
++	  else
++	    error (EXIT_FAILURE, errno,  _("cannot read pointer pair"));
++	}
++      if (ret == 0)
++	{
++	  if (p == buffer && !in_header)
++	    /* Nothing has been read.  */
++	    return false;
++	  if (in_header)
++	    error (EXIT_FAILURE, 0, _("unexpected end of file in header"));
++	  else
++	    error (EXIT_FAILURE, 0,
++		   _("unexpected end of file in pointer pair"));
++	}
++      p += ret;
++    }
++  return true;
++}
+ 
+ int
+ main (int argc, char *argv[])
+@@ -110,8 +148,7 @@ main (int argc, char *argv[])
+   /* Read the first 4-byte word.  It contains the information about
+      the word size and the endianness.  */
+   uint32_t word;
+-  if (TEMP_FAILURE_RETRY (read (fd, &word, 4)) != 4)
+-    error (EXIT_FAILURE, errno, _("cannot read header"));
++  read_exactly (fd, &word, sizeof (word), true);
+ 
+   /* Check whether we have to swap the byte order.  */
+   int must_swap = (word & 0x0fffffff) == bswap_32 (0xdeb00000);
+@@ -121,56 +158,30 @@ main (int argc, char *argv[])
+   /* We have two loops, one for 32 bit pointers, one for 64 bit pointers.  */
+   if (word == 0xdeb00004)
+     {
+-      union
+-      {
+-	uint32_t ptrs[2];
+-	char bytes[8];
+-      } pair;
++      uint32_t ptrs[2];
+ 
+       while (1)
+ 	{
+-	  size_t len = sizeof (pair);
+-	  size_t n;
+-
+-	  while (len > 0
+-		 && (n = TEMP_FAILURE_RETRY (read (fd, &pair.bytes[8 - len],
+-						   len))) != 0)
+-	    len -= n;
+-
+-	  if (len != 0)
+-	    /* Nothing to read.  */
++	  if (!read_exactly (fd, ptrs, sizeof (ptrs), false))
+ 	    break;
+ 
+ 	  printf ("this = %#010" PRIx32 ", caller = %#010" PRIx32 "\n",
+-		  must_swap ? bswap_32 (pair.ptrs[0]) : pair.ptrs[0],
+-		  must_swap ? bswap_32 (pair.ptrs[1]) : pair.ptrs[1]);
++		  must_swap ? bswap_32 (ptrs[0]) : ptrs[0],
++		  must_swap ? bswap_32 (ptrs[1]) : ptrs[1]);
+ 	}
+     }
+   else if (word == 0xdeb00008)
+     {
+-      union
+-      {
+-	uint64_t ptrs[2];
+-	char bytes[16];
+-      } pair;
++      uint64_t ptrs[2];
+ 
+       while (1)
+ 	{
+-	  size_t len = sizeof (pair);
+-	  size_t n;
+-
+-	  while (len > 0
+-		 && (n = TEMP_FAILURE_RETRY (read (fd, &pair.bytes[8 - len],
+-						   len))) != 0)
+-	    len -= n;
+-
+-	  if (len != 0)
+-	    /* Nothing to read.  */
++	  if (!read_exactly (fd, ptrs, sizeof (ptrs), false))
+ 	    break;
+ 
+ 	  printf ("this = %#018" PRIx64 ", caller = %#018" PRIx64 "\n",
+-		  must_swap ? bswap_64 (pair.ptrs[0]) : pair.ptrs[0],
+-		  must_swap ? bswap_64 (pair.ptrs[1]) : pair.ptrs[1]);
++		  must_swap ? bswap_64 (ptrs[0]) : ptrs[0],
++		  must_swap ? bswap_64 (ptrs[1]) : ptrs[1]);
+ 	}
+     }
+   else
 diff --git a/debug/tst-fortify-syslog.c b/debug/tst-fortify-syslog.c
 index a7ddbf7c6b..2712acf689 100644
 --- a/debug/tst-fortify-syslog.c
@@ -529,6 +660,516 @@ index a7ddbf7c6b..2712acf689 100644
      }
  
  static void
+diff --git a/elf/Makefile b/elf/Makefile
+index a3475f3fb5..dc686c3bff 100644
+--- a/elf/Makefile
++++ b/elf/Makefile
+@@ -416,6 +416,10 @@ tests += \
+   tst-dlmopen4 \
+   tst-dlopen-self \
+   tst-dlopen-tlsmodid \
++  tst-dlopen-tlsreinit1 \
++  tst-dlopen-tlsreinit2 \
++  tst-dlopen-tlsreinit3 \
++  tst-dlopen-tlsreinit4 \
+   tst-dlopenfail \
+   tst-dlopenfail-2 \
+   tst-dlopenrpath \
+@@ -853,6 +857,9 @@ modules-names += \
+   tst-dlmopen-twice-mod1 \
+   tst-dlmopen-twice-mod2 \
+   tst-dlmopen1mod \
++  tst-dlopen-tlsreinitmod1 \
++  tst-dlopen-tlsreinitmod2 \
++  tst-dlopen-tlsreinitmod3 \
+   tst-dlopenfaillinkmod \
+   tst-dlopenfailmod1 \
+   tst-dlopenfailmod2 \
+@@ -3118,3 +3125,26 @@ $(objpfx)tst-recursive-tls.out: \
+     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+ $(objpfx)tst-recursive-tlsmod%.os: tst-recursive-tlsmodN.c
+ 	$(compile-command.c) -DVAR=thread_$* -DFUNC=get_threadvar_$*
++
++# Order matters here.  The test needs the constructor for
++# tst-dlopen-tlsreinitmod2.so to be called first.
++LDFLAGS-tst-dlopen-tlsreinitmod1.so = -Wl,--no-as-needed
++$(objpfx)tst-dlopen-tlsreinitmod1.so: \
++  $(objpfx)tst-dlopen-tlsreinitmod3.so $(objpfx)tst-dlopen-tlsreinitmod2.so
++LDFLAGS-tst-dlopen-tlsreinit2 = -Wl,--no-as-needed
++$(objpfx)tst-dlopen-tlsreinit2: \
++  $(objpfx)tst-dlopen-tlsreinitmod3.so $(objpfx)tst-dlopen-tlsreinitmod2.so
++LDFLAGS-tst-dlopen-tlsreinit4 = -Wl,--no-as-needed
++$(objpfx)tst-dlopen-tlsreinit4: \
++  $(objpfx)tst-dlopen-tlsreinitmod3.so $(objpfx)tst-dlopen-tlsreinitmod2.so
++# tst-dlopen-tlsreinitmod2.so is underlinked and refers to
++# tst-dlopen-tlsreinitmod3.so.  The dependency is provided via
++# $(objpfx)tst-dlopen-tlsreinitmod1.so.
++tst-dlopen-tlsreinitmod2.so-no-z-defs = yes
++$(objpfx)tst-dlopen-tlsreinit1.out: $(objpfx)tst-dlopen-tlsreinitmod1.so \
++  $(objpfx)tst-dlopen-tlsreinitmod2.so $(objpfx)tst-dlopen-tlsreinitmod3.so
++# Reuse an audit module which provides ample debug logging.
++$(objpfx)tst-dlopen-tlsreinit3.out: $(objpfx)tst-auditmod1.so
++tst-dlopen-tlsreinit3-ENV = LD_AUDIT=$(objpfx)tst-auditmod1.so
++$(objpfx)tst-dlopen-tlsreinit4.out: $(objpfx)tst-auditmod1.so
++tst-dlopen-tlsreinit4-ENV = LD_AUDIT=$(objpfx)tst-auditmod1.so
+diff --git a/elf/dl-open.c b/elf/dl-open.c
+index c378da16c0..8556e7bd2f 100644
+--- a/elf/dl-open.c
++++ b/elf/dl-open.c
+@@ -363,17 +363,8 @@ resize_tls_slotinfo (struct link_map *new)
+ {
+   bool any_tls = false;
+   for (unsigned int i = 0; i < new->l_searchlist.r_nlist; ++i)
+-    {
+-      struct link_map *imap = new->l_searchlist.r_list[i];
+-
+-      /* Only add TLS memory if this object is loaded now and
+-	 therefore is not yet initialized.  */
+-      if (! imap->l_init_called && imap->l_tls_blocksize > 0)
+-	{
+-	  _dl_add_to_slotinfo (imap, false);
+-	  any_tls = true;
+-	}
+-    }
++    if (_dl_add_to_slotinfo (new->l_searchlist.r_list[i], false))
++      any_tls = true;
+   return any_tls;
+ }
+ 
+@@ -383,22 +374,8 @@ resize_tls_slotinfo (struct link_map *new)
+ static void
+ update_tls_slotinfo (struct link_map *new)
+ {
+-  unsigned int first_static_tls = new->l_searchlist.r_nlist;
+   for (unsigned int i = 0; i < new->l_searchlist.r_nlist; ++i)
+-    {
+-      struct link_map *imap = new->l_searchlist.r_list[i];
+-
+-      /* Only add TLS memory if this object is loaded now and
+-	 therefore is not yet initialized.  */
+-      if (! imap->l_init_called && imap->l_tls_blocksize > 0)
+-	{
+-	  _dl_add_to_slotinfo (imap, true);
+-
+-	  if (imap->l_need_tls_init
+-	      && first_static_tls == new->l_searchlist.r_nlist)
+-	    first_static_tls = i;
+-	}
+-    }
++    _dl_add_to_slotinfo (new->l_searchlist.r_list[i], true);
+ 
+   size_t newgen = GL(dl_tls_generation) + 1;
+   if (__glibc_unlikely (newgen == 0))
+@@ -410,13 +387,11 @@ TLS generation counter wrapped!  Please report this."));
+   /* We need a second pass for static tls data, because
+      _dl_update_slotinfo must not be run while calls to
+      _dl_add_to_slotinfo are still pending.  */
+-  for (unsigned int i = first_static_tls; i < new->l_searchlist.r_nlist; ++i)
++  for (unsigned int i = 0; i < new->l_searchlist.r_nlist; ++i)
+     {
+       struct link_map *imap = new->l_searchlist.r_list[i];
+ 
+-      if (imap->l_need_tls_init
+-	  && ! imap->l_init_called
+-	  && imap->l_tls_blocksize > 0)
++      if (imap->l_need_tls_init && imap->l_tls_blocksize > 0)
+ 	{
+ 	  /* For static TLS we have to allocate the memory here and
+ 	     now, but we can delay updating the DTV.  */
+diff --git a/elf/dl-tls.c b/elf/dl-tls.c
+index 3d221273f1..3d529b722c 100644
+--- a/elf/dl-tls.c
++++ b/elf/dl-tls.c
+@@ -552,9 +552,14 @@ _dl_resize_dtv (dtv_t *dtv, size_t max_modid)
+ /* Allocate initial TLS.  RESULT should be a non-NULL pointer to storage
+    for the TLS space.  The DTV may be resized, and so this function may
+    call malloc to allocate that space.  The loader's GL(dl_load_tls_lock)
+-   is taken when manipulating global TLS-related data in the loader.  */
++   is taken when manipulating global TLS-related data in the loader.
++
++   If MAIN_THREAD, this is the first call during process
++   initialization.  In this case, TLS initialization for secondary
++   (audit) namespaces is skipped because that has already been handled
++   by dlopen.  */
+ void *
+-_dl_allocate_tls_init (void *result, bool init_tls)
++_dl_allocate_tls_init (void *result, bool main_thread)
+ {
+   if (result == NULL)
+     /* The memory allocation failed.  */
+@@ -627,17 +632,21 @@ _dl_allocate_tls_init (void *result, bool init_tls)
+ 	     some platforms use in static programs requires it.  */
+ 	  dtv[map->l_tls_modid].pointer.val = dest;
+ 
+-	  /* Copy the initialization image and clear the BSS part.  For
+-	     audit modules or dependencies with initial-exec TLS, we can not
+-	     set the initial TLS image on default loader initialization
+-	     because it would already be set by the audit setup.  However,
+-	     subsequent thread creation would need to follow the default
+-	     behaviour.   */
+-	  if (map->l_ns != LM_ID_BASE && !init_tls)
++	  /* Copy the initialization image and clear the BSS part.
++	     For audit modules or dependencies with initial-exec TLS,
++	     we can not set the initial TLS image on default loader
++	     initialization because it would already be set by the
++	     audit setup, which uses the dlopen code and already
++	     clears l_need_tls_init.  Calls with !main_thread from
++	     pthread_create need to initialze TLS for the current
++	     thread regardless of namespace.  */
++	  if (map->l_ns != LM_ID_BASE && main_thread)
+ 	    continue;
+ 	  memset (__mempcpy (dest, map->l_tls_initimage,
+ 			     map->l_tls_initimage_size), '\0',
+ 		  map->l_tls_blocksize - map->l_tls_initimage_size);
++	  if (main_thread)
++	    map->l_need_tls_init = 0;
+ 	}
+ 
+       total += cnt;
+@@ -661,7 +670,7 @@ _dl_allocate_tls (void *mem)
+ {
+   return _dl_allocate_tls_init (mem == NULL
+ 				? _dl_allocate_tls_storage ()
+-				: allocate_dtv (mem), true);
++				: allocate_dtv (mem), false);
+ }
+ rtld_hidden_def (_dl_allocate_tls)
+ 
+@@ -1094,9 +1103,32 @@ _dl_tls_initial_modid_limit_setup (void)
+ }
+ 
+ 
+-void
++/* Add module to slot information data.  If DO_ADD is false, only the
++   required memory is allocated.  Must be called with
++   GL (dl_load_tls_lock) acquired.  If the function has already been
++   called for the link map L with !DO_ADD, then this function will not
++   raise an exception, otherwise it is possible that it encounters a
++   memory allocation failure.
++
++   Return false if L has already been added to the slotinfo data, or
++   if L has no TLS data.  If the returned value is true, L has been
++   added with this call (DO_ADD), or has been added in a previous call
++   (!DO_ADD).
++
++   The expected usage is as follows: Call _dl_add_to_slotinfo for
++   several link maps with DO_ADD set to false, and record if any calls
++   result in a true result.  If there was a true result, call
++   _dl_add_to_slotinfo again, this time with DO_ADD set to true.  (For
++   simplicity, it's possible to call the function for link maps where
++   the previous result was false.)  The return value from the second
++   round of calls can be ignored.  If there was true result initially,
++   call _dl_update_slotinfo to update the TLS generation counter.  */
++bool
+ _dl_add_to_slotinfo (struct link_map *l, bool do_add)
+ {
++  if (l->l_tls_blocksize == 0 || l->l_tls_in_slotinfo)
++    return false;
++
+   /* Now that we know the object is loaded successfully add
+      modules containing TLS data to the dtv info table.  We
+      might have to increase its size.  */
+@@ -1152,7 +1184,10 @@ cannot create TLS data structures"));
+       atomic_store_relaxed (&listp->slotinfo[idx].map, l);
+       atomic_store_relaxed (&listp->slotinfo[idx].gen,
+ 			    GL(dl_tls_generation) + 1);
++      l->l_tls_in_slotinfo = true;
+     }
++
++  return true;
+ }
+ 
+ #if PTHREAD_IN_LIBC
+diff --git a/elf/rtld.c b/elf/rtld.c
+index bfdf632e77..09b9c9993b 100644
+--- a/elf/rtld.c
++++ b/elf/rtld.c
+@@ -2338,7 +2338,7 @@ dl_main (const ElfW(Phdr) *phdr,
+      into the main thread's TLS area, which we allocated above.
+      Note: thread-local variables must only be accessed after completing
+      the next step.  */
+-  _dl_allocate_tls_init (tcbp, false);
++  _dl_allocate_tls_init (tcbp, true);
+ 
+   /* And finally install it for the main thread.  */
+   if (! __rtld_tls_init_tp_called)
+diff --git a/elf/tst-dlopen-tlsreinit1.c b/elf/tst-dlopen-tlsreinit1.c
+new file mode 100644
+index 0000000000..2016b9b0c6
+--- /dev/null
++++ b/elf/tst-dlopen-tlsreinit1.c
+@@ -0,0 +1,40 @@
++/* Test that dlopen preserves already accessed TLS (bug 31717).
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdbool.h>
++#include <support/check.h>
++#include <support/xdlfcn.h>
++#include <ctype.h>
++
++static int
++do_test (void)
++{
++  void *handle = xdlopen ("tst-dlopen-tlsreinitmod1.so", RTLD_NOW);
++
++  bool *tlsreinitmod3_tested = xdlsym (handle, "tlsreinitmod3_tested");
++  TEST_VERIFY (*tlsreinitmod3_tested);
++
++  xdlclose (handle);
++
++  /* This crashes if the libc.so.6 TLS image has been reverted.  */
++  TEST_VERIFY (!isupper ('@'));
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/elf/tst-dlopen-tlsreinit2.c b/elf/tst-dlopen-tlsreinit2.c
+new file mode 100644
+index 0000000000..90ad2c7713
+--- /dev/null
++++ b/elf/tst-dlopen-tlsreinit2.c
+@@ -0,0 +1,39 @@
++/* Test that dlopen preserves already accessed TLS (bug 31717).
++   Variant with initially-linked modules.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <ctype.h>
++#include <stdbool.h>
++#include <support/check.h>
++#include <support/xdlfcn.h>
++
++
++static int
++do_test (void)
++{
++  /* Defined in tst-dlopen-tlsreinitmod3.so.  */
++  extern bool tlsreinitmod3_tested;
++  TEST_VERIFY (tlsreinitmod3_tested);
++
++  /* This crashes if the libc.so.6 TLS image has been reverted.  */
++  TEST_VERIFY (!isupper ('@'));
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/elf/tst-dlopen-tlsreinit3.c b/elf/tst-dlopen-tlsreinit3.c
+new file mode 100644
+index 0000000000..79bd585aff
+--- /dev/null
++++ b/elf/tst-dlopen-tlsreinit3.c
+@@ -0,0 +1,2 @@
++/* Same code, but run with LD_AUDIT=tst-auditmod1.so.  */
++#include "tst-dlopen-tlsreinit1.c"
+diff --git a/elf/tst-dlopen-tlsreinit4.c b/elf/tst-dlopen-tlsreinit4.c
+new file mode 100644
+index 0000000000..344c9211ab
+--- /dev/null
++++ b/elf/tst-dlopen-tlsreinit4.c
+@@ -0,0 +1,2 @@
++/* Same code, but run with LD_AUDIT=tst-auditmod1.so.  */
++#include "tst-dlopen-tlsreinit2.c"
+diff --git a/elf/tst-dlopen-tlsreinitmod1.c b/elf/tst-dlopen-tlsreinitmod1.c
+new file mode 100644
+index 0000000000..354cc3de51
+--- /dev/null
++++ b/elf/tst-dlopen-tlsreinitmod1.c
+@@ -0,0 +1,20 @@
++/* Test that dlopen preserves already accessed TLS (bug 31717), module 1.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* This module triggers loading of tst-dlopen-tlsreinitmod2.so and
++   tst-dlopen-tlsreinitmod3.so.  */
+diff --git a/elf/tst-dlopen-tlsreinitmod2.c b/elf/tst-dlopen-tlsreinitmod2.c
+new file mode 100644
+index 0000000000..677e69bd35
+--- /dev/null
++++ b/elf/tst-dlopen-tlsreinitmod2.c
+@@ -0,0 +1,30 @@
++/* Test that dlopen preserves already accessed TLS (bug 31717), module 2.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++
++/* Defined in tst-dlopen-tlsreinitmod3.so.  This an underlinked symbol
++   dependency.  */
++extern void call_tlsreinitmod3 (void);
++
++static void __attribute__ ((constructor))
++tlsreinitmod2_init (void)
++{
++  puts ("info: constructor of tst-dlopen-tlsreinitmod2.so invoked");
++  call_tlsreinitmod3 ();
++}
+diff --git a/elf/tst-dlopen-tlsreinitmod3.c b/elf/tst-dlopen-tlsreinitmod3.c
+new file mode 100644
+index 0000000000..ef769c5131
+--- /dev/null
++++ b/elf/tst-dlopen-tlsreinitmod3.c
+@@ -0,0 +1,102 @@
++/* Test that dlopen preserves already accessed TLS (bug 31717), module 3.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <dlfcn.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <unistd.h>
++
++/* Used to verify from the main program that the test ran.  */
++bool tlsreinitmod3_tested;
++
++/* This TLS variable must not revert back to the initial state after
++   dlopen.  */
++static __thread int tlsreinitmod3_state = 1;
++
++/* Set from the ELF constructor during dlopen.  */
++static bool tlsreinitmod3_constructed;
++
++/* Second half of test, behind a compiler barrier.  The compiler
++   barrier is necessary to prevent carrying over TLS address
++   information from call_tlsreinitmod3 to call_tlsreinitmod3_tail.  */
++void call_tlsreinitmod3_tail (void *self) __attribute__ ((weak));
++
++/* Called from tst-dlopen-tlsreinitmod2.so.  */
++void
++call_tlsreinitmod3 (void)
++{
++  printf ("info: call_tlsreinitmod3 invoked (state=%d)\n",
++          tlsreinitmod3_state);
++
++  if (tlsreinitmod3_constructed)
++    {
++      puts ("error: call_tlsreinitmod3 called after ELF constructor");
++      fflush (stdout);
++      /* Cannot rely on test harness due to dynamic linking.  */
++      _exit (1);
++    }
++
++  tlsreinitmod3_state = 2;
++
++  /* Self-dlopen.  This will run the ELF constructor.   */
++  void *self = dlopen ("tst-dlopen-tlsreinitmod3.so", RTLD_NOW);
++  if (self == NULL)
++    {
++      printf ("error: dlopen: %s\n", dlerror ());
++      fflush (stdout);
++      /* Cannot rely on test harness due to dynamic linking.  */
++      _exit (1);
++    }
++
++  call_tlsreinitmod3_tail (self);
++}
++
++void
++call_tlsreinitmod3_tail (void *self)
++{
++  printf ("info: dlopen returned in tlsreinitmod3 (state=%d)\n",
++          tlsreinitmod3_state);
++
++  if (!tlsreinitmod3_constructed)
++    {
++      puts ("error: dlopen did not call tlsreinitmod3 ELF constructor");
++      fflush (stdout);
++      /* Cannot rely on test harness due to dynamic linking.  */
++      _exit (1);
++    }
++
++  if (tlsreinitmod3_state != 2)
++    {
++      puts ("error: TLS state reverted in tlsreinitmod3");
++      fflush (stdout);
++      /* Cannot rely on test harness due to dynamic linking.  */
++      _exit (1);
++    }
++
++  dlclose (self);
++
++  /* Signal test completion to the main program.  */
++  tlsreinitmod3_tested = true;
++}
++
++static void __attribute__ ((constructor))
++tlsreinitmod3_init (void)
++{
++  puts ("info: constructor of tst-dlopen-tlsreinitmod3.so invoked");
++  tlsreinitmod3_constructed = true;
++}
 diff --git a/include/libc-internal.h b/include/libc-internal.h
 index 87ac591835..1ef43ffe67 100644
 --- a/include/libc-internal.h
@@ -543,6 +1184,18 @@ index 87ac591835..1ef43ffe67 100644
  #endif
  
  #endif /* _LIBC_INTERNAL  */
+diff --git a/include/link.h b/include/link.h
+index cb0d7d8e2f..5ed445d5a6 100644
+--- a/include/link.h
++++ b/include/link.h
+@@ -212,6 +212,7 @@ struct link_map
+     unsigned int l_find_object_processed:1; /* Zero if _dl_find_object_update
+ 					       needs to process this
+ 					       lt_library map.  */
++    unsigned int l_tls_in_slotinfo:1; /* TLS slotinfo updated in dlopen.  */
+ 
+     /* NODELETE status of the map.  Only valid for maps of type
+        lt_loaded.  Lazy binding sets l_nodelete_active directly,
 diff --git a/libio/bits/stdio2.h b/libio/bits/stdio2.h
 index 91a80dd7c6..4b8bc35bdf 100644
 --- a/libio/bits/stdio2.h
@@ -633,7 +1286,7 @@ index 91a80dd7c6..4b8bc35bdf 100644
  }
  #endif
 diff --git a/libio/genops.c b/libio/genops.c
-index 99f5e80f20..35d8b30710 100644
+index 99f5e80f20..6f20d49669 100644
 --- a/libio/genops.c
 +++ b/libio/genops.c
 @@ -662,7 +662,7 @@ _IO_sputbackc (FILE *fp, int c)
@@ -652,7 +1305,7 @@ index 99f5e80f20..35d8b30710 100644
 +      /* Free up the backup area if it was ever allocated.  */
 +      if (_IO_have_backup (fp))
 +	_IO_free_backup_area (fp);
-+      if (fp->_mode > 0 && _IO_have_wbackup (fp))
++      if (!legacy && fp->_mode > 0 && _IO_have_wbackup (fp))
 +	_IO_free_wbackup_area (fp);
 +
        if (! (fp->_flags & _IO_UNBUFFERED)
@@ -1415,6 +2068,19 @@ index 0000000000..45be7f0369
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/nptl/allocatestack.c b/nptl/allocatestack.c
+index f35a8369bd..2cb562f8ea 100644
+--- a/nptl/allocatestack.c
++++ b/nptl/allocatestack.c
+@@ -139,7 +139,7 @@ get_cached_stack (size_t *sizep, void **memp)
+   memset (dtv, '\0', (dtv[-1].counter + 1) * sizeof (dtv_t));
+ 
+   /* Re-initialize the TLS.  */
+-  _dl_allocate_tls_init (TLS_TPADJ (result), true);
++  _dl_allocate_tls_init (TLS_TPADJ (result), false);
+ 
+   return result;
+ }
 diff --git a/posix/tst-truncate-common.c b/posix/tst-truncate-common.c
 index b774fa46b8..b8c561ffdb 100644
 --- a/posix/tst-truncate-common.c
@@ -2844,6 +3510,37 @@ index f4c3e4d666..04ceebc08f 100644
      };
    test_config.options = &options;
  #endif
+diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+index 656e8a3fa0..259ce2e7d6 100644
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -1200,10 +1200,8 @@ extern void _dl_get_tls_static_info (size_t *sizep, size_t *alignp);
+ 
+ extern void _dl_allocate_static_tls (struct link_map *map) attribute_hidden;
+ 
+-/* These are internal entry points to the two halves of _dl_allocate_tls,
+-   only used within rtld.c itself at startup time.  */
+ extern void *_dl_allocate_tls_storage (void) attribute_hidden;
+-extern void *_dl_allocate_tls_init (void *, bool);
++extern void *_dl_allocate_tls_init (void *result, bool main_thread);
+ rtld_hidden_proto (_dl_allocate_tls_init)
+ 
+ /* True if the TCB has been set up.  */
+@@ -1241,13 +1239,7 @@ extern void *_dl_open (const char *name, int mode, const void *caller,
+ extern int _dl_scope_free (void *) attribute_hidden;
+ 
+ 
+-/* Add module to slot information data.  If DO_ADD is false, only the
+-   required memory is allocated.  Must be called with GL
+-   (dl_load_tls_lock) acquired.  If the function has already been called
+-   for the link map L with !do_add, then this function will not raise
+-   an exception, otherwise it is possible that it encounters a memory
+-   allocation failure.  */
+-extern void _dl_add_to_slotinfo (struct link_map *l, bool do_add)
++extern bool _dl_add_to_slotinfo (struct link_map *l, bool do_add)
+   attribute_hidden;
+ 
+ /* Update slot information data for at least the generation of the
 diff --git a/sysdeps/generic/mremap-failure.h b/sysdeps/generic/mremap-failure.h
 new file mode 100644
 index 0000000000..bc0d476368
