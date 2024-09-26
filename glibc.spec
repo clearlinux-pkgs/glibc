@@ -47,6 +47,7 @@ Patch62:	limit-avx512-freq-damage.patch
 
 Patch63:	utf8-locale-naming.patch
 Patch64:	0001-linux-nanosleep-use-power-saving-ops-for-very-small-.patch
+Patch65:	0001-linux-nanosleep-error-on-invalid-parameters.patch
 
 # cves: patches 101 through 200
 

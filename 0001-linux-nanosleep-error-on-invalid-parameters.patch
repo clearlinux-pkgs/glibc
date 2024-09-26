@@ -1,0 +1,39 @@
+From 6abc7d86c46c009287205129c056cb21d7ec301c Mon Sep 17 00:00:00 2001
+From: Robert Schiele <rschiele@gmail.com>
+Date: Wed, 25 Sep 2024 11:49:51 +0200
+Subject: [PATCH] linux/nanosleep: error on invalid parameters
+
+The power efficient nanosleep implementation changed behavior in the
+sense that it no longer produced errors in invalid parameters. This
+should fix that.
+
+Signed-off-by: Robert Schiele <rschiele@gmail.com>
+---
+ sysdeps/unix/sysv/linux/nanosleep.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/sysdeps/unix/sysv/linux/nanosleep.c b/sysdeps/unix/sysv/linux/nanosleep.c
+index 0db435b4..54bd057c 100644
+--- a/sysdeps/unix/sysv/linux/nanosleep.c
++++ b/sysdeps/unix/sysv/linux/nanosleep.c
+@@ -39,7 +39,7 @@ static int __nanosleep64_x86_tpause(const struct __timespec64 *req, struct __tim
+ {
+   int ret;
+ 
+-  if (req->tv_sec < 1)
++  if (req->tv_sec == 0 && req->tv_nsec >= 0)
+     {
+       int64_t req_ns = req->tv_nsec;
+ 
+@@ -97,7 +97,7 @@ static int __nanosleep64_x86(const struct timespec *req, struct timespec *rem)
+ {
+   int ret;
+ 
+-  if (req->tv_sec < 1)
++  if (req->tv_sec == 0 && req->tv_nsec >= 0)
+     {
+       int64_t req_ns = req->tv_nsec;
+ 
+-- 
+2.46.1
+
