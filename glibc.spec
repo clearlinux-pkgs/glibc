@@ -230,6 +230,7 @@ GNU C library extra components.
 %patch62 -p1
 %patch63 -p1
 %patch64 -p1
+%patch65 -p1
 
 %patch9 -p1
 
