@@ -8,7 +8,7 @@ Arjun Shankar (2):
       manual/stdio: Clarify putc and putwc
       manual/stdio: Further clarify putc, putwc, getc, and getwc
 
-Florian Weimer (16):
+Florian Weimer (17):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
@@ -25,6 +25,7 @@ Florian Weimer (16):
       elf: Fix tst-dlopen-tlsreinit1.out test dependency
       debug: Fix read error handling in pcprofiledump
       powerpc64le: Build new strtod tests with long double ABI flags (bug 32145)
+      elf: Change ldconfig auxcache magic number (bug 32231)
 
 H.J. Lu (6):
       linux: Update the mremap C implementation [BZ #31968]
@@ -81,10 +82,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..9033335db1 100644
+index 31281ac408..928c516bec 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,19 @@ See the end for copying conditions.
+@@ -5,6 +5,20 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -100,6 +101,7 @@ index 31281ac408..9033335db1 100644
 +  [32026] strerror/strsignal TLS not handled correctly for secondary namespaces
 +  [32052] Name space violation in fortify wrappers
 +  [32137] libio: Attempt wide backup free only for non-legacy code
++  [32231] elf: Change ldconfig auxcache magic number
 +
  Version 2.40
  
@@ -730,6 +732,19 @@ index a3475f3fb5..dc686c3bff 100644
 +tst-dlopen-tlsreinit3-ENV = LD_AUDIT=$(objpfx)tst-auditmod1.so
 +$(objpfx)tst-dlopen-tlsreinit4.out: $(objpfx)tst-auditmod1.so
 +tst-dlopen-tlsreinit4-ENV = LD_AUDIT=$(objpfx)tst-auditmod1.so
+diff --git a/elf/cache.c b/elf/cache.c
+index 8a618e11fa..62d681df42 100644
+--- a/elf/cache.c
++++ b/elf/cache.c
+@@ -820,7 +820,7 @@ struct aux_cache_entry
+   struct aux_cache_entry *next;
+ };
+ 
+-#define AUX_CACHEMAGIC		"glibc-ld.so.auxcache-1.0"
++#define AUX_CACHEMAGIC		"glibc-ld.so.auxcache-2.0"
+ 
+ struct aux_cache_file_entry
+ {
 diff --git a/elf/dl-open.c b/elf/dl-open.c
 index c378da16c0..8556e7bd2f 100644
 --- a/elf/dl-open.c
