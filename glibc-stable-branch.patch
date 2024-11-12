@@ -1,3 +1,6 @@
+Adhemerval Zanella (1):
+      linux: sparc: Fix clone for LEON/sparcv8 (BZ 31394)
+
 Andreas K. Hüttel (1):
       Replace advisories directory
 
@@ -57,6 +60,9 @@ Maciej W. Rozycki (4):
       posix: Use <support/check.h> facilities in tst-truncate and tst-truncate64
       nptl: Use <support/check.h> facilities in tst-setuid3
 
+Michael Karcher (1):
+      Mitigation for "clone on sparc might fail with -EFAULT for no valid reason" (bz 31394)
+
 Miguel Martín (2):
       malloc: avoid global locks in tst-aligned_alloc-lib.c
       malloc: add multi-threaded tests for aligned_alloc/calloc/malloc
@@ -82,10 +88,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..928c516bec 100644
+index 31281ac408..dc815fb6d3 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,20 @@ See the end for copying conditions.
+@@ -5,6 +5,21 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -95,6 +101,7 @@ index 31281ac408..928c516bec 100644
 +
 +  [27821] ungetc: Fix backup buffer leak on program exit
 +  [30081] resolv: Do not wait for non-existing second DNS response after error
++  [31394] clone on sparc might fail with -EFAULT for no valid reason
 +  [31717] elf: Avoid re-initializing already allocated TLS in dlopen
 +  [31890] resolv: Allow short error responses to match any DNS query
 +  [31968] mremap implementation in C does not handle arguments correctly
@@ -21698,6 +21705,38 @@ index 4f770799c4..1ada5c1f40 100644
      {
        va_start (va, flags);
        new_addr = va_arg (va, void *);
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/clone.S b/sysdeps/unix/sysv/linux/sparc/sparc32/clone.S
+index 748d25fcfe..c84244f56b 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sparc32/clone.S
++++ b/sysdeps/unix/sysv/linux/sparc/sparc32/clone.S
+@@ -28,6 +28,13 @@
+ 	.text
+ ENTRY (__clone)
+ 	save	%sp,-96,%sp
++	save	%sp,-96,%sp
++#ifdef __sparcv9
++	flushw
++#else
++	ta 3
++#endif
++	restore
+ 	cfi_def_cfa_register(%fp)
+ 	cfi_window_save
+ 	cfi_register(%o7, %i7)
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/clone.S b/sysdeps/unix/sysv/linux/sparc/sparc64/clone.S
+index e5ff2cf1a0..370d51fda2 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sparc64/clone.S
++++ b/sysdeps/unix/sysv/linux/sparc/sparc64/clone.S
+@@ -32,6 +32,9 @@
+ 
+ ENTRY (__clone)
+ 	save	%sp, -192, %sp
++	save	%sp, -192, %sp
++	flushw
++	restore
+ 	cfi_def_cfa_register(%fp)
+ 	cfi_window_save
+ 	cfi_register(%o7, %i7)
 diff --git a/sysdeps/unix/sysv/linux/tst-linux-mremap1.c b/sysdeps/unix/sysv/linux/tst-linux-mremap1.c
 new file mode 100644
 index 0000000000..408e8af2ab
