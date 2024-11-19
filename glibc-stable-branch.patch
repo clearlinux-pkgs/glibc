@@ -11,6 +11,9 @@ Arjun Shankar (2):
       manual/stdio: Clarify putc and putwc
       manual/stdio: Further clarify putc, putwc, getc, and getwc
 
+Aurelien Jarno (1):
+      elf: handle addition overflow in _dl_find_object_update_1 [BZ #32245]
+
 Florian Weimer (17):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
@@ -88,10 +91,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..dc815fb6d3 100644
+index 31281ac408..bd0b3bd66a 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,21 @@ See the end for copying conditions.
+@@ -5,6 +5,22 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -109,6 +112,7 @@ index 31281ac408..dc815fb6d3 100644
 +  [32052] Name space violation in fortify wrappers
 +  [32137] libio: Attempt wide backup free only for non-legacy code
 +  [32231] elf: Change ldconfig auxcache magic number
++  [32245] glibc -Wstringop-overflow= build failure on hppa
 +
  Version 2.40
  
@@ -752,6 +756,25 @@ index 8a618e11fa..62d681df42 100644
  
  struct aux_cache_file_entry
  {
+diff --git a/elf/dl-find_object.c b/elf/dl-find_object.c
+index 449302eda3..ae18b438d3 100644
+--- a/elf/dl-find_object.c
++++ b/elf/dl-find_object.c
+@@ -662,6 +662,14 @@ _dl_find_object_update_1 (struct link_map **loaded, size_t count)
+     = _dlfo_loaded_mappings[!active_idx];
+   size_t remaining_to_add = current_used + count;
+ 
++  /* remaining_to_add can be 0 if (current_used + count) wraps, but in practice
++     this is not possible as it represent counts of link maps.  Link maps have
++     sizes larger than 1 byte, so the sum of any two link map counts will
++     always fit within a size_t without wrapping around.  This check ensures
++     that target_seg is not erroneously considered potentially NULL by GCC. */
++  if (remaining_to_add == 0)
++    __builtin_unreachable ();
++
+   /* Ensure that the new segment chain has enough space.  */
+   {
+     size_t new_allocated
 diff --git a/elf/dl-open.c b/elf/dl-open.c
 index c378da16c0..8556e7bd2f 100644
 --- a/elf/dl-open.c
