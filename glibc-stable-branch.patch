@@ -63,6 +63,10 @@ Maciej W. Rozycki (4):
       posix: Use <support/check.h> facilities in tst-truncate and tst-truncate64
       nptl: Use <support/check.h> facilities in tst-setuid3
 
+Michael Jeanson (2):
+      nptl: initialize rseq area prior to registration
+      nptl: initialize cpu_id_start prior to rseq registration
+
 Michael Karcher (1):
       Mitigation for "clone on sparc might fail with -EFAULT for no valid reason" (bz 31394)
 
@@ -72,6 +76,9 @@ Miguel Martín (2):
 
 Noah Goldstein (1):
       x86: Fix bug in strchrnul-evex512 [BZ #32078]
+
+Sam James (1):
+      malloc: add indirection for malloc(-like) functions in tests [BZ #32366]
 
 Sergey Kolosov (1):
       stdio-common: Add new test for fdopen
@@ -1821,6 +1828,19 @@ index 0000000000..e95f79250a
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/malloc/tst-aligned-alloc.c b/malloc/tst-aligned-alloc.c
+index 91167d1392..b0f05a8fec 100644
+--- a/malloc/tst-aligned-alloc.c
++++ b/malloc/tst-aligned-alloc.c
+@@ -25,6 +25,8 @@
+ #include <libc-diag.h>
+ #include <support/check.h>
+ 
++#include "tst-malloc-aux.h"
++
+ static int
+ do_test (void)
+ {
 diff --git a/malloc/tst-aligned_alloc-lib.c b/malloc/tst-aligned_alloc-lib.c
 index 0205df5acf..9ef1f839c1 100644
 --- a/malloc/tst-aligned_alloc-lib.c
@@ -1897,6 +1917,117 @@ index 0205df5acf..9ef1f839c1 100644
  {
    return get_random_alloc (size);
  }
+diff --git a/malloc/tst-compathooks-off.c b/malloc/tst-compathooks-off.c
+index d0106f3fb7..4cce6e5a80 100644
+--- a/malloc/tst-compathooks-off.c
++++ b/malloc/tst-compathooks-off.c
+@@ -25,6 +25,8 @@
+ #include <support/check.h>
+ #include <support/support.h>
+ 
++#include "tst-malloc-aux.h"
++
+ extern void (*volatile __free_hook) (void *, const void *);
+ extern void *(*volatile __malloc_hook)(size_t, const void *);
+ extern void *(*volatile __realloc_hook)(void *, size_t, const void *);
+diff --git a/malloc/tst-malloc-aux.h b/malloc/tst-malloc-aux.h
+new file mode 100644
+index 0000000000..54908b4a24
+--- /dev/null
++++ b/malloc/tst-malloc-aux.h
+@@ -0,0 +1,41 @@
++/* Wrappers for malloc-like functions to allow testing the implementation
++   without optimization.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; see the file COPYING.LIB.  If
++   not, see <https://www.gnu.org/licenses/>.  */
++
++#ifndef TST_MALLOC_AUX_H
++#define TST_MALLOC_AUX_H
++
++#include <stddef.h>
++#include <stdlib.h>
++
++static void *(*volatile aligned_alloc_indirect)(size_t, size_t) = aligned_alloc;
++static void *(*volatile calloc_indirect)(size_t, size_t) = calloc;
++static void *(*volatile malloc_indirect)(size_t) = malloc;
++static void *(*volatile realloc_indirect)(void*, size_t) = realloc;
++
++#undef aligned_alloc
++#undef calloc
++#undef malloc
++#undef realloc
++
++#define aligned_alloc aligned_alloc_indirect
++#define calloc calloc_indirect
++#define malloc malloc_indirect
++#define realloc realloc_indirect
++
++#endif /* TST_MALLOC_AUX_H */
+diff --git a/malloc/tst-malloc-check.c b/malloc/tst-malloc-check.c
+index fde8863ad7..cc88bff3b3 100644
+--- a/malloc/tst-malloc-check.c
++++ b/malloc/tst-malloc-check.c
+@@ -20,6 +20,8 @@
+ #include <stdlib.h>
+ #include <libc-diag.h>
+ 
++#include "tst-malloc-aux.h"
++
+ static int errors = 0;
+ 
+ static void
+diff --git a/malloc/tst-malloc-too-large.c b/malloc/tst-malloc-too-large.c
+index 8e9e0d5fa2..2b91377e54 100644
+--- a/malloc/tst-malloc-too-large.c
++++ b/malloc/tst-malloc-too-large.c
+@@ -43,6 +43,7 @@
+ #include <unistd.h>
+ #include <sys/param.h>
+ 
++#include "tst-malloc-aux.h"
+ 
+ /* This function prepares for each 'too-large memory allocation' test by
+    performing a small successful malloc/free and resetting errno prior to
+diff --git a/malloc/tst-malloc.c b/malloc/tst-malloc.c
+index f7a6e4654c..68af399022 100644
+--- a/malloc/tst-malloc.c
++++ b/malloc/tst-malloc.c
+@@ -22,6 +22,8 @@
+ #include <libc-diag.h>
+ #include <time.h>
+ 
++#include "tst-malloc-aux.h"
++
+ static int errors = 0;
+ 
+ static void
+diff --git a/malloc/tst-realloc.c b/malloc/tst-realloc.c
+index f50499ecb1..74a28fb45e 100644
+--- a/malloc/tst-realloc.c
++++ b/malloc/tst-realloc.c
+@@ -23,6 +23,8 @@
+ #include <libc-diag.h>
+ #include <support/check.h>
+ 
++#include "tst-malloc-aux.h"
++
+ static int
+ do_test (void)
+ {
 diff --git a/manual/dynlink.texi b/manual/dynlink.texi
 index 03565d4fb0..1500a53de6 100644
 --- a/manual/dynlink.texi
@@ -2464,6 +2595,19 @@ index f35a8369bd..2cb562f8ea 100644
  
    return result;
  }
+diff --git a/nptl/descr.h b/nptl/descr.h
+index 8cef95810c..c4bdd7757a 100644
+--- a/nptl/descr.h
++++ b/nptl/descr.h
+@@ -414,6 +414,8 @@ struct pthread
+     {
+       uint32_t cpu_id_start;
+       uint32_t cpu_id;
++      uint64_t rseq_cs;
++      uint32_t flags;
+     };
+     char pad[32];		/* Original rseq area size.  */
+   } rseq_area __attribute__ ((aligned (32)));
 diff --git a/posix/tst-truncate-common.c b/posix/tst-truncate-common.c
 index b774fa46b8..b8c561ffdb 100644
 --- a/posix/tst-truncate-common.c
@@ -21446,6 +21590,19 @@ index 711f34b83b..7ea22c7a2c 100644
  /* Record a test failure, print the failure message to standard output
     and return 1.  */
  #define FAIL_RET(...) \
+diff --git a/support/support.h b/support/support.h
+index ba21ec9b5a..1a77f79793 100644
+--- a/support/support.h
++++ b/support/support.h
+@@ -113,7 +113,7 @@ void *xposix_memalign (size_t alignment, size_t n)
+   __attribute_malloc__ __attribute_alloc_align__ ((1))
+   __attribute_alloc_size__ ((2)) __attr_dealloc_free __returns_nonnull;
+ char *xasprintf (const char *format, ...)
+-  __attribute__ ((format (printf, 1, 2), malloc)) __attr_dealloc_free
++  __attribute__ ((format (printf, 1, 2), __malloc__)) __attr_dealloc_free
+   __returns_nonnull;
+ char *xstrdup (const char *) __attr_dealloc_free __returns_nonnull;
+ char *xstrndup (const char *, size_t) __attr_dealloc_free __returns_nonnull;
 diff --git a/support/test-driver.c b/support/test-driver.c
 index f4c3e4d666..04ceebc08f 100644
 --- a/support/test-driver.c
@@ -21728,6 +21885,33 @@ index 4f770799c4..1ada5c1f40 100644
      {
        va_start (va, flags);
        new_addr = va_arg (va, void *);
+diff --git a/sysdeps/unix/sysv/linux/rseq-internal.h b/sysdeps/unix/sysv/linux/rseq-internal.h
+index 7ea935b4ad..ef3eab1fef 100644
+--- a/sysdeps/unix/sysv/linux/rseq-internal.h
++++ b/sysdeps/unix/sysv/linux/rseq-internal.h
+@@ -51,11 +51,22 @@ rseq_register_current_thread (struct pthread *self, bool do_rseq)
+         /* The initial implementation used only 20 bytes out of 32,
+            but still expected size 32.  */
+         size = RSEQ_AREA_SIZE_INITIAL;
++
++      /* Initialize the rseq fields that are read by the kernel on
++         registration, there is no guarantee that struct pthread is
++         cleared on all architectures.  */
++      THREAD_SETMEM (self, rseq_area.cpu_id, RSEQ_CPU_ID_UNINITIALIZED);
++      THREAD_SETMEM (self, rseq_area.cpu_id_start, 0);
++      THREAD_SETMEM (self, rseq_area.rseq_cs, 0);
++      THREAD_SETMEM (self, rseq_area.flags, 0);
++
+       int ret = INTERNAL_SYSCALL_CALL (rseq, &self->rseq_area,
+                                        size, 0, RSEQ_SIG);
+       if (!INTERNAL_SYSCALL_ERROR_P (ret))
+         return true;
+     }
++  /* When rseq is disabled by tunables or the registration fails, inform
++     userspace by setting 'cpu_id' to RSEQ_CPU_ID_REGISTRATION_FAILED.  */
+   THREAD_SETMEM (self, rseq_area.cpu_id, RSEQ_CPU_ID_REGISTRATION_FAILED);
+   return false;
+ }
 diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/clone.S b/sysdeps/unix/sysv/linux/sparc/sparc32/clone.S
 index 748d25fcfe..c84244f56b 100644
 --- a/sysdeps/unix/sysv/linux/sparc/sparc32/clone.S
@@ -22056,6 +22240,18 @@ index c35cee9261..0000000000
 -");
 -
 -#endif /* !_X32_DL_MACHINE_H */
+diff --git a/test-skeleton.c b/test-skeleton.c
+index ae185a4f28..690f26e7cf 100644
+--- a/test-skeleton.c
++++ b/test-skeleton.c
+@@ -27,7 +27,6 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <getopt.h>
+-#include <malloc.h>
+ #include <paths.h>
+ #include <search.h>
+ #include <signal.h>
 diff --git a/wcsmbs/Makefile b/wcsmbs/Makefile
 index 1cddd8cc6d..63adf0e8ef 100644
 --- a/wcsmbs/Makefile
