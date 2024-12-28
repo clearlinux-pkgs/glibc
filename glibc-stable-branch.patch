@@ -1,5 +1,8 @@
-Adhemerval Zanella (1):
+Adhemerval Zanella (4):
       linux: sparc: Fix clone for LEON/sparcv8 (BZ 31394)
+      support: Make support_process_state_wait return the found state
+      sparc: Fix restartable syscalls (BZ 32173)
+      linux: Fix tst-syscall-restart.c on old gcc (BZ 32283)
 
 Andreas K. Hüttel (1):
       Replace advisories directory
@@ -14,7 +17,7 @@ Arjun Shankar (2):
 Aurelien Jarno (1):
       elf: handle addition overflow in _dl_find_object_update_1 [BZ #32245]
 
-Florian Weimer (17):
+Florian Weimer (18):
       resolv: Allow short error responses to match any query (bug 31890)
       resolv: Do not wait for non-existing second DNS response after error (bug 30081)
       manual: Do not mention STATIC_TLS in dynamic linker hardening recommendations
@@ -32,14 +35,20 @@ Florian Weimer (17):
       debug: Fix read error handling in pcprofiledump
       powerpc64le: Build new strtod tests with long double ABI flags (bug 32145)
       elf: Change ldconfig auxcache magic number (bug 32231)
+      x86: Avoid integer truncation with large cache sizes (bug 32470)
 
-H.J. Lu (6):
+H.J. Lu (7):
       linux: Update the mremap C implementation [BZ #31968]
       mremap: Update manual entry
       Add mremap tests
       x86-64: Remove sysdeps/x86_64/x32/dl-machine.h
       x32/cet: Support shadow stack during startup for Linux 6.10
       libio: Set _vtable_offset before calling _IO_link_in [BZ #32148]
+      math: Exclude internal math symbols for tests [BZ #32414]
+
+John David Anglin (2):
+      hppa: Fix strace detach-vfork test
+      hppa: Simplify handling of sanity check errors in clone.S.
 
 Joseph Myers (11):
       Add tests of fread
@@ -98,10 +107,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..bd0b3bd66a 100644
+index 31281ac408..97a1e1f5d4 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,22 @@ See the end for copying conditions.
+@@ -5,6 +5,23 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -120,6 +129,7 @@ index 31281ac408..bd0b3bd66a 100644
 +  [32137] libio: Attempt wide backup free only for non-legacy code
 +  [32231] elf: Change ldconfig auxcache magic number
 +  [32245] glibc -Wstringop-overflow= build failure on hppa
++  [32470] x86: Avoid integer truncation with large cache sizes
 +
  Version 2.40
  
@@ -1266,6 +1276,22 @@ index cb0d7d8e2f..5ed445d5a6 100644
  
      /* NODELETE status of the map.  Only valid for maps of type
         lt_loaded.  Lazy binding sets l_nodelete_active directly,
+diff --git a/include/math.h b/include/math.h
+index fa11a710a6..035fd160ff 100644
+--- a/include/math.h
++++ b/include/math.h
+@@ -130,7 +130,10 @@ fabsf128 (_Float128 x)
+ }
+ # endif
+ 
+-# if !(defined __FINITE_MATH_ONLY__ && __FINITE_MATH_ONLY__ > 0)
++
++/* NB: Internal tests don't have access to internal symbols.  */
++# if !IS_IN (testsuite_internal) \
++     && !(defined __FINITE_MATH_ONLY__ && __FINITE_MATH_ONLY__ > 0)
+ #  ifndef NO_MATH_REDIRECT
+ /* Declare some functions for use within GLIBC.  Compilers typically
+    inline those functions as a single instruction.  Use an asm to
 diff --git a/libio/Makefile b/libio/Makefile
 index 6a507b67ea..5292baa4e0 100644
 --- a/libio/Makefile
@@ -3820,6 +3846,19 @@ index 1344b2b591..388b202493 100644
  }
 +
 +#include <support/test-driver.c>
+diff --git a/stdlib/Makefile b/stdlib/Makefile
+index 8b0ac63ddb..8213fa83ef 100644
+--- a/stdlib/Makefile
++++ b/stdlib/Makefile
+@@ -603,6 +603,8 @@ $(objpfx)bug-strtod2: $(libm)
+ $(objpfx)tst-strtod-round: $(libm)
+ $(objpfx)tst-tininess: $(libm)
+ $(objpfx)tst-strtod-underflow: $(libm)
++$(objpfx)tst-strtod5: $(libm)
++$(objpfx)tst-strtod5i: $(libm)
+ $(objpfx)tst-strtod6: $(libm)
+ $(objpfx)tst-strtod-nan-locale: $(libm)
+ $(objpfx)tst-strtod-nan-sign: $(libm)
 diff --git a/stdlib/bits/stdlib.h b/stdlib/bits/stdlib.h
 index 1557b862b1..9c78ecf458 100644
 --- a/stdlib/bits/stdlib.h
@@ -21590,6 +21629,29 @@ index 711f34b83b..7ea22c7a2c 100644
  /* Record a test failure, print the failure message to standard output
     and return 1.  */
  #define FAIL_RET(...) \
+diff --git a/support/process_state.h b/support/process_state.h
+index 1cf902e91b..9541d8c343 100644
+--- a/support/process_state.h
++++ b/support/process_state.h
+@@ -31,13 +31,16 @@ enum support_process_state
+   support_process_state_dead         = 0x20,  /* X (dead).  */
+   support_process_state_zombie       = 0x40,  /* Z (zombie).  */
+   support_process_state_parked       = 0x80,  /* P (parked).  */
++  support_process_state_invalid      = 0x100  /* Invalid state.  */
+ };
+ 
+ /* Wait for process PID to reach state STATE.  It can be a combination of
+    multiple possible states ('process_state_running | process_state_sleeping')
+    where the function return when any of these state are observed.
+    For an invalid state not represented by SUPPORT_PROCESS_STATE, it fallbacks
+-   to a 2 second sleep.  */
+-void support_process_state_wait (pid_t pid, enum support_process_state state);
++   to a 2 second sleep.
++   Return the found process state.  */
++enum support_process_state
++support_process_state_wait (pid_t pid, enum support_process_state state);
+ 
+ #endif
 diff --git a/support/support.h b/support/support.h
 index ba21ec9b5a..1a77f79793 100644
 --- a/support/support.h
@@ -21603,6 +21665,35 @@ index ba21ec9b5a..1a77f79793 100644
    __returns_nonnull;
  char *xstrdup (const char *) __attr_dealloc_free __returns_nonnull;
  char *xstrndup (const char *, size_t) __attr_dealloc_free __returns_nonnull;
+diff --git a/support/support_process_state.c b/support/support_process_state.c
+index 062335234f..ae8e0a531c 100644
+--- a/support/support_process_state.c
++++ b/support/support_process_state.c
+@@ -27,7 +27,7 @@
+ #include <support/xstdio.h>
+ #include <support/check.h>
+ 
+-void
++enum support_process_state
+ support_process_state_wait (pid_t pid, enum support_process_state state)
+ {
+ #ifdef __linux__
+@@ -75,7 +75,7 @@ support_process_state_wait (pid_t pid, enum support_process_state state)
+ 	  {
+ 	    free (line);
+ 	    xfclose (fstatus);
+-	    return;
++	    return process_states[i].s;
+ 	  }
+ 
+       rewind (fstatus);
+@@ -90,4 +90,6 @@ support_process_state_wait (pid_t pid, enum support_process_state state)
+   /* Fallback to nanosleep if an invalid state is found.  */
+ #endif
+   nanosleep (&(struct timespec) { 1, 0 }, NULL);
++
++  return support_process_state_invalid;
+ }
 diff --git a/support/test-driver.c b/support/test-driver.c
 index f4c3e4d666..04ceebc08f 100644
 --- a/support/test-driver.c
@@ -21615,6 +21706,54 @@ index f4c3e4d666..04ceebc08f 100644
      };
    test_config.options = &options;
  #endif
+diff --git a/support/tst-support-process_state.c b/support/tst-support-process_state.c
+index d73269320f..4a88eae3a7 100644
+--- a/support/tst-support-process_state.c
++++ b/support/tst-support-process_state.c
+@@ -68,28 +68,39 @@ do_test (void)
+   if (test_verbose)
+     printf ("info: waiting pid %d, state_stopped/state_tracing_stop\n",
+ 	    (int) pid);
+-  support_process_state_wait (pid, stop_state);
++  {
++    enum support_process_state state =
++      support_process_state_wait (pid, stop_state);
++    TEST_VERIFY (state == support_process_state_stopped
++		 || state == support_process_state_tracing_stop);
++  }
+ 
+   if (kill (pid, SIGCONT) != 0)
+     FAIL_RET ("kill (%d, SIGCONT): %m\n", pid);
+ 
+   if (test_verbose)
+     printf ("info: waiting pid %d, state_sleeping\n", (int) pid);
+-  support_process_state_wait (pid, support_process_state_sleeping);
++  TEST_COMPARE (support_process_state_wait (pid,
++					    support_process_state_sleeping),
++		support_process_state_sleeping);
+ 
+   if (kill (pid, SIGUSR1) != 0)
+     FAIL_RET ("kill (%d, SIGUSR1): %m\n", pid);
+ 
+   if (test_verbose)
+     printf ("info: waiting pid %d, state_running\n", (int) pid);
+-  support_process_state_wait (pid, support_process_state_running);
++  TEST_COMPARE (support_process_state_wait (pid,
++					    support_process_state_running),
++		support_process_state_running);
+ 
+   if (kill (pid, SIGKILL) != 0)
+     FAIL_RET ("kill (%d, SIGKILL): %m\n", pid);
+ 
+   if (test_verbose)
+     printf ("info: waiting pid %d, state_zombie\n", (int) pid);
+-  support_process_state_wait (pid, support_process_state_zombie);
++  TEST_COMPARE (support_process_state_wait (pid,
++					    support_process_state_zombie),
++		support_process_state_zombie);;
+ 
+   siginfo_t info;
+   int r = waitid (P_PID, pid, &info, WEXITED);
 diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
 index 656e8a3fa0..259ce2e7d6 100644
 --- a/sysdeps/generic/ldsodefs.h
@@ -21806,7 +21945,7 @@ index 83f42a0ae5..3845ab03d3 100644
    return 0;
  }
 diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
-index 097b5a26fc..59998c7af4 100644
+index 097b5a26fc..34890ef69a 100644
 --- a/sysdeps/unix/sysv/linux/Makefile
 +++ b/sysdeps/unix/sysv/linux/Makefile
 @@ -206,6 +206,7 @@ tests += \
@@ -21817,6 +21956,183 @@ index 097b5a26fc..59998c7af4 100644
    tst-memfd_create \
    tst-misalign-clone \
    tst-mlock2 \
+@@ -226,6 +227,7 @@ tests += \
+   tst-scm_rights \
+   tst-sigtimedwait \
+   tst-sync_file_range \
++  tst-syscall-restart \
+   tst-sysconf-iov_max \
+   tst-sysvmsg-linux \
+   tst-sysvsem-linux \
+diff --git a/sysdeps/unix/sysv/linux/hppa/clone.S b/sysdeps/unix/sysv/linux/hppa/clone.S
+index a31afea429..e85e7f517f 100644
+--- a/sysdeps/unix/sysv/linux/hppa/clone.S
++++ b/sysdeps/unix/sysv/linux/hppa/clone.S
+@@ -59,16 +59,6 @@
+ 
+         .text
+ ENTRY(__clone)
+-	/* Prologue */
+-	stwm	%r4, 64(%sp)
+-	.cfi_def_cfa_offset -64
+-	.cfi_offset 4, 0
+-	stw	%sp, -4(%sp)
+-#ifdef PIC
+-	stw	%r19, -32(%sp)
+-	.cfi_offset 19, 32
+-#endif
+-
+ 	/* Sanity check arguments.  */
+ 	comib,=,n	0,%arg0,.LerrorSanity	/* no NULL function pointers */
+ 	comib,=,n	0,%arg1,.LerrorSanity	/* no NULL stack pointers */
+@@ -87,54 +77,33 @@ ENTRY(__clone)
+ 	/* User stack pointer is in the correct register already */
+ 
+ 	/* Load args from stack... */
+-	ldw	-116(%sp), %r24		/* Load parent_tidptr */
+-	ldw	-120(%sp), %r23 	/* Load newtls */
+-	ldw	-124(%sp), %r22		/* Load child_tidptr */
+-
+-	/* Save the PIC register. */
+-#ifdef PIC
+-	copy	%r19, %r4		/* parent */
+-#endif
++	ldw	-52(%sp), %r24		/* Load parent_tidptr */
++	ldw	-56(%sp), %r23	 	/* Load newtls */
++	ldw	-60(%sp), %r22		/* Load child_tidptr */
+ 
+ 	/* Do the system call */
+ 	ble     0x100(%sr2, %r0)
+ 	ldi	__NR_clone, %r20
+ 
+ 	ldi	-4096, %r1
+-	comclr,>>= %r1, %ret0, %r0	/* Note: unsigned compare. */
+-	b,n	.LerrorRest
+-
+-	/* Restore the PIC register.  */
+-#ifdef PIC
+-	copy	%r4, %r19		/* parent */
+-#endif
+-
++	comb,<<,n	%r1, %ret0, .LerrorRest /* Note: unsigned compare. */
+ 	comib,=,n 0, %ret0, .LthreadStart
++	bv,n	%r0(%rp)
+ 
+-	/* Successful return from the parent
+-	   No need to restore the PIC register,
+-	   since we return immediately. */
+-
+-	ldw	-84(%sp), %rp
+-	bv	%r0(%rp)
+-	ldwm	-64(%sp), %r4
++.LerrorSanity:
++	/* Sanity checks failed, set errno to EINVAL.  */
++	ldi	-EINVAL, %ret0
+ 
+ .LerrorRest:
+-	/* Something bad happened -- no child created */
++	/* Something bad happened -- no child created -- need a frame */
++	ldo	64(%sp),%sp
++	.cfi_def_cfa_offset -64
+ 	bl	__syscall_error, %rp
+ 	sub     %r0, %ret0, %arg0
+ 	ldw	-84(%sp), %rp
+ 	/* Return after setting errno, ret0 is set to -1 by __syscall_error. */
+ 	bv	%r0(%rp)
+-	ldwm	-64(%sp), %r4
+-
+-.LerrorSanity:
+-	/* Sanity checks failed, return -1, and set errno to EINVAL. */
+-	bl	__syscall_error, %rp
+-	ldi     EINVAL, %arg0
+-	ldw	-84(%sp), %rp
+-	bv	%r0(%rp)
+-	ldwm	-64(%sp), %r4
++	ldo	-64(%sp), %sp
+ 
+ .LthreadStart:
+ 	/* Load up the arguments.  */
+@@ -144,20 +113,14 @@ ENTRY(__clone)
+ 	/* $$dyncall fixes child's PIC register */
+ 
+ 	/* Call the user's function */
+-#ifdef PIC
+-	copy	%r19, %r4
+-#endif
+ 	bl	$$dyncall, %r31
+ 	copy	%r31, %rp
+-#ifdef PIC
+-	copy	%r4, %r19
+-#endif
+ 	copy	%r28, %r26
+ 	ble     0x100(%sr2, %r0)
+ 	ldi	__NR_exit, %r20
+ 
+ 	/* We should not return from exit.
+-           We do not restore r4, or the stack state.  */
++           We do not restore the stack state.  */
+ 	iitlbp	%r0, (%sr0, %r0)
+ 
+ PSEUDO_END(__clone)
+diff --git a/sysdeps/unix/sysv/linux/hppa/vfork.S b/sysdeps/unix/sysv/linux/hppa/vfork.S
+new file mode 100644
+index 0000000000..5fd368f3cf
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/hppa/vfork.S
+@@ -0,0 +1,53 @@
++/* Copyright (C) 1999-2024 Free Software Foundation, Inc.
++
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public License as
++   published by the Free Software Foundation; either version 2.1 of the
++   License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++#define _ERRNO_H	1
++#include <bits/errno.h>
++
++/* Clone the calling process, but without copying the whole address space.
++   The calling process is suspended until the new process exits or is
++   replaced by a call to `execve'.  Return -1 for errors, 0 to the new process,
++   and the process ID of the new process to the old process.  */
++
++ENTRY (__vfork)
++	ble	0x100(%sr2, %r0)
++	ldi	__NR_vfork, %r20
++
++	ldi	-4096, %r1
++	comclr,<<	%r1, %ret0, %r0      /* Note: unsigned compare. */
++	bv,n	%r0(%rp)
++
++	/* Something bad happened -- no child created -- we need a frame */
++	ldo	64(%sp), %sp
++	.cfi_def_cfa_offset -64
++
++	/* Set errno */
++	bl	__syscall_error, %rp
++	sub	%r0, %ret0, %arg0
++
++	/* ret0 is set to -1 by __syscall_error */
++	ldw	-84(%sp), %rp
++	bv	%r0(%rp)
++	ldo	-64(%sp), %sp
++
++PSEUDO_END (__vfork)
++libc_hidden_def (__vfork)
++
++weak_alias (__vfork, vfork)
++strong_alias (__vfork, __libc_vfork)
 diff --git a/sysdeps/unix/sysv/linux/mremap-failure.h b/sysdeps/unix/sysv/linux/mremap-failure.h
 new file mode 100644
 index 0000000000..c99ab30ca9
@@ -21930,6 +22246,27 @@ index 748d25fcfe..c84244f56b 100644
  	cfi_def_cfa_register(%fp)
  	cfi_window_save
  	cfi_register(%o7, %i7)
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/sysdep.h b/sysdeps/unix/sysv/linux/sparc/sparc32/sysdep.h
+index d2d68f5312..c2ffbb5c8f 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sparc32/sysdep.h
++++ b/sysdeps/unix/sysv/linux/sparc/sparc32/sysdep.h
+@@ -107,6 +107,7 @@ ENTRY(name);					\
+ #else  /* __ASSEMBLER__ */
+ 
+ #define __SYSCALL_STRING						\
++	"mov	%[scn], %%g1;"						\
+ 	"ta	0x10;"							\
+ 	"bcc	1f;"							\
+ 	" nop;"								\
+@@ -114,7 +115,7 @@ ENTRY(name);					\
+ 	"1:"
+ 
+ #define __SYSCALL_CLOBBERS						\
+-	"f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",			\
++	"g1", "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",		\
+ 	"f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15",		\
+ 	"f16", "f17", "f18", "f19", "f20", "f21", "f22", "f23",		\
+ 	"f24", "f25", "f26", "f27", "f28", "f29", "f30", "f31",		\
 diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/clone.S b/sysdeps/unix/sysv/linux/sparc/sparc64/clone.S
 index e5ff2cf1a0..370d51fda2 100644
 --- a/sysdeps/unix/sysv/linux/sparc/sparc64/clone.S
@@ -21944,6 +22281,210 @@ index e5ff2cf1a0..370d51fda2 100644
  	cfi_def_cfa_register(%fp)
  	cfi_window_save
  	cfi_register(%o7, %i7)
+diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/sysdep.h b/sysdeps/unix/sysv/linux/sparc/sparc64/sysdep.h
+index 96047424e9..5598fab08a 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sparc64/sysdep.h
++++ b/sysdeps/unix/sysv/linux/sparc/sparc64/sysdep.h
+@@ -106,6 +106,7 @@ ENTRY(name);					\
+ #else  /* __ASSEMBLER__ */
+ 
+ #define __SYSCALL_STRING						\
++	"mov	%[scn], %%g1;"						\
+ 	"ta	0x6d;"							\
+ 	"bcc,pt	%%xcc, 1f;"						\
+ 	" nop;"								\
+@@ -113,7 +114,7 @@ ENTRY(name);					\
+ 	"1:"
+ 
+ #define __SYSCALL_CLOBBERS						\
+-	"f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",			\
++	"g1", "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",		\
+ 	"f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15",		\
+ 	"f16", "f17", "f18", "f19", "f20", "f21", "f22", "f23",		\
+ 	"f24", "f25", "f26", "f27", "f28", "f29", "f30", "f31",		\
+diff --git a/sysdeps/unix/sysv/linux/sparc/sysdep.h b/sysdeps/unix/sysv/linux/sparc/sysdep.h
+index dcabb57fe2..c287740a8c 100644
+--- a/sysdeps/unix/sysv/linux/sparc/sysdep.h
++++ b/sysdeps/unix/sysv/linux/sparc/sysdep.h
+@@ -50,97 +50,109 @@
+ 
+ #undef INTERNAL_SYSCALL_NCS
+ #define INTERNAL_SYSCALL_NCS(name, nr, args...) \
+-  internal_syscall##nr(__SYSCALL_STRING, name, args)
++  _internal_syscall##nr(__SYSCALL_STRING, "p", name, args)
+ 
+-#define internal_syscall0(string,name,dummy...)			\
++#define _internal_syscall0(string,nc,name,dummy...)	\
+ ({									\
+-	register long int __g1 __asm__ ("g1") = (name);			\
+ 	register long __o0 __asm__ ("o0");				\
++	long int _name = (long int) (name);				\
+ 	__asm __volatile (string : "=r" (__o0) :			\
+-			  "r" (__g1) :					\
++			  [scn] nc (_name) :				\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	__o0;								\
+ })
++#define internal_syscall0(string,name,args...)				\
++  _internal_syscall0(string, "i", name, args)
+ 
+-#define internal_syscall1(string,name,arg1)				\
++#define _internal_syscall1(string,nc,name,arg1)				\
+ ({									\
+ 	long int _arg1 = (long int) (arg1);				\
+-	register long int __g1 __asm__("g1") = (name);			\
++	long int _name = (long int) (name);				\
+ 	register long int  __o0 __asm__ ("o0") = _arg1;			\
+-	__asm __volatile (string : "=r" (__o0) :			\
+-			  "r" (__g1), "0" (__o0) :			\
++	__asm __volatile (string : "+r" (__o0) :			\
++			  [scn] nc (_name) :				\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	__o0;								\
+ })
++#define internal_syscall1(string,name,args...)				\
++  _internal_syscall1(string, "i", name, args)
+ 
+-#define internal_syscall2(string,name,arg1,arg2)			\
++#define _internal_syscall2(string,nc,name,arg1,arg2)			\
+ ({									\
+ 	long int _arg1 = (long int) (arg1);				\
+ 	long int _arg2 = (long int) (arg2);				\
+-	register long int __g1 __asm__("g1") = (name);			\
++	long int _name = (long int) (name);				\
+ 	register long int __o0 __asm__ ("o0") = _arg1;			\
+ 	register long int __o1 __asm__ ("o1") = _arg2;			\
+-	__asm __volatile (string : "=r" (__o0) :			\
+-			  "r" (__g1), "0" (__o0), "r" (__o1) :		\
++	__asm __volatile (string : "+r" (__o0) :			\
++			  [scn] nc (_name), "r" (__o1) :		\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	__o0;								\
+ })
++#define internal_syscall2(string,name,args...)				\
++  _internal_syscall2(string, "i", name, args)
+ 
+-#define internal_syscall3(string,name,arg1,arg2,arg3)			\
++#define _internal_syscall3(string,nc,name,arg1,arg2,arg3)		\
+ ({									\
+ 	long int _arg1 = (long int) (arg1);				\
+ 	long int _arg2 = (long int) (arg2);				\
+ 	long int _arg3 = (long int) (arg3);				\
+-	register long int __g1 __asm__("g1") = (name);			\
++	long int _name = (long int) (name);				\
+ 	register long int __o0 __asm__ ("o0") = _arg1;			\
+ 	register long int __o1 __asm__ ("o1") = _arg2;			\
+ 	register long int __o2 __asm__ ("o2") = _arg3;			\
+-	__asm __volatile (string : "=r" (__o0) :			\
+-			  "r" (__g1), "0" (__o0), "r" (__o1),		\
++	__asm __volatile (string : "+r" (__o0) :			\
++			  [scn] nc (_name), "r" (__o1),			\
+ 			  "r" (__o2) :					\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	__o0;								\
+ })
++#define internal_syscall3(string,name,args...)				\
++  _internal_syscall3(string, "i", name, args)
+ 
+-#define internal_syscall4(string,name,arg1,arg2,arg3,arg4)		\
++#define _internal_syscall4(string,nc,name,arg1,arg2,arg3,arg4)		\
+ ({									\
+ 	long int _arg1 = (long int) (arg1);				\
+ 	long int _arg2 = (long int) (arg2);				\
+ 	long int _arg3 = (long int) (arg3);				\
+ 	long int _arg4 = (long int) (arg4);				\
+-	register long int __g1 __asm__("g1") = (name);			\
++	long int _name = (long int) (name);				\
+ 	register long int __o0 __asm__ ("o0") = _arg1;			\
+ 	register long int __o1 __asm__ ("o1") = _arg2;			\
+ 	register long int __o2 __asm__ ("o2") = _arg3;			\
+ 	register long int __o3 __asm__ ("o3") = _arg4;			\
+-	__asm __volatile (string : "=r" (__o0) :			\
+-			  "r" (__g1), "0" (__o0), "r" (__o1),		\
++	__asm __volatile (string : "+r" (__o0) :			\
++			  [scn] nc (_name), "r" (__o1),			\
+ 			  "r" (__o2), "r" (__o3) :			\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	__o0;								\
+ })
++#define internal_syscall4(string,name,args...)				\
++  _internal_syscall4(string, "i", name, args)
+ 
+-#define internal_syscall5(string,name,arg1,arg2,arg3,arg4,arg5)		\
++#define _internal_syscall5(string,nc,name,arg1,arg2,arg3,arg4,arg5)	\
+ ({									\
+ 	long int _arg1 = (long int) (arg1);				\
+ 	long int _arg2 = (long int) (arg2);				\
+ 	long int _arg3 = (long int) (arg3);				\
+ 	long int _arg4 = (long int) (arg4);				\
+ 	long int _arg5 = (long int) (arg5);				\
+-	register long int __g1 __asm__("g1") = (name);			\
++	long int _name = (long int) (name);				\
+ 	register long int __o0 __asm__ ("o0") = _arg1;			\
+ 	register long int __o1 __asm__ ("o1") = _arg2;			\
+ 	register long int __o2 __asm__ ("o2") = _arg3;			\
+ 	register long int __o3 __asm__ ("o3") = _arg4;			\
+ 	register long int __o4 __asm__ ("o4") = _arg5;			\
+-	__asm __volatile (string : "=r" (__o0) :			\
+-			  "r" (__g1), "0" (__o0), "r" (__o1),		\
++	__asm __volatile (string : "+r" (__o0) :			\
++			  [scn] nc (_name), "r" (__o1),			\
+ 			  "r" (__o2), "r" (__o3), "r" (__o4) :		\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	__o0;								\
+ })
++#define internal_syscall5(string,name,args...)				\
++  _internal_syscall5(string, "i", name, args)
+ 
+-#define internal_syscall6(string,name,arg1,arg2,arg3,arg4,arg5,arg6)	\
++#define _internal_syscall6(string,nc,name,arg1,arg2,arg3,arg4,arg5,arg6)\
+ ({									\
+ 	long int _arg1 = (long int) (arg1);				\
+ 	long int _arg2 = (long int) (arg2);				\
+@@ -148,20 +160,22 @@
+ 	long int _arg4 = (long int) (arg4);				\
+ 	long int _arg5 = (long int) (arg5);				\
+ 	long int _arg6 = (long int) (arg6);				\
+-	register long int __g1 __asm__("g1") = (name);			\
++	long int _name = (long int) (name);				\
+ 	register long int __o0 __asm__ ("o0") = _arg1;			\
+ 	register long int __o1 __asm__ ("o1") = _arg2;			\
+ 	register long int __o2 __asm__ ("o2") = _arg3;			\
+ 	register long int __o3 __asm__ ("o3") = _arg4;			\
+ 	register long int __o4 __asm__ ("o4") = _arg5;			\
+ 	register long int __o5 __asm__ ("o5") = _arg6;			\
+-	__asm __volatile (string : "=r" (__o0) :			\
+-			  "r" (__g1), "0" (__o0), "r" (__o1),		\
++	__asm __volatile (string : "+r" (__o0) :			\
++			  [scn] nc (_name), "r" (__o1),			\
+ 			  "r" (__o2), "r" (__o3), "r" (__o4),		\
+ 			  "r" (__o5) :					\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	__o0;								\
+ })
++#define internal_syscall6(string,name,args...)				\
++  _internal_syscall6(string, "i", name, args)
+ 
+ #define INLINE_CLONE_SYSCALL(arg1,arg2,arg3,arg4,arg5)			\
+ ({									\
+@@ -170,15 +184,15 @@
+ 	long int _arg3 = (long int) (arg3);				\
+ 	long int _arg4 = (long int) (arg4);				\
+ 	long int _arg5 = (long int) (arg5);				\
++	long int _name = __NR_clone;					\
+ 	register long int __o0 __asm__ ("o0") = _arg1;			\
+ 	register long int __o1 __asm__ ("o1") = _arg2;			\
+ 	register long int __o2 __asm__ ("o2") = _arg3;			\
+ 	register long int __o3 __asm__ ("o3") = _arg4;			\
+ 	register long int __o4 __asm__ ("o4") = _arg5;			\
+-	register long int __g1 __asm__ ("g1") = __NR_clone;		\
+ 	__asm __volatile (__SYSCALL_STRING :				\
+ 			  "=r" (__o0), "=r" (__o1) :			\
+-			  "r" (__g1), "0" (__o0), "1" (__o1),		\
++			  [scn] "i" (_name), "0" (__o0), "1" (__o1),	\
+ 			  "r" (__o2), "r" (__o3), "r" (__o4) :		\
+ 			  __SYSCALL_CLOBBERS);				\
+ 	if (__glibc_unlikely ((unsigned long int) (__o0) > -4096UL))	\
 diff --git a/sysdeps/unix/sysv/linux/tst-linux-mremap1.c b/sysdeps/unix/sysv/linux/tst-linux-mremap1.c
 new file mode 100644
 index 0000000000..408e8af2ab
@@ -22013,6 +22554,124 @@ index 0000000000..408e8af2ab
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/tst-syscall-restart.c b/sysdeps/unix/sysv/linux/tst-syscall-restart.c
+new file mode 100644
+index 0000000000..0ee7dc8517
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/tst-syscall-restart.c
+@@ -0,0 +1,112 @@
++/* Test if a syscall is correctly restarted.
++   Copyright (C) 2024 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/xsignal.h>
++#include <support/check.h>
++#include <support/process_state.h>
++#include <support/xunistd.h>
++#include <support/xthread.h>
++#include <sys/wait.h>
++
++static int
++check_pid (pid_t pid)
++{
++  /* Wait until the child has called pause and it blocking on kernel.  */
++  support_process_state_wait (pid, support_process_state_sleeping);
++
++  TEST_COMPARE (kill (pid, SIGSTOP), 0);
++
++  /* Adding process_state_tracing_stop ('t') allows the test to work under
++     trace programs such as ptrace.  */
++  support_process_state_wait (pid, support_process_state_stopped
++				   | support_process_state_tracing_stop);
++
++  TEST_COMPARE (kill (pid, SIGCONT), 0);
++
++  enum support_process_state state
++    = support_process_state_wait (pid, support_process_state_sleeping
++				       | support_process_state_zombie);
++
++  TEST_COMPARE (state, support_process_state_sleeping);
++
++  TEST_COMPARE (kill (pid, SIGTERM), 0);
++
++  siginfo_t info;
++  TEST_COMPARE (waitid (P_PID, pid, &info, WEXITED), 0);
++  TEST_COMPARE (info.si_signo, SIGCHLD);
++  TEST_COMPARE (info.si_code, CLD_KILLED);
++  TEST_COMPARE (info.si_status, SIGTERM);
++  TEST_COMPARE (info.si_pid, pid);
++
++  return 0;
++}
++
++static void *
++tf (void *closure)
++{
++  pause ();
++  return NULL;
++}
++
++static void
++child_mt (void)
++{
++  /* Let only the created thread to handle signals.  */
++  sigset_t set;
++  sigfillset (&set);
++  xpthread_sigmask (SIG_BLOCK, &set, NULL);
++
++  sigdelset (&set, SIGSTOP);
++  sigdelset (&set, SIGCONT);
++  sigdelset (&set, SIGTERM);
++
++  pthread_attr_t attr;
++  xpthread_attr_init (&attr);
++  TEST_COMPARE (pthread_attr_setsigmask_np (&attr, &set), 0);
++
++  xpthread_join (xpthread_create (&attr, tf, NULL));
++}
++
++static void
++do_test_syscall (bool multithread)
++{
++  pid_t pid = xfork ();
++  if (pid == 0)
++    {
++      if (multithread)
++	child_mt ();
++      else
++	pause ();
++      _exit (127);
++    }
++
++  check_pid (pid);
++}
++
++static int
++do_test (void)
++{
++  /* Check for both single and multi thread, since they use different syscall
++     mechanisms.  */
++  do_test_syscall (false);
++  do_test_syscall (true);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/sysdeps/unix/sysv/linux/x86_64/dl-cet.h b/sysdeps/unix/sysv/linux/x86_64/dl-cet.h
 index 1fe3133406..b4f7e6c9cd 100644
 --- a/sysdeps/unix/sysv/linux/x86_64/dl-cet.h
@@ -22069,6 +22728,24 @@ index ae9dcd6180..ccc6b64dc2 100644
  	case 26:
  	    {
  	      CHECK_GLIBC_IFUNC_PREFERRED_NEED_BOTH
+diff --git a/sysdeps/x86/dl-cacheinfo.h b/sysdeps/x86/dl-cacheinfo.h
+index a1c03b8903..ac97414b5b 100644
+--- a/sysdeps/x86/dl-cacheinfo.h
++++ b/sysdeps/x86/dl-cacheinfo.h
+@@ -961,11 +961,11 @@ dl_init_cacheinfo (struct cpu_features *cpu_features)
+     non_temporal_threshold = maximum_non_temporal_threshold;
+ 
+   /* NB: The REP MOVSB threshold must be greater than VEC_SIZE * 8.  */
+-  unsigned int minimum_rep_movsb_threshold;
++  unsigned long int minimum_rep_movsb_threshold;
+   /* NB: The default REP MOVSB threshold is 4096 * (VEC_SIZE / 16) for
+      VEC_SIZE == 64 or 32.  For VEC_SIZE == 16, the default REP MOVSB
+      threshold is 2048 * (VEC_SIZE / 16).  */
+-  unsigned int rep_movsb_threshold;
++  unsigned long int rep_movsb_threshold;
+   if (CPU_FEATURE_USABLE_P (cpu_features, AVX512F)
+       && !CPU_FEATURE_PREFERRED_P (cpu_features, Prefer_No_AVX512))
+     {
 diff --git a/sysdeps/x86_64/dl-machine.h b/sysdeps/x86_64/dl-machine.h
 index a6de3793e4..4f12955875 100644
 --- a/sysdeps/x86_64/dl-machine.h
