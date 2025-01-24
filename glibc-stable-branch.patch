@@ -7,8 +7,9 @@ Adhemerval Zanella (4):
 Andreas K. Hüttel (1):
       Replace advisories directory
 
-Andreas Schwab (1):
+Andreas Schwab (2):
       Fix name space violation in fortify wrappers (bug 32052)
+      Fix missing randomness in __gen_tempname (bug 32214)
 
 Arjun Shankar (2):
       manual/stdio: Clarify putc and putwc
@@ -37,7 +38,7 @@ Florian Weimer (18):
       elf: Change ldconfig auxcache magic number (bug 32231)
       x86: Avoid integer truncation with large cache sizes (bug 32470)
 
-H.J. Lu (7):
+H.J. Lu (8):
       linux: Update the mremap C implementation [BZ #31968]
       mremap: Update manual entry
       Add mremap tests
@@ -45,6 +46,7 @@ H.J. Lu (7):
       x32/cet: Support shadow stack during startup for Linux 6.10
       libio: Set _vtable_offset before calling _IO_link_in [BZ #32148]
       math: Exclude internal math symbols for tests [BZ #32414]
+      Hide all malloc functions from compiler [BZ #32366]
 
 John David Anglin (2):
       hppa: Fix strace detach-vfork test
@@ -86,17 +88,19 @@ Miguel Martín (2):
 Noah Goldstein (1):
       x86: Fix bug in strchrnul-evex512 [BZ #32078]
 
-Sam James (1):
+Sam James (2):
       malloc: add indirection for malloc(-like) functions in tests [BZ #32366]
+      malloc: obscure calloc use in tst-calloc
 
 Sergey Kolosov (1):
       stdio-common: Add new test for fdopen
 
-Siddhesh Poyarekar (4):
+Siddhesh Poyarekar (5):
       Make tst-ungetc use libsupport
       ungetc: Fix uninitialized read when putting into unused streams [BZ #27821]
       ungetc: Fix backup buffer leak on program exit [BZ #27821]
       libio: Attempt wide backup free only for non-legacy code
+      Fix underallocation of abort_msg_s struct (CVE-2025-0395)
 
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
@@ -107,10 +111,10 @@ index 0000000000..d4e33f2df3
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
 diff --git a/NEWS b/NEWS
-index 31281ac408..97a1e1f5d4 100644
+index 31281ac408..57feba81cd 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,23 @@ See the end for copying conditions.
+@@ -5,6 +5,24 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -127,6 +131,7 @@ index 31281ac408..97a1e1f5d4 100644
 +  [32026] strerror/strsignal TLS not handled correctly for secondary namespaces
 +  [32052] Name space violation in fortify wrappers
 +  [32137] libio: Attempt wide backup free only for non-legacy code
++  [32214] Fix missing randomness in __gen_tempname
 +  [32231] elf: Change ldconfig auxcache magic number
 +  [32245] glibc -Wstringop-overflow= build failure on hppa
 +  [32470] x86: Avoid integer truncation with large cache sizes
@@ -552,6 +557,28 @@ index b8f8a829ca..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/assert/assert.c b/assert/assert.c
+index c29629f5f6..b6e37d694c 100644
+--- a/assert/assert.c
++++ b/assert/assert.c
+@@ -18,6 +18,7 @@
+ #include <assert.h>
+ #include <atomic.h>
+ #include <ldsodefs.h>
++#include <libc-pointer-arith.h>
+ #include <libintl.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -65,7 +66,8 @@ __assert_fail_base (const char *fmt, const char *assertion, const char *file,
+       (void) __fxprintf (NULL, "%s", str);
+       (void) fflush (stderr);
+ 
+-      total = (total + 1 + GLRO(dl_pagesize) - 1) & ~(GLRO(dl_pagesize) - 1);
++      total = ALIGN_UP (total + sizeof (struct abort_msg_s) + 1,
++			GLRO(dl_pagesize));
+       struct abort_msg_s *buf = __mmap (NULL, total, PROT_READ | PROT_WRITE,
+ 					MAP_ANON | MAP_PRIVATE, -1, 0);
+       if (__glibc_likely (buf != MAP_FAILED))
 diff --git a/debug/pcprofiledump.c b/debug/pcprofiledump.c
 index 049a9c2744..94530f0cf9 100644
 --- a/debug/pcprofiledump.c
@@ -1943,6 +1970,42 @@ index 0205df5acf..9ef1f839c1 100644
  {
    return get_random_alloc (size);
  }
+diff --git a/malloc/tst-calloc.c b/malloc/tst-calloc.c
+index 01f17f9e65..5a8c7ab121 100644
+--- a/malloc/tst-calloc.c
++++ b/malloc/tst-calloc.c
+@@ -23,6 +23,7 @@
+ #include <stdio.h>
+ #include <libc-diag.h>
+ 
++#include "tst-malloc-aux.h"
+ 
+ /* Number of samples per size.  */
+ #define N 50000
+@@ -94,16 +95,19 @@ random_test (void)
+ static void
+ null_test (void)
+ {
++  /* Obscure allocation size from the compiler.  */
++  volatile size_t max_size = UINT_MAX;
++  volatile size_t zero_size = 0;
+   /* If the size is 0 the result is implementation defined.  Just make
+      sure the program doesn't crash.  The result of calloc is
+      deliberately ignored, so do not warn about that.  */
+   DIAG_PUSH_NEEDS_COMMENT;
+   DIAG_IGNORE_NEEDS_COMMENT (10, "-Wunused-result");
+   calloc (0, 0);
+-  calloc (0, UINT_MAX);
+-  calloc (UINT_MAX, 0);
+-  calloc (0, ~((size_t) 0));
+-  calloc (~((size_t) 0), 0);
++  calloc (0, max_size);
++  calloc (max_size, 0);
++  calloc (0, ~((size_t) zero_size));
++  calloc (~((size_t) zero_size), 0);
+   DIAG_POP_NEEDS_COMMENT;
+ }
+ 
 diff --git a/malloc/tst-compathooks-off.c b/malloc/tst-compathooks-off.c
 index d0106f3fb7..4cce6e5a80 100644
 --- a/malloc/tst-compathooks-off.c
@@ -1956,12 +2019,25 @@ index d0106f3fb7..4cce6e5a80 100644
  extern void (*volatile __free_hook) (void *, const void *);
  extern void *(*volatile __malloc_hook)(size_t, const void *);
  extern void *(*volatile __realloc_hook)(void *, size_t, const void *);
+diff --git a/malloc/tst-mallinfo2.c b/malloc/tst-mallinfo2.c
+index 2c02f5f700..f072b9f24b 100644
+--- a/malloc/tst-mallinfo2.c
++++ b/malloc/tst-mallinfo2.c
+@@ -23,6 +23,8 @@
+ #include <stdlib.h>
+ #include <support/check.h>
+ 
++#include "tst-malloc-aux.h"
++
+ /* This is not specifically needed for the test, but (1) does
+    something to the data so gcc doesn't optimize it away, and (2) may
+    help when developing future tests.  */
 diff --git a/malloc/tst-malloc-aux.h b/malloc/tst-malloc-aux.h
 new file mode 100644
-index 0000000000..54908b4a24
+index 0000000000..3e1b61ce34
 --- /dev/null
 +++ b/malloc/tst-malloc-aux.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,56 @@
 +/* Wrappers for malloc-like functions to allow testing the implementation
 +   without optimization.
 +   Copyright (C) 2024 Free Software Foundation, Inc.
@@ -1986,23 +2062,51 @@ index 0000000000..54908b4a24
 +
 +#include <stddef.h>
 +#include <stdlib.h>
++#include <malloc.h>
 +
-+static void *(*volatile aligned_alloc_indirect)(size_t, size_t) = aligned_alloc;
-+static void *(*volatile calloc_indirect)(size_t, size_t) = calloc;
-+static void *(*volatile malloc_indirect)(size_t) = malloc;
-+static void *(*volatile realloc_indirect)(void*, size_t) = realloc;
++static __typeof (aligned_alloc) * volatile aligned_alloc_indirect
++  = aligned_alloc;
++static __typeof (calloc) * volatile calloc_indirect = calloc;
++static __typeof (malloc) * volatile malloc_indirect = malloc;
++static __typeof (memalign) * volatile memalign_indirect = memalign;
++static __typeof (posix_memalign) * volatile posix_memalign_indirect
++  = posix_memalign;
++static __typeof (pvalloc) * volatile pvalloc_indirect = pvalloc;
++static __typeof (realloc) * volatile realloc_indirect = realloc;
++static __typeof (valloc) * volatile valloc_indirect = valloc;
 +
 +#undef aligned_alloc
 +#undef calloc
 +#undef malloc
++#undef memalign
++#undef posix_memalign
++#undef pvalloc
 +#undef realloc
++#undef valloc
 +
 +#define aligned_alloc aligned_alloc_indirect
 +#define calloc calloc_indirect
 +#define malloc malloc_indirect
++#define memalign memalign_indirect
++#define posix_memalign posix_memalign_indirect
++#define pvalloc pvalloc_indirect
 +#define realloc realloc_indirect
++#define valloc valloc_indirect
 +
 +#endif /* TST_MALLOC_AUX_H */
+diff --git a/malloc/tst-malloc-backtrace.c b/malloc/tst-malloc-backtrace.c
+index c7b1d65e5c..65fa91f6fd 100644
+--- a/malloc/tst-malloc-backtrace.c
++++ b/malloc/tst-malloc-backtrace.c
+@@ -22,6 +22,8 @@
+ #include <support/support.h>
+ #include <libc-diag.h>
+ 
++#include "tst-malloc-aux.h"
++
+ #define SIZE 4096
+ 
+ /* Wrap free with a function to prevent gcc from optimizing it out.  */
 diff --git a/malloc/tst-malloc-check.c b/malloc/tst-malloc-check.c
 index fde8863ad7..cc88bff3b3 100644
 --- a/malloc/tst-malloc-check.c
@@ -2041,6 +2145,19 @@ index f7a6e4654c..68af399022 100644
  static int errors = 0;
  
  static void
+diff --git a/malloc/tst-memalign.c b/malloc/tst-memalign.c
+index 563f6413d2..ac9770d3f9 100644
+--- a/malloc/tst-memalign.c
++++ b/malloc/tst-memalign.c
+@@ -23,6 +23,8 @@
+ #include <unistd.h>
+ #include <libc-diag.h>
+ 
++#include "tst-malloc-aux.h"
++
+ static int errors = 0;
+ 
+ static void
 diff --git a/malloc/tst-realloc.c b/malloc/tst-realloc.c
 index f50499ecb1..74a28fb45e 100644
 --- a/malloc/tst-realloc.c
@@ -2054,6 +2171,32 @@ index f50499ecb1..74a28fb45e 100644
  static int
  do_test (void)
  {
+diff --git a/malloc/tst-safe-linking.c b/malloc/tst-safe-linking.c
+index 01dd07004d..63a7e2bc8e 100644
+--- a/malloc/tst-safe-linking.c
++++ b/malloc/tst-safe-linking.c
+@@ -26,6 +26,8 @@
+ #include <support/capture_subprocess.h>
+ #include <support/check.h>
+ 
++#include "tst-malloc-aux.h"
++
+ /* Run CALLBACK and check that the data on standard error equals
+    EXPECTED.  */
+ static void
+diff --git a/malloc/tst-valloc.c b/malloc/tst-valloc.c
+index 9bab8c6470..0243d3dfd4 100644
+--- a/malloc/tst-valloc.c
++++ b/malloc/tst-valloc.c
+@@ -23,6 +23,8 @@
+ #include <unistd.h>
+ #include <libc-diag.h>
+ 
++#include "tst-malloc-aux.h"
++
+ static int errors = 0;
+ 
+ static void
 diff --git a/manual/dynlink.texi b/manual/dynlink.texi
 index 03565d4fb0..1500a53de6 100644
 --- a/manual/dynlink.texi
@@ -21816,6 +21959,41 @@ index 0000000000..bc0d476368
 +{
 +  return EXIT_FAILURE;
 +}
+diff --git a/sysdeps/posix/libc_fatal.c b/sysdeps/posix/libc_fatal.c
+index f9e3425e04..089c47b04b 100644
+--- a/sysdeps/posix/libc_fatal.c
++++ b/sysdeps/posix/libc_fatal.c
+@@ -20,6 +20,7 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <ldsodefs.h>
++#include <libc-pointer-arith.h>
+ #include <paths.h>
+ #include <stdarg.h>
+ #include <stdbool.h>
+@@ -105,7 +106,8 @@ __libc_message_impl (const char *fmt, ...)
+     {
+       WRITEV_FOR_FATAL (fd, iov, iovcnt, total);
+ 
+-      total = (total + 1 + GLRO(dl_pagesize) - 1) & ~(GLRO(dl_pagesize) - 1);
++      total = ALIGN_UP (total + sizeof (struct abort_msg_s) + 1,
++			GLRO(dl_pagesize));
+       struct abort_msg_s *buf = __mmap (NULL, total,
+ 					PROT_READ | PROT_WRITE,
+ 					MAP_ANON | MAP_PRIVATE, -1, 0);
+diff --git a/sysdeps/posix/tempname.c b/sysdeps/posix/tempname.c
+index c00fe0c181..fc30958a0c 100644
+--- a/sysdeps/posix/tempname.c
++++ b/sysdeps/posix/tempname.c
+@@ -117,6 +117,8 @@ random_bits (random_value *r, random_value s)
+      succeed.  */
+ #if !_LIBC
+   *r = mix_random_values (v, clock ());
++#else
++  *r = v;
+ #endif
+   return false;
+ }
 diff --git a/sysdeps/powerpc/powerpc64/le/Makefile b/sysdeps/powerpc/powerpc64/le/Makefile
 index 9d568d4f44..b77775cf95 100644
 --- a/sysdeps/powerpc/powerpc64/le/Makefile
