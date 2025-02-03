@@ -9,13 +9,13 @@
 
 
 Name:           glibc
-Version:        2.40
-Release:        697
+Version:        2.41
+Release:        698
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
 Group:          libs
-Source0:        https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz
+Source0:        https://ftp.gnu.org/gnu/glibc/glibc-2.41.tar.xz
 
 Patch1:                glibc-stable-branch.patch
 
@@ -253,7 +253,7 @@ export ASFLAGS=""
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.40/configure \
+../glibc-2.41/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -304,7 +304,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.40/configure \
+../glibc-2.41/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -353,7 +353,7 @@ export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -D__AVX512__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.40/configure \
+../glibc-2.41/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -401,7 +401,7 @@ export CFLAGS="-O3 -m32 -march=westmere -mtune=sapphirerapids -mstackrealign -g1
 unset LDFLAGS
 export LDFLAGS="-Wl,-z,max-page-size=0x1000"
 
-../glibc-2.40/configure \
+../glibc-2.41/configure \
     --prefix=/usr \
     --exec_prefix=/usr \
     --bindir=/usr/bin \
@@ -455,7 +455,7 @@ export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-pag
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
-../glibc-2.40/configure \
+../glibc-2.41/configure \
     --prefix=/usr \
     --disable-werror \
     --exec_prefix=/usr \
@@ -516,7 +516,7 @@ pushd ../glibc-buildroot-avx2
 mkdir -p %{buildroot}/V3/usr/lib64/
 cp math/libm.so %{buildroot}/V3/usr/lib64/libm.so.6
 cp mathvec/libmvec.so %{buildroot}/V3/usr/lib64/libmvec.so.1
-cp libc.so  %{buildroot}/V3/usr/lib64/libc-2.40.so
+cp libc.so  %{buildroot}/V3/usr/lib64/libc-2.41.so
 popd
 
 pushd ../glibc-buildroot-avx512
@@ -528,7 +528,7 @@ popd
 pushd ../glibc-buildrootapx
 mkdir -p %{buildroot}/VA/usr/lib64/
 cp math/libm.so %{buildroot}/VA/usr/lib64/libm.so.6
-cp libc.so  %{buildroot}/VA/usr/lib64/libc-2.40.so
+cp libc.so  %{buildroot}/VA/usr/lib64/libc-2.41.so
 popd
 
 
@@ -540,7 +540,7 @@ make install DESTDIR=%{buildroot} install_root=%{buildroot}  %{?_smp_mflags}
 
 mkdir -p %{buildroot}/var/cache/locale
 
-# FIXME: As of glibc 2.40, the --prefix flag to iconvconfig appears to behave
+# FIXME: As of glibc 2.41, the --prefix flag to iconvconfig appears to behave
 # differently, since it hardcodes the prefix path to the cache's module lookup
 # path, which in turn breaks iconv completely (unless GCONV_PATH is set in the
 # environment). Once that issue is resolved (or another BKM is found),
@@ -595,12 +595,12 @@ mv %{buildroot}/usr/sbin/iconvconfig %{buildroot}/usr/bin/iconvconfig
 mv %{buildroot}/usr/sbin/* %{buildroot}/usr/bin/
 
 # swup compatibility hack 
-cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.40.so
-cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.40.so
+cp %{buildroot}/usr/lib64/libc.so.6 %{buildroot}/usr/lib64/libc-2.41.so
+cp %{buildroot}/usr/lib64/ld-linux-x86-64.so.2 %{buildroot}/usr/lib64/ld-2.41.so
 rm %{buildroot}/usr/lib64/libc.so.6
 rm %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
-ln -s libc-2.40.so %{buildroot}/usr/lib64/libc.so.6
-ln -s ld-2.40.so  %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
+ln -s libc-2.41.so %{buildroot}/usr/lib64/libc.so.6
+ln -s ld-2.41.so  %{buildroot}/usr/lib64/ld-linux-x86-64.so.2
 
 
 # we don't want/need debug symbols for locale .so files, they cause binary delta thrash 
@@ -773,12 +773,12 @@ popd
 /usr/lib64/gconv/IBM858.so
 /usr/lib64/glibc/getconf
 /usr/lib64/ld-linux-x86-64.so.2
-/usr/lib64/ld-2.40.so
+/usr/lib64/ld-2.41.so
 /usr/lib64/libBrokenLocale.so.1
 #/usr/lib64/libSegFault.so
 /usr/lib64/libanl.so.1
 /usr/lib64/libc.so.6
-/usr/lib64/libc-2.40.so
+/usr/lib64/libc-2.41.so
 /usr/lib64/libdl.so.2
 /usr/lib64/libm.so.6
 /usr/lib64/libmemusage.so
@@ -1039,7 +1039,7 @@ popd
 /usr/lib64/libm.a
 /usr/lib64/libmcheck.a
 /usr/lib64/libresolv.a
-/usr/lib64/libm-2.40.a
+/usr/lib64/libm-2.41.a
 
 
 %files doc
@@ -1049,10 +1049,10 @@ popd
 /usr/bin/makedb
 /usr/lib64/libnss_db.so.2
 /usr/lib64/libnss_db.so
-#/usr/lib64/libnss_nis-2.40.so
+#/usr/lib64/libnss_nis-2.41.so
 #/usr/lib64/libnss_nis.so
 #/usr/lib64/libnss_nis.so.2
-#/usr/lib64/libnss_nisplus-2.40.so
+#/usr/lib64/libnss_nisplus-2.41.so
 #/usr/lib64/libnss_nisplus.so
 #/usr/lib64/libnss_nisplus.so.2
 %exclude %{_localstatedir}/db/Makefile
