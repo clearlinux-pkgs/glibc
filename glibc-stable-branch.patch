@@ -7,8 +7,14 @@ Andreas K. Hüttel (2):
       Remove advisories from release branch
       NEWS: start new section
 
+Aurelien Jarno (1):
+      Fix tst-aarch64-pkey to handle ENOSPC as not supported
+
 John David Anglin (1):
       nptl: Correct stack size attribute when stack grows up [BZ #32574]
+
+Siddhesh Poyarekar (1):
+      assert: Add test for CVE-2025-0395
 
 diff --git a/ADVISORIES b/ADVISORIES
 new file mode 100644
@@ -487,6 +493,116 @@ index b8f8a829ca..0000000000
 -  scripts/process-advisories.sh news
 -
 -and copy the content into the NEWS file.
+diff --git a/assert/Makefile b/assert/Makefile
+index 65b9d0768e..8d106d8752 100644
+--- a/assert/Makefile
++++ b/assert/Makefile
+@@ -39,6 +39,7 @@ tests := \
+   test-assert-perr \
+   tst-assert-c++ \
+   tst-assert-g++ \
++  tst-assert-sa-2025-0001 \
+   # tests
+ 
+ ifeq ($(have-cxx-thread_local),yes)
+diff --git a/assert/tst-assert-sa-2025-0001.c b/assert/tst-assert-sa-2025-0001.c
+new file mode 100644
+index 0000000000..102cb0078d
+--- /dev/null
++++ b/assert/tst-assert-sa-2025-0001.c
+@@ -0,0 +1,92 @@
++/* Test for CVE-2025-0395.
++   Copyright The GNU Toolchain Authors.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* Test that a large enough __progname does not result in a buffer overflow
++   when printing an assertion failure.  This was CVE-2025-0395.  */
++#include <assert.h>
++#include <inttypes.h>
++#include <signal.h>
++#include <stdbool.h>
++#include <string.h>
++#include <sys/mman.h>
++#include <support/check.h>
++#include <support/support.h>
++#include <support/xstdio.h>
++#include <support/xunistd.h>
++
++extern const char *__progname;
++
++int
++do_test (int argc, char **argv)
++{
++
++  support_need_proc ("Reads /proc/self/maps to add guards to writable maps.");
++  ignore_stderr ();
++
++  /* XXX assumes that the assert is on a 2 digit line number.  */
++  const char *prompt = ": %s:99: do_test: Assertion `argc < 1' failed.\n";
++
++  int ret = fprintf (stderr, prompt, __FILE__);
++  if (ret < 0)
++    FAIL_EXIT1 ("fprintf failed: %m\n");
++
++  size_t pagesize = getpagesize ();
++  size_t namesize = pagesize - 1 - ret;
++
++  /* Alter the progname so that the assert message fills the entire page.  */
++  char progname[namesize];
++  memset (progname, 'A', namesize - 1);
++  progname[namesize - 1] = '\0';
++  __progname = progname;
++
++  FILE *f = xfopen ("/proc/self/maps", "r");
++  char *line = NULL;
++  size_t len = 0;
++  uintptr_t prev_to = 0;
++
++  /* Pad the beginning of every writable mapping with a PROT_NONE map.  This
++     ensures that the mmap in the assert_fail path never ends up below a
++     writable map and will terminate immediately in case of a buffer
++     overflow.  */
++  while (xgetline (&line, &len, f))
++    {
++      uintptr_t from, to;
++      char perm[4];
++
++      sscanf (line, "%" SCNxPTR "-%" SCNxPTR " %c%c%c%c ",
++	      &from, &to,
++	      &perm[0], &perm[1], &perm[2], &perm[3]);
++
++      bool writable = (memchr (perm, 'w', 4) != NULL);
++
++      if (prev_to != 0 && from - prev_to > pagesize && writable)
++	xmmap ((void *) from - pagesize, pagesize, PROT_NONE,
++	       MAP_ANONYMOUS | MAP_PRIVATE, 0);
++
++      prev_to = to;
++    }
++
++  xfclose (f);
++
++  assert (argc < 1);
++  return 0;
++}
++
++#define EXPECTED_SIGNAL SIGABRT
++#define TEST_FUNCTION_ARGV do_test
++#include <support/test-driver.c>
 diff --git a/math/auto-libm-test-in b/math/auto-libm-test-in
 index 01ba689aa8..4f194da19d 100644
 --- a/math/auto-libm-test-in
@@ -679,3 +795,18 @@ index dfe56fc2a0..5ee1d6f35e 100644
  	    {
  	      if (sgn)
  		return -st[j].rh - st[j].rl;
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-aarch64-pkey.c b/sysdeps/unix/sysv/linux/aarch64/tst-aarch64-pkey.c
+index 3ff33ef72a..c884efc3b4 100644
+--- a/sysdeps/unix/sysv/linux/aarch64/tst-aarch64-pkey.c
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-aarch64-pkey.c
+@@ -55,6 +55,10 @@ do_test (void)
+       if (errno == ENOSYS || errno == EINVAL)
+         FAIL_UNSUPPORTED
+           ("kernel or CPU does not support memory protection keys");
++      if (errno == ENOSPC)
++        FAIL_UNSUPPORTED
++          ("no keys available or kernel does not support memory"
++           " protection keys");
+       FAIL_EXIT1 ("pkey_alloc: %m");
+     }
+ 
