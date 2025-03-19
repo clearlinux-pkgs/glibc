@@ -1,23 +1,64 @@
-Adhemerval Zanella (3):
+Adhemerval Zanella (4):
       math: Fix log10p1f internal table value (BZ 32626)
       math: Fix sinhf for some inputs (BZ 32627)
       math: Fix tanf for some inputs (BZ 32630)
+      nptl: Check if thread is already terminated in sigcancel_handler (BZ 32782)
 
 Andreas K. Hüttel (2):
       Remove advisories from release branch
       NEWS: start new section
 
-Aurelien Jarno (1):
+Aurelien Jarno (2):
       Fix tst-aarch64-pkey to handle ENOSPC as not supported
+      math: Remove an extra semicolon in math function declarations
 
-H.J. Lu (1):
+Florian Weimer (4):
+      configure: Fix spelling of -Wl,--no-error-execstack option
+      posix: Move environ helper variables next to environ definition (bug 32541)
+      Linux: Remove attribute access from sched_getattr (bug 32781)
+      nptl: PTHREAD_COND_INITIALIZER compatibility with pre-2.41 versions (bug 32786)
+
+H.J. Lu (3):
       x86 (__HAVE_FLOAT128): Defined to 0 for Intel SYCL compiler [BZ #32723]
+      static-pie: Skip the empty PT_LOAD segment at offset 0 [BZ #32763]
+      elf: Check if __attribute__ ((aligned (65536))) is supported
 
-John David Anglin (1):
+John David Anglin (2):
       nptl: Correct stack size attribute when stack grows up [BZ #32574]
+      math: Add optimization barrier to ensure a1 + u.d is not reused [BZ #30664]
+
+Luna Lamb (2):
+      Aarch64: Improve codegen in SVE asinh
+      Aarch64: Improve codegen in SVE exp and users, and update expf_inline
+
+Michael Jeanson (1):
+      nptl: clear the whole rseq area before registration
+
+Sam James (1):
+      Pass -Wl,--no-error-execstack for tests where -Wl,-z,execstack is used [PR32717]
 
 Siddhesh Poyarekar (1):
       assert: Add test for CVE-2025-0395
+
+Wilco Dijkstra (3):
+      math: Improve layout of exp/exp10 data
+      AArch64: Add SVE memset
+      AArch64: Use prefer_sve_ifuncs for SVE memset
+
+Yangyu Chen (1):
+      RISC-V: Fix IFUNC resolver cannot access gp pointer
+
+Yat Long Poon (3):
+      AArch64: Improve codegen for SVE erfcf
+      AArch64: Improve codegen for SVE pow
+      AArch64: Improve codegen for SVE powf
+
+Yury Khrustalev (5):
+      aarch64: Add configure checks for GCS support
+      aarch64: Add tests for Guarded Control Stack
+      aarch64: Add GCS tests for transitive dependencies
+      aarch64: Add GCS tests for dlopen
+      aarch64: Add GCS test with signal handler
 
 koraynilay (1):
       math: Fix `unknown type name '__float128'` for clang 3.4 to 3.8.1 (bug 32694)
@@ -30,11 +71,24 @@ index 0000000000..d4e33f2df3
 @@ -0,0 +1,2 @@
 +For the GNU C Library Security Advisories, see the git master branch:
 +https://sourceware.org/git/?p=glibc.git;a=tree;f=advisories;hb=HEAD
+diff --git a/Makeconfig b/Makeconfig
+index d0108d2caa..aa547a443f 100644
+--- a/Makeconfig
++++ b/Makeconfig
+@@ -633,7 +633,7 @@ link-libc-printers-tests = $(link-libc-rpath) \
+ 			   $(link-libc-tests-after-rpath-link)
+ 
+ # This is how to find at build-time things that will be installed there.
+-rpath-dirs = math elf dlfcn nss nis rt resolv mathvec support
++rpath-dirs = math elf dlfcn nss nis rt resolv mathvec support misc
+ rpath-link = \
+ $(common-objdir):$(subst $(empty) ,:,$(patsubst ../$(subdir),.,$(rpath-dirs:%=$(common-objpfx)%)))
+ else  # build-static
 diff --git a/NEWS b/NEWS
-index b11422b060..cc98ab54c2 100644
+index b11422b060..6912162e01 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,15 @@ See the end for copying conditions.
+@@ -5,6 +5,19 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -42,10 +96,14 @@ index b11422b060..cc98ab54c2 100644
 +
 +The following bugs were resolved with this release:
 +
++  [32269] RISC-V IFUNC resolver cannot access gp pointer
 +  [32626] math: math: log10p1f is not correctly rounded
 +  [32627] math: math: sinhf is not correctly rounded
 +  [32630] math: math: tanf is not correctly rounded for all rounding
 +    modes
++  [32781] Linux: Remove attribute access from sched_getattr
++  [32782] nptl: Race conditions in pthread cancellation causing crash
++  [32786] nptl: PTHREAD_COND_INITIALIZER compatibility with pre-2.41 versions
 +
  Version 2.41
  
@@ -609,6 +667,398 @@ index 0000000000..102cb0078d
 +#define EXPECTED_SIGNAL SIGABRT
 +#define TEST_FUNCTION_ARGV do_test
 +#include <support/test-driver.c>
+diff --git a/config.make.in b/config.make.in
+index 36096881b7..59897eaec2 100644
+--- a/config.make.in
++++ b/config.make.in
+@@ -53,6 +53,7 @@ c++-bits-std_abs-h = @CXX_BITS_STD_ABS_H@
+ enable-werror = @enable_werror@
+ 
+ have-z-execstack = @libc_cv_z_execstack@
++have-no-error-execstack = @libc_cv_no_error_execstack@
+ have-protected-data = @libc_cv_protected_data@
+ have-insert = @libc_cv_insert@
+ have-glob-dat-reloc = @libc_cv_has_glob_dat@
+diff --git a/configure b/configure
+index eb8abd0054..674d1d7e4a 100755
+--- a/configure
++++ b/configure
+@@ -659,6 +659,7 @@ libc_cv_has_glob_dat
+ libc_cv_fpie
+ libc_cv_test_static_pie
+ libc_cv_z_execstack
++libc_cv_no_error_execstack
+ ASFLAGS_config
+ libc_cv_cc_with_libunwind
+ libc_cv_insert
+@@ -7114,6 +7115,40 @@ if test $libc_cv_as_noexecstack = yes; then
+ fi
+ 
+ 
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for linker that supports --no-error-execstack" >&5
++printf %s "checking for linker that supports --no-error-execstack... " >&6; }
++libc_linker_feature=no
++cat > conftest.c <<EOF
++int _start (void) { return 42; }
++EOF
++if { ac_try='${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS $no_ssp
++		  -Wl,--no-error-execstack -nostdlib -nostartfiles
++		  -fPIC -shared -o conftest.so conftest.c
++		  1>&5'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; }
++then
++  if ${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS $no_ssp -Wl,--no-error-execstack -nostdlib \
++      -nostartfiles -fPIC -shared -o conftest.so conftest.c 2>&1 \
++      | grep "warning: --no-error-execstack ignored" > /dev/null 2>&1; then
++    true
++  else
++    libc_linker_feature=yes
++  fi
++fi
++rm -f conftest*
++if test $libc_linker_feature = yes; then
++  libc_cv_no_error_execstack=yes
++else
++  libc_cv_no_error_execstack=no
++fi
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $libc_linker_feature" >&5
++printf "%s\n" "$libc_linker_feature" >&6; }
++
++
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for linker that supports -z execstack" >&5
+ printf %s "checking for linker that supports -z execstack... " >&6; }
+ libc_linker_feature=no
+@@ -8643,6 +8678,35 @@ if test $libc_cv_builtin_trap = yes; then
+ 
+ fi
+ 
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports __attribute__ ((aligned (65536)))" >&5
++printf %s "checking whether the compiler supports __attribute__ ((aligned (65536)))... " >&6; }
++if test ${libc_cv_aligned_65536+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e)
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++char bss0xb5dce8 __attribute__ ((aligned (65536)));
++
++_ACEOF
++if ac_fn_c_try_compile "$LINENO"
++then :
++  libc_cv_aligned_65536=yes
++else case e in #(
++  e) libc_cv_aligned_65536=no ;;
++esac
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
++ ;;
++esac
++fi
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $libc_cv_aligned_65536" >&5
++printf "%s\n" "$libc_cv_aligned_65536" >&6; }
++config_vars="$config_vars
++aligned-65536 = $libc_cv_aligned_65536"
++
+ ac_ext=cpp
+ ac_cpp='$CXXCPP $CPPFLAGS'
+ ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+@@ -8908,6 +8972,104 @@ printf "%s\n" "$libc_linker_feature" >&6; }
+ config_vars="$config_vars
+ load-address-ldflag = $libc_cv_load_address_ldflag"
+ 
++# Check if compilers support GCS in branch protection:
++
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking if compiler supports -mbranch-protection=gcs" >&5
++printf %s "checking if compiler supports -mbranch-protection=gcs... " >&6; }
++if test ${libc_cv_cc_gcs+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) if { ac_try='${CC-cc} -Werror -mbranch-protection=gcs -xc /dev/null -S -o /dev/null'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; }
++then :
++  libc_cv_cc_gcs=yes
++else case e in #(
++  e) libc_cv_cc_gcs=no ;;
++esac
++fi ;;
++esac
++fi
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $libc_cv_cc_gcs" >&5
++printf "%s\n" "$libc_cv_cc_gcs" >&6; }
++if test "$TEST_CC" = "$CC"; then
++  libc_cv_test_cc_gcs=$libc_cv_cc_gcs
++else
++
++saved_CC="$CC"
++CC="$TEST_CC"
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking if compiler supports -mbranch-protection=gcs in testing" >&5
++printf %s "checking if compiler supports -mbranch-protection=gcs in testing... " >&6; }
++if test ${libc_cv_test_cc_gcs+y}
++then :
++  printf %s "(cached) " >&6
++else case e in #(
++  e) if { ac_try='${CC-cc} -Werror -mbranch-protection=gcs -xc /dev/null -S -o /dev/null'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; }
++then :
++  libc_cv_test_cc_gcs=yes
++else case e in #(
++  e) libc_cv_test_cc_gcs=no ;;
++esac
++fi ;;
++esac
++fi
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $libc_cv_test_cc_gcs" >&5
++printf "%s\n" "$libc_cv_test_cc_gcs" >&6; }
++
++CC="$saved_CC"
++
++fi
++
++config_vars="$config_vars
++have-cc-gcs = $libc_cv_cc_gcs"
++config_vars="$config_vars
++have-test-cc-gcs = $libc_cv_test_cc_gcs"
++
++# Check if linker supports GCS marking
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for linker that supports -z gcs=always" >&5
++printf %s "checking for linker that supports -z gcs=always... " >&6; }
++libc_linker_feature=no
++cat > conftest.c <<EOF
++int _start (void) { return 42; }
++EOF
++if { ac_try='${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS $no_ssp
++		  -Wl,-z,gcs=always -nostdlib -nostartfiles
++		  -fPIC -shared -o conftest.so conftest.c
++		  1>&5'
++  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; }
++then
++  if ${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS $no_ssp -Wl,-z,gcs=always -nostdlib \
++      -nostartfiles -fPIC -shared -o conftest.so conftest.c 2>&1 \
++      | grep "warning: -z gcs=always ignored" > /dev/null 2>&1; then
++    true
++  else
++    libc_linker_feature=yes
++  fi
++fi
++rm -f conftest*
++if test $libc_linker_feature = yes; then
++  libc_cv_ld_gcs=yes
++else
++  libc_cv_ld_gcs=no
++fi
++{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $libc_linker_feature" >&5
++printf "%s\n" "$libc_linker_feature" >&6; }
++config_vars="$config_vars
++have-ld-gcs = $libc_cv_ld_gcs"
++
+ { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking if we can build programs as PIE" >&5
+ printf %s "checking if we can build programs as PIE... " >&6; }
+ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+diff --git a/configure.ac b/configure.ac
+index 050bfa65e3..57cd24c87d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1318,6 +1318,10 @@ if test $libc_cv_as_noexecstack = yes; then
+ fi
+ AC_SUBST(ASFLAGS_config)
+ 
++LIBC_LINKER_FEATURE([--no-error-execstack], [-Wl,--no-error-execstack],
++		    [libc_cv_no_error_execstack=yes], [libc_cv_no_error_execstack=no])
++AC_SUBST(libc_cv_no_error_execstack)
++
+ LIBC_LINKER_FEATURE([-z execstack], [-Wl,-z,execstack],
+ 		    [libc_cv_z_execstack=yes], [libc_cv_z_execstack=no])
+ AC_SUBST(libc_cv_z_execstack)
+@@ -1820,6 +1824,17 @@ if test $libc_cv_builtin_trap = yes; then
+   AC_DEFINE([HAVE_BUILTIN_TRAP])
+ fi
+ 
++dnl Check if
++AC_CACHE_CHECK([whether the compiler supports __attribute__ ((aligned (65536)))],
++	       libc_cv_aligned_65536, [
++AC_COMPILE_IFELSE([AC_LANG_SOURCE([
++char bss[0xb5dce8] __attribute__ ((aligned (65536)));
++])],
++	       [libc_cv_aligned_65536=yes],
++	       [libc_cv_aligned_65536=no])
++])
++LIBC_CONFIG_VAR([aligned-65536], [$libc_cv_aligned_65536])
++
+ dnl C++ feature tests.
+ AC_LANG_PUSH([C++])
+ 
+@@ -1992,6 +2007,23 @@ LIBC_LINKER_FEATURE([-Ttext-segment=$libc_cv_pde_load_address],
+ 		    [libc_cv_load_address_ldflag=])
+ LIBC_CONFIG_VAR([load-address-ldflag], [$libc_cv_load_address_ldflag])
+ 
++# Check if compilers support GCS in branch protection:
++LIBC_TRY_CC_AND_TEST_CC_OPTION([if compiler supports -mbranch-protection=gcs],
++  [-Werror -mbranch-protection=gcs],
++  libc_cv_cc_gcs,
++  [libc_cv_cc_gcs=yes],
++  [libc_cv_cc_gcs=no],
++  libc_cv_test_cc_gcs,
++  [libc_cv_test_cc_gcs=yes],
++  [libc_cv_test_cc_gcs=no])
++LIBC_CONFIG_VAR([have-cc-gcs], [$libc_cv_cc_gcs])
++LIBC_CONFIG_VAR([have-test-cc-gcs], [$libc_cv_test_cc_gcs])
++
++# Check if linker supports GCS marking
++LIBC_LINKER_FEATURE([-z gcs=always], [-Wl,-z,gcs=always],
++		    [libc_cv_ld_gcs=yes], [libc_cv_ld_gcs=no])
++LIBC_CONFIG_VAR([have-ld-gcs], [$libc_cv_ld_gcs])
++
+ AC_MSG_CHECKING(if we can build programs as PIE)
+ AC_COMPILE_IFELSE([AC_LANG_SOURCE([[#ifdef PIE_UNSUPPORTED
+ # error PIE is not supported
+diff --git a/elf/Makefile b/elf/Makefile
+index 4b1d0d8741..d6bba4b0ec 100644
+--- a/elf/Makefile
++++ b/elf/Makefile
+@@ -1144,6 +1144,10 @@ tests-pie += \
+   tst-pie1 \
+   tst-pie2 \
+   # tests-pie
++ifeq (yes,$(aligned-65536))
++tests += tst-pie-bss
++tests-pie += tst-pie-bss
++endif
+ ifneq (,$(load-address-ldflag))
+ tests += \
+   tst-pie-address \
+@@ -1159,6 +1163,10 @@ tests += \
+ tests-static += \
+   tst-pie-address-static \
+   # tests-static
++ifeq (yes,$(aligned-65536))
++tests += tst-pie-bss-static
++tests-static += tst-pie-bss-static
++endif
+ LDFLAGS-tst-pie-address-static += \
+   $(load-address-ldflag)=$(pde-load-address)
+ endif
+@@ -1988,6 +1996,9 @@ $(objpfx)tst-execstack.out: $(objpfx)tst-execstack-mod.so
+ CPPFLAGS-tst-execstack.c += -DUSE_PTHREADS=0
+ LDFLAGS-tst-execstack = -Wl,-z,noexecstack
+ LDFLAGS-tst-execstack-mod.so = -Wl,-z,execstack
++ifeq ($(have-no-error-execstack),yes)
++LDFLAGS-tst-execstack-mod.so += -Wl,--no-error-execstack
++endif
+ 
+ $(objpfx)tst-execstack-needed: $(objpfx)tst-execstack-mod.so
+ LDFLAGS-tst-execstack-needed = -Wl,-z,noexecstack
+@@ -1997,6 +2008,9 @@ CFLAGS-tst-execstack-prog.c += -Wno-trampolines
+ CFLAGS-tst-execstack-mod.c += -Wno-trampolines
+ 
+ LDFLAGS-tst-execstack-prog-static = -Wl,-z,execstack
++ifeq ($(have-no-error-execstack),yes)
++LDFLAGS-tst-execstack-prog-static += -Wl,--no-error-execstack
++endif
+ CFLAGS-tst-execstack-prog-static.c += -Wno-trampolines
+ 
+ ifeq (yes,$(build-hardcoded-path-in-tests))
+@@ -2074,6 +2088,7 @@ $(objpfx)tst-array5-static-cmp.out: tst-array5-static.exp \
+ 
+ CFLAGS-tst-pie1.c += $(pie-ccflag)
+ CFLAGS-tst-pie2.c += $(pie-ccflag)
++CFLAGS-tst-pie-bss.c += $(pie-ccflag)
+ CFLAGS-tst-pie-address.c += $(pie-ccflag)
+ 
+ $(objpfx)tst-piemod1.so: $(libsupport)
+diff --git a/elf/dl-reloc-static-pie.c b/elf/dl-reloc-static-pie.c
+index e34bf5f7ce..758bf9893e 100644
+--- a/elf/dl-reloc-static-pie.c
++++ b/elf/dl-reloc-static-pie.c
+@@ -51,7 +51,8 @@ _dl_relocate_static_pie (void)
+     switch (ph->p_type)
+       {
+       case PT_LOAD:
+-	if (ph->p_offset == 0)
++	/* Skip the empty PT_LOAD segment at offset 0.  */
++	if (ph->p_filesz != 0 && ph->p_offset == 0)
+ 	  file_p_vaddr = ph->p_vaddr;
+ 	break;
+       case PT_DYNAMIC:
+diff --git a/elf/tst-pie-bss-static.c b/elf/tst-pie-bss-static.c
+new file mode 100644
+index 0000000000..5df542f9ee
+--- /dev/null
++++ b/elf/tst-pie-bss-static.c
+@@ -0,0 +1,19 @@
++/* Test static PIE with an empty PT_LOAD segment at offset 0.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include "tst-pie-bss.c"
+diff --git a/elf/tst-pie-bss.c b/elf/tst-pie-bss.c
+new file mode 100644
+index 0000000000..ee92754249
+--- /dev/null
++++ b/elf/tst-pie-bss.c
+@@ -0,0 +1,30 @@
++/* Test PIE with an empty PT_LOAD segment at offset 0.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++
++char bss[0xb5dce8] __attribute__ ((aligned (65536)));
++
++static int
++do_test (void)
++{
++  printf ("Hello\n");
++  return 0;
++}
++
++#include <support/test-driver.c>
 diff --git a/math/auto-libm-test-in b/math/auto-libm-test-in
 index 01ba689aa8..4f194da19d 100644
 --- a/math/auto-libm-test-in
@@ -746,6 +1196,61 @@ index 7d00d03e1d..1d5999ab90 100644
  tan 0x1p-5
  = tan downward binary32 0x8p-8 : 0x8.00aabp-8 : inexact-ok
  = tan tonearest binary32 0x8p-8 : 0x8.00aacp-8 : inexact-ok
+diff --git a/math/bits/mathcalls-macros.h b/math/bits/mathcalls-macros.h
+index 1ef07f1f58..321ae00ec8 100644
+--- a/math/bits/mathcalls-macros.h
++++ b/math/bits/mathcalls-macros.h
+@@ -34,7 +34,7 @@
+ #define __MATHCALLX(function,suffix, args, attrib)	\
+   __MATHDECLX (_Mdouble_,function,suffix, args, attrib)
+ #define __MATHDECLX(type, function,suffix, args, attrib) \
+-  __MATHDECL_1(type, function,suffix, args) __attribute__ (attrib);
++  __MATHDECL_1(type, function,suffix, args) __attribute__ (attrib)
+ #define __MATHDECL_1_IMPL(type, function, suffix, args) \
+   extern type __MATH_PRECNAME(function,suffix) args __THROW
+ #define __MATHDECL_1(type, function, suffix, args) \
+diff --git a/nptl/Makefile b/nptl/Makefile
+index 82621c7954..4be778ad65 100644
+--- a/nptl/Makefile
++++ b/nptl/Makefile
+@@ -701,6 +701,9 @@ $(objpfx)tst-execstack-threads.out: $(objpfx)tst-execstack-threads-mod.so
+ LDFLAGS-tst-execstack-threads = -Wl,-z,noexecstack
+ LDFLAGS-tst-execstack-threads-mod.so = -Wl,-z,execstack
+ CFLAGS-tst-execstack-threads-mod.c += -Wno-trampolines
++ifeq ($(have-no-error-execstack),yes)
++LDFLAGS-tst-execstack-threads-mod.so += -Wl,--no-error-execstack
++endif
+ 
+ tst-stackguard1-ARGS = --command "$(host-test-program-cmd) --child"
+ tst-stackguard1-static-ARGS = --command "$(objpfx)tst-stackguard1-static --child"
+diff --git a/nptl/pthread_cancel.c b/nptl/pthread_cancel.c
+index f7ce3ec51b..b838273881 100644
+--- a/nptl/pthread_cancel.c
++++ b/nptl/pthread_cancel.c
+@@ -41,15 +41,17 @@ sigcancel_handler (int sig, siginfo_t *si, void *ctx)
+       || si->si_code != SI_TKILL)
+     return;
+ 
+-  /* Check if asynchronous cancellation mode is set or if interrupted
+-     instruction pointer falls within the cancellable syscall bridge.  For
+-     interruptable syscalls with external side-effects (i.e. partial reads),
+-     the kernel  will set the IP to after __syscall_cancel_arch_end, thus
+-     disabling the cancellation and allowing the process to handle such
++  /* Check if asynchronous cancellation mode is set and cancellation is not
++     already in progress, or if interrupted instruction pointer falls within
++     the cancellable syscall bridge.
++     For interruptable syscalls with external side-effects (i.e. partial
++     reads), the kernel will set the IP to after __syscall_cancel_arch_end,
++     thus disabling the cancellation and allowing the process to handle such
+      conditions.  */
+   struct pthread *self = THREAD_SELF;
+   int oldval = atomic_load_relaxed (&self->cancelhandling);
+-  if (cancel_async_enabled (oldval) || cancellation_pc_check (ctx))
++  if (cancel_enabled_and_canceled_and_async (oldval)
++      || cancellation_pc_check (ctx))
+     __syscall_do_cancel ();
+ }
+ 
 diff --git a/nptl/pthread_getattr_np.c b/nptl/pthread_getattr_np.c
 index e98e2df152..43dd16d59c 100644
 --- a/nptl/pthread_getattr_np.c
@@ -762,6 +1267,1444 @@ index e98e2df152..43dd16d59c 100644
  			iattr->stacksize = to - (size_t) iattr->stackaddr;
  #endif
  		      /* We succeed and no need to look further.  */
+diff --git a/posix/environ.c b/posix/environ.c
+index a0ed0d80ea..924effe3cd 100644
+--- a/posix/environ.c
++++ b/posix/environ.c
+@@ -2,6 +2,7 @@
+ 
+ #include <unistd.h>
+ #include <stddef.h>
++#include <stdlib/setenv.h>
+ 
+ /* This must be initialized; we cannot have a weak alias into bss.  */
+ char **__environ = NULL;
+@@ -10,3 +11,6 @@ weak_alias (__environ, environ)
+ /* The SVR4 ABI says `_environ' will be the name to use
+    in case the user overrides the weak alias `environ'.  */
+ weak_alias (__environ, _environ)
++
++struct environ_array *__environ_array_list;
++environ_counter __environ_counter;
+diff --git a/stdlib/Makefile b/stdlib/Makefile
+index 1c4fa2382f..c9c8f702a2 100644
+--- a/stdlib/Makefile
++++ b/stdlib/Makefile
+@@ -282,6 +282,7 @@ tests := \
+   tst-environ-change-3 \
+   tst-environ-change-4 \
+   tst-getenv-signal \
++  tst-getenv-static \
+   tst-getenv-thread \
+   tst-getenv-unsetenv \
+   tst-getrandom \
+@@ -377,6 +378,7 @@ tests-internal := \
+   # tests-internal
+ 
+ tests-static := \
++  tst-getenv-static \
+   tst-secure-getenv \
+   # tests-static
+ 
+diff --git a/stdlib/getenv.c b/stdlib/getenv.c
+index 5e7212cca6..1a7b0bfc06 100644
+--- a/stdlib/getenv.c
++++ b/stdlib/getenv.c
+@@ -20,9 +20,6 @@
+ #include <string.h>
+ #include <unistd.h>
+ 
+-struct environ_array *__environ_array_list;
+-environ_counter __environ_counter;
+-
+ char *
+ getenv (const char *name)
+ {
+diff --git a/stdlib/tst-getenv-static.c b/stdlib/tst-getenv-static.c
+new file mode 100644
+index 0000000000..f5f484c83a
+--- /dev/null
++++ b/stdlib/tst-getenv-static.c
+@@ -0,0 +1,38 @@
++/* Static interposition of getenv (bug 32541).
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdlib.h>
++#include <support/check.h>
++
++/* Some programs try to interpose getenv for their own use (not
++   glibc's internal use).  Make sure that this is possible without
++   introducing linker failures due to duplicate symbols.  */
++
++char *
++getenv (const char *ignored)
++{
++  return NULL;
++}
++
++static int
++do_test (void)
++{
++  TEST_COMPARE_STRING (getenv ("PATH"), NULL);
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/aarch64/fpu/asinh_sve.c b/sysdeps/aarch64/fpu/asinh_sve.c
+index 0889f79dbb..ff6b71390c 100644
+--- a/sysdeps/aarch64/fpu/asinh_sve.c
++++ b/sysdeps/aarch64/fpu/asinh_sve.c
+@@ -18,36 +18,49 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include "sv_math.h"
+-#include "poly_sve_f64.h"
+ 
+ #define SignMask (0x8000000000000000)
+ #define One (0x3ff0000000000000)
+ #define Thres (0x5fe0000000000000) /* asuint64 (0x1p511).  */
++#define IndexMask (((1 << V_LOG_TABLE_BITS) - 1) << 1)
+ 
+ static const struct data
+ {
+-  double poly[18];
+-  double ln2, p3, p1, p4, p0, p2;
+-  uint64_t n;
+-  uint64_t off;
++  double even_coeffs[9];
++  double ln2, p3, p1, p4, p0, p2, c1, c3, c5, c7, c9, c11, c13, c15, c17;
++  uint64_t off, mask;
+ 
+ } data = {
+-  /* Polynomial generated using Remez on [2^-26, 1].  */
+-  .poly
+-  = { -0x1.55555555554a7p-3, 0x1.3333333326c7p-4, -0x1.6db6db68332e6p-5,
+-      0x1.f1c71b26fb40dp-6, -0x1.6e8b8b654a621p-6, 0x1.1c4daa9e67871p-6,
+-      -0x1.c9871d10885afp-7, 0x1.7a16e8d9d2ecfp-7, -0x1.3ddca533e9f54p-7,
+-      0x1.0becef748dafcp-7, -0x1.b90c7099dd397p-8, 0x1.541f2bb1ffe51p-8,
+-      -0x1.d217026a669ecp-9, 0x1.0b5c7977aaf7p-9, -0x1.e0f37daef9127p-11,
+-      0x1.388b5fe542a6p-12, -0x1.021a48685e287p-14, 0x1.93d4ba83d34dap-18 },
++   /* Polynomial generated using Remez on [2^-26, 1].  */
++  .even_coeffs ={
++    -0x1.55555555554a7p-3,
++    -0x1.6db6db68332e6p-5,
++    -0x1.6e8b8b654a621p-6,
++    -0x1.c9871d10885afp-7,
++    -0x1.3ddca533e9f54p-7,
++    -0x1.b90c7099dd397p-8,
++    -0x1.d217026a669ecp-9,
++    -0x1.e0f37daef9127p-11,
++    -0x1.021a48685e287p-14, },
++
++  .c1 = 0x1.3333333326c7p-4,
++  .c3 = 0x1.f1c71b26fb40dp-6,
++  .c5 = 0x1.1c4daa9e67871p-6,
++  .c7 = 0x1.7a16e8d9d2ecfp-7,
++  .c9 = 0x1.0becef748dafcp-7,
++  .c11 = 0x1.541f2bb1ffe51p-8,
++  .c13 = 0x1.0b5c7977aaf7p-9,
++  .c15 = 0x1.388b5fe542a6p-12,
++  .c17 = 0x1.93d4ba83d34dap-18,
++
+   .ln2 = 0x1.62e42fefa39efp-1,
+   .p0 = -0x1.ffffffffffff7p-2,
+   .p1 = 0x1.55555555170d4p-2,
+   .p2 = -0x1.0000000399c27p-2,
+   .p3 = 0x1.999b2e90e94cap-3,
+   .p4 = -0x1.554e550bd501ep-3,
+-  .n = 1 << V_LOG_TABLE_BITS,
+-  .off = 0x3fe6900900000000
++  .off = 0x3fe6900900000000,
++  .mask = 0xfffULL << 52,
+ };
+ 
+ static svfloat64_t NOINLINE
+@@ -64,11 +77,10 @@ __sv_log_inline (svfloat64_t x, const struct data *d, const svbool_t pg)
+      of the algorithm used.  */
+ 
+   svuint64_t ix = svreinterpret_u64 (x);
+-  svuint64_t tmp = svsub_x (pg, ix, d->off);
+-  svuint64_t i = svand_x (pg, svlsr_x (pg, tmp, (51 - V_LOG_TABLE_BITS)),
+-			  (d->n - 1) << 1);
+-  svint64_t k = svasr_x (pg, svreinterpret_s64 (tmp), 52);
+-  svuint64_t iz = svsub_x (pg, ix, svand_x (pg, tmp, 0xfffULL << 52));
++  svuint64_t i_off = svsub_x (pg, ix, d->off);
++  svuint64_t i
++      = svand_x (pg, svlsr_x (pg, i_off, (51 - V_LOG_TABLE_BITS)), IndexMask);
++  svuint64_t iz = svsub_x (pg, ix, svand_x (pg, i_off, d->mask));
+   svfloat64_t z = svreinterpret_f64 (iz);
+ 
+   svfloat64_t invc = svld1_gather_index (pg, &__v_log_data.table[0].invc, i);
+@@ -78,14 +90,14 @@ __sv_log_inline (svfloat64_t x, const struct data *d, const svbool_t pg)
+   svfloat64_t p1_p4 = svld1rq (svptrue_b64 (), &d->p1);
+ 
+   svfloat64_t r = svmla_x (pg, sv_f64 (-1.0), invc, z);
+-  svfloat64_t kd = svcvt_f64_x (pg, k);
++  svfloat64_t kd
++      = svcvt_f64_x (pg, svasr_x (pg, svreinterpret_s64 (i_off), 52));
+ 
+   svfloat64_t hi = svmla_lane (svadd_x (pg, logc, r), kd, ln2_p3, 0);
+-  svfloat64_t r2 = svmul_x (pg, r, r);
+-
++  svfloat64_t r2 = svmul_x (svptrue_b64 (), r, r);
+   svfloat64_t y = svmla_lane (sv_f64 (d->p2), r, ln2_p3, 1);
+-
+   svfloat64_t p = svmla_lane (sv_f64 (d->p0), r, p1_p4, 0);
++
+   y = svmla_lane (y, r2, p1_p4, 1);
+   y = svmla_x (pg, p, r2, y);
+   y = svmla_x (pg, hi, r2, y);
+@@ -111,7 +123,6 @@ svfloat64_t SV_NAME_D1 (asinh) (svfloat64_t x, const svbool_t pg)
+   svuint64_t iax = svbic_x (pg, ix, SignMask);
+   svuint64_t sign = svand_x (pg, ix, SignMask);
+   svfloat64_t ax = svreinterpret_f64 (iax);
+-
+   svbool_t ge1 = svcmpge (pg, iax, One);
+   svbool_t special = svcmpge (pg, iax, Thres);
+ 
+@@ -120,7 +131,7 @@ svfloat64_t SV_NAME_D1 (asinh) (svfloat64_t x, const svbool_t pg)
+   svfloat64_t option_1 = sv_f64 (0);
+   if (__glibc_likely (svptest_any (pg, ge1)))
+     {
+-      svfloat64_t x2 = svmul_x (pg, ax, ax);
++      svfloat64_t x2 = svmul_x (svptrue_b64 (), ax, ax);
+       option_1 = __sv_log_inline (
+ 	  svadd_x (pg, ax, svsqrt_x (pg, svadd_x (pg, x2, 1))), d, pg);
+     }
+@@ -130,21 +141,53 @@ svfloat64_t SV_NAME_D1 (asinh) (svfloat64_t x, const svbool_t pg)
+      The largest observed error in this region is 1.51 ULPs:
+      _ZGVsMxv_asinh(0x1.fe12bf8c616a2p-1) got 0x1.c1e649ee2681bp-1
+ 					 want 0x1.c1e649ee2681dp-1.  */
++
+   svfloat64_t option_2 = sv_f64 (0);
+   if (__glibc_likely (svptest_any (pg, svnot_z (pg, ge1))))
+     {
+-      svfloat64_t x2 = svmul_x (pg, ax, ax);
+-      svfloat64_t x4 = svmul_x (pg, x2, x2);
+-      svfloat64_t p = sv_pw_horner_17_f64_x (pg, x2, x4, d->poly);
+-      option_2 = svmla_x (pg, ax, p, svmul_x (pg, x2, ax));
+-    }
++      svfloat64_t x2 = svmul_x (svptrue_b64 (), ax, ax);
++      svfloat64_t x4 = svmul_x (svptrue_b64 (), x2, x2);
++      /* Order-17 Pairwise Horner scheme.  */
++      svfloat64_t c13 = svld1rq (svptrue_b64 (), &d->c1);
++      svfloat64_t c57 = svld1rq (svptrue_b64 (), &d->c5);
++      svfloat64_t c911 = svld1rq (svptrue_b64 (), &d->c9);
++      svfloat64_t c1315 = svld1rq (svptrue_b64 (), &d->c13);
+ 
+-  /* Choose the right option for each lane.  */
+-  svfloat64_t y = svsel (ge1, option_1, option_2);
++      svfloat64_t p01 = svmla_lane (sv_f64 (d->even_coeffs[0]), x2, c13, 0);
++      svfloat64_t p23 = svmla_lane (sv_f64 (d->even_coeffs[1]), x2, c13, 1);
++      svfloat64_t p45 = svmla_lane (sv_f64 (d->even_coeffs[2]), x2, c57, 0);
++      svfloat64_t p67 = svmla_lane (sv_f64 (d->even_coeffs[3]), x2, c57, 1);
++      svfloat64_t p89 = svmla_lane (sv_f64 (d->even_coeffs[4]), x2, c911, 0);
++      svfloat64_t p1011 = svmla_lane (sv_f64 (d->even_coeffs[5]), x2, c911, 1);
++      svfloat64_t p1213
++	  = svmla_lane (sv_f64 (d->even_coeffs[6]), x2, c1315, 0);
++      svfloat64_t p1415
++	  = svmla_lane (sv_f64 (d->even_coeffs[7]), x2, c1315, 1);
++      svfloat64_t p1617 = svmla_x (pg, sv_f64 (d->even_coeffs[8]), x2, d->c17);
++
++      svfloat64_t p = svmla_x (pg, p1415, x4, p1617);
++      p = svmla_x (pg, p1213, x4, p);
++      p = svmla_x (pg, p1011, x4, p);
++      p = svmla_x (pg, p89, x4, p);
++
++      p = svmla_x (pg, p67, x4, p);
++      p = svmla_x (pg, p45, x4, p);
++
++      p = svmla_x (pg, p23, x4, p);
++
++      p = svmla_x (pg, p01, x4, p);
++
++      option_2 = svmla_x (pg, ax, p, svmul_x (svptrue_b64 (), x2, ax));
++    }
+ 
+   if (__glibc_unlikely (svptest_any (pg, special)))
+     return special_case (
+-	x, svreinterpret_f64 (sveor_x (pg, svreinterpret_u64 (y), sign)),
++	x,
++	svreinterpret_f64 (sveor_x (
++	    pg, svreinterpret_u64 (svsel (ge1, option_1, option_2)), sign)),
+ 	special);
++
++  /* Choose the right option for each lane.  */
++  svfloat64_t y = svsel (ge1, option_1, option_2);
+   return svreinterpret_f64 (sveor_x (pg, svreinterpret_u64 (y), sign));
+ }
+diff --git a/sysdeps/aarch64/fpu/cosh_sve.c b/sysdeps/aarch64/fpu/cosh_sve.c
+index ca44053535..77e58e123e 100644
+--- a/sysdeps/aarch64/fpu/cosh_sve.c
++++ b/sysdeps/aarch64/fpu/cosh_sve.c
+@@ -23,7 +23,7 @@ static const struct data
+ {
+   float64_t poly[3];
+   float64_t inv_ln2, ln2_hi, ln2_lo, shift, thres;
+-  uint64_t index_mask, special_bound;
++  uint64_t special_bound;
+ } data = {
+   .poly = { 0x1.fffffffffffd4p-2, 0x1.5555571d6b68cp-3,
+ 	    0x1.5555576a59599p-5, },
+@@ -35,14 +35,16 @@ static const struct data
+   .shift = 0x1.8p+52,
+   .thres = 704.0,
+ 
+-  .index_mask = 0xff,
+   /* 0x1.6p9, above which exp overflows.  */
+   .special_bound = 0x4086000000000000,
+ };
+ 
+ static svfloat64_t NOINLINE
+-special_case (svfloat64_t x, svfloat64_t y, svbool_t special)
++special_case (svfloat64_t x, svbool_t pg, svfloat64_t t, svbool_t special)
+ {
++  svfloat64_t half_t = svmul_x (svptrue_b64 (), t, 0.5);
++  svfloat64_t half_over_t = svdivr_x (pg, t, 0.5);
++  svfloat64_t y = svadd_x (pg, half_t, half_over_t);
+   return sv_call_f64 (cosh, x, y, special);
+ }
+ 
+@@ -60,12 +62,12 @@ exp_inline (svfloat64_t x, const svbool_t pg, const struct data *d)
+ 
+   svuint64_t u = svreinterpret_u64 (z);
+   svuint64_t e = svlsl_x (pg, u, 52 - V_EXP_TAIL_TABLE_BITS);
+-  svuint64_t i = svand_x (pg, u, d->index_mask);
++  svuint64_t i = svand_x (svptrue_b64 (), u, 0xff);
+ 
+   svfloat64_t y = svmla_x (pg, sv_f64 (d->poly[1]), r, d->poly[2]);
+   y = svmla_x (pg, sv_f64 (d->poly[0]), r, y);
+   y = svmla_x (pg, sv_f64 (1.0), r, y);
+-  y = svmul_x (pg, r, y);
++  y = svmul_x (svptrue_b64 (), r, y);
+ 
+   /* s = 2^(n/N).  */
+   u = svld1_gather_index (pg, __v_exp_tail_data, i);
+@@ -94,12 +96,12 @@ svfloat64_t SV_NAME_D1 (cosh) (svfloat64_t x, const svbool_t pg)
+   /* Up to the point that exp overflows, we can use it to calculate cosh by
+      exp(|x|) / 2 + 1 / (2 * exp(|x|)).  */
+   svfloat64_t t = exp_inline (ax, pg, d);
+-  svfloat64_t half_t = svmul_x (pg, t, 0.5);
+-  svfloat64_t half_over_t = svdivr_x (pg, t, 0.5);
+ 
+   /* Fall back to scalar for any special cases.  */
+   if (__glibc_unlikely (svptest_any (pg, special)))
+-    return special_case (x, svadd_x (pg, half_t, half_over_t), special);
++    return special_case (x, pg, t, special);
+ 
++  svfloat64_t half_t = svmul_x (svptrue_b64 (), t, 0.5);
++  svfloat64_t half_over_t = svdivr_x (pg, t, 0.5);
+   return svadd_x (pg, half_t, half_over_t);
+ }
+diff --git a/sysdeps/aarch64/fpu/erfcf_sve.c b/sysdeps/aarch64/fpu/erfcf_sve.c
+index 2743f9dbb5..b57ab514b7 100644
+--- a/sysdeps/aarch64/fpu/erfcf_sve.c
++++ b/sysdeps/aarch64/fpu/erfcf_sve.c
+@@ -76,7 +76,7 @@ svfloat32_t SV_NAME_F1 (erfc) (svfloat32_t x, const svbool_t pg)
+   svuint32_t i = svqadd (svreinterpret_u32 (z), dat->off_idx);
+ 
+   /* Lookup erfc(r) and 2/sqrt(pi)*exp(-r^2) in tables.  */
+-  i = svmul_x (pg, i, 2);
++  i = svlsl_x (svptrue_b32 (), i, 1);
+   const float32_t *p = &__v_erfcf_data.tab[0].erfc - 2 * dat->off_arr;
+   svfloat32_t erfcr = svld1_gather_index (pg, p, i);
+   svfloat32_t scale = svld1_gather_index (pg, p + 1, i);
+@@ -84,15 +84,15 @@ svfloat32_t SV_NAME_F1 (erfc) (svfloat32_t x, const svbool_t pg)
+   /* erfc(x) ~ erfc(r) - scale * d * poly(r, d).  */
+   svfloat32_t r = svsub_x (pg, z, shift);
+   svfloat32_t d = svsub_x (pg, a, r);
+-  svfloat32_t d2 = svmul_x (pg, d, d);
+-  svfloat32_t r2 = svmul_x (pg, r, r);
++  svfloat32_t d2 = svmul_x (svptrue_b32 (), d, d);
++  svfloat32_t r2 = svmul_x (svptrue_b32 (), r, r);
+ 
+   svfloat32_t coeffs = svld1rq (svptrue_b32 (), &dat->third);
+-  svfloat32_t third = svdup_lane (coeffs, 0);
+ 
+   svfloat32_t p1 = r;
+-  svfloat32_t p2 = svmls_lane (third, r2, coeffs, 1);
+-  svfloat32_t p3 = svmul_x (pg, r, svmla_lane (sv_f32 (-0.5), r2, coeffs, 0));
++  svfloat32_t p2 = svmls_lane (sv_f32 (dat->third), r2, coeffs, 1);
++  svfloat32_t p3
++      = svmul_x (svptrue_b32 (), r, svmla_lane (sv_f32 (-0.5), r2, coeffs, 0));
+   svfloat32_t p4 = svmla_lane (sv_f32 (dat->two_over_five), r2, coeffs, 2);
+   p4 = svmls_x (pg, sv_f32 (dat->tenth), r2, p4);
+ 
+diff --git a/sysdeps/aarch64/fpu/exp10_sve.c b/sysdeps/aarch64/fpu/exp10_sve.c
+index f71bafdf0c..53b28934d9 100644
+--- a/sysdeps/aarch64/fpu/exp10_sve.c
++++ b/sysdeps/aarch64/fpu/exp10_sve.c
+@@ -18,21 +18,23 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include "sv_math.h"
+-#include "poly_sve_f64.h"
+ 
+ #define SpecialBound 307.0 /* floor (log10 (2^1023)).  */
+ 
+ static const struct data
+ {
+-  double poly[5];
++  double c1, c3, c2, c4, c0;
+   double shift, log10_2, log2_10_hi, log2_10_lo, scale_thres, special_bound;
+ } data = {
+   /* Coefficients generated using Remez algorithm.
+      rel error: 0x1.9fcb9b3p-60
+      abs error: 0x1.a20d9598p-60 in [ -log10(2)/128, log10(2)/128 ]
+      max ulp err 0.52 +0.5.  */
+-  .poly = { 0x1.26bb1bbb55516p1, 0x1.53524c73cd32ap1, 0x1.0470591daeafbp1,
+-	    0x1.2bd77b1361ef6p0, 0x1.142b5d54e9621p-1 },
++  .c0 = 0x1.26bb1bbb55516p1,
++  .c1 = 0x1.53524c73cd32ap1,
++  .c2 = 0x1.0470591daeafbp1,
++  .c3 = 0x1.2bd77b1361ef6p0,
++  .c4 = 0x1.142b5d54e9621p-1,
+   /* 1.5*2^46+1023. This value is further explained below.  */
+   .shift = 0x1.800000000ffc0p+46,
+   .log10_2 = 0x1.a934f0979a371p1,     /* 1/log2(10).  */
+@@ -70,9 +72,9 @@ special_case (svbool_t pg, svfloat64_t s, svfloat64_t y, svfloat64_t n,
+   /* |n| > 1280 => 2^(n) overflows.  */
+   svbool_t p_cmp = svacgt (pg, n, d->scale_thres);
+ 
+-  svfloat64_t r1 = svmul_x (pg, s1, s1);
++  svfloat64_t r1 = svmul_x (svptrue_b64 (), s1, s1);
+   svfloat64_t r2 = svmla_x (pg, s2, s2, y);
+-  svfloat64_t r0 = svmul_x (pg, r2, s1);
++  svfloat64_t r0 = svmul_x (svptrue_b64 (), r2, s1);
+ 
+   return svsel (p_cmp, r1, r0);
+ }
+@@ -103,11 +105,14 @@ svfloat64_t SV_NAME_D1 (exp10) (svfloat64_t x, svbool_t pg)
+      comes at significant performance cost.  */
+   svuint64_t u = svreinterpret_u64 (z);
+   svfloat64_t scale = svexpa (u);
+-
++  svfloat64_t c24 = svld1rq (svptrue_b64 (), &d->c2);
+   /* Approximate exp10(r) using polynomial.  */
+-  svfloat64_t r2 = svmul_x (pg, r, r);
+-  svfloat64_t y = svmla_x (pg, svmul_x (pg, r, d->poly[0]), r2,
+-			   sv_pairwise_poly_3_f64_x (pg, r, r2, d->poly + 1));
++  svfloat64_t r2 = svmul_x (svptrue_b64 (), r, r);
++  svfloat64_t p12 = svmla_lane (sv_f64 (d->c1), r, c24, 0);
++  svfloat64_t p34 = svmla_lane (sv_f64 (d->c3), r, c24, 1);
++  svfloat64_t p14 = svmla_x (pg, p12, p34, r2);
++
++  svfloat64_t y = svmla_x (pg, svmul_x (svptrue_b64 (), r, d->c0), r2, p14);
+ 
+   /* Assemble result as exp10(x) = 2^n * exp10(r).  If |x| > SpecialBound
+      multiplication may overflow, so use special case routine.  */
+diff --git a/sysdeps/aarch64/fpu/exp2_sve.c b/sysdeps/aarch64/fpu/exp2_sve.c
+index a37c33092a..6db85266ca 100644
+--- a/sysdeps/aarch64/fpu/exp2_sve.c
++++ b/sysdeps/aarch64/fpu/exp2_sve.c
+@@ -18,7 +18,6 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include "sv_math.h"
+-#include "poly_sve_f64.h"
+ 
+ #define N (1 << V_EXP_TABLE_BITS)
+ 
+@@ -27,15 +26,15 @@
+ 
+ static const struct data
+ {
+-  double poly[4];
++  double c0, c2;
++  double c1, c3;
+   double shift, big_bound, uoflow_bound;
+ } data = {
+   /* Coefficients are computed using Remez algorithm with
+      minimisation of the absolute error.  */
+-  .poly = { 0x1.62e42fefa3686p-1, 0x1.ebfbdff82c241p-3, 0x1.c6b09b16de99ap-5,
+-	    0x1.3b2abf5571ad8p-7 },
+-  .shift = 0x1.8p52 / N,
+-  .uoflow_bound = UOFlowBound,
++  .c0 = 0x1.62e42fefa3686p-1, .c1 = 0x1.ebfbdff82c241p-3,
++  .c2 = 0x1.c6b09b16de99ap-5, .c3 = 0x1.3b2abf5571ad8p-7,
++  .shift = 0x1.8p52 / N,      .uoflow_bound = UOFlowBound,
+   .big_bound = BigBound,
+ };
+ 
+@@ -67,9 +66,9 @@ special_case (svbool_t pg, svfloat64_t s, svfloat64_t y, svfloat64_t n,
+   /* |n| > 1280 => 2^(n) overflows.  */
+   svbool_t p_cmp = svacgt (pg, n, d->uoflow_bound);
+ 
+-  svfloat64_t r1 = svmul_x (pg, s1, s1);
++  svfloat64_t r1 = svmul_x (svptrue_b64 (), s1, s1);
+   svfloat64_t r2 = svmla_x (pg, s2, s2, y);
+-  svfloat64_t r0 = svmul_x (pg, r2, s1);
++  svfloat64_t r0 = svmul_x (svptrue_b64 (), r2, s1);
+ 
+   return svsel (p_cmp, r1, r0);
+ }
+@@ -99,11 +98,14 @@ svfloat64_t SV_NAME_D1 (exp2) (svfloat64_t x, svbool_t pg)
+   svuint64_t top = svlsl_x (pg, ki, 52 - V_EXP_TABLE_BITS);
+   svfloat64_t scale = svreinterpret_f64 (svadd_x (pg, sbits, top));
+ 
++  svfloat64_t c13 = svld1rq (svptrue_b64 (), &d->c1);
+   /* Approximate exp2(r) using polynomial.  */
+-  svfloat64_t r2 = svmul_x (pg, r, r);
+-  svfloat64_t p = sv_pairwise_poly_3_f64_x (pg, r, r2, d->poly);
+-  svfloat64_t y = svmul_x (pg, r, p);
+-
++  /* y = exp2(r) - 1 ~= C0 r + C1 r^2 + C2 r^3 + C3 r^4.  */
++  svfloat64_t r2 = svmul_x (svptrue_b64 (), r, r);
++  svfloat64_t p01 = svmla_lane (sv_f64 (d->c0), r, c13, 0);
++  svfloat64_t p23 = svmla_lane (sv_f64 (d->c2), r, c13, 1);
++  svfloat64_t p = svmla_x (pg, p01, p23, r2);
++  svfloat64_t y = svmul_x (svptrue_b64 (), r, p);
+   /* Assemble exp2(x) = exp2(r) * scale.  */
+   if (__glibc_unlikely (svptest_any (pg, special)))
+     return special_case (pg, scale, y, kd, d);
+diff --git a/sysdeps/aarch64/fpu/exp_sve.c b/sysdeps/aarch64/fpu/exp_sve.c
+index 37de751f90..dc049482ed 100644
+--- a/sysdeps/aarch64/fpu/exp_sve.c
++++ b/sysdeps/aarch64/fpu/exp_sve.c
+@@ -21,12 +21,15 @@
+ 
+ static const struct data
+ {
+-  double poly[4];
++  double c0, c2;
++  double c1, c3;
+   double ln2_hi, ln2_lo, inv_ln2, shift, thres;
++
+ } data = {
+-  .poly = { /* ulp error: 0.53.  */
+-	    0x1.fffffffffdbcdp-2, 0x1.555555555444cp-3, 0x1.555573c6a9f7dp-5,
+-	    0x1.1111266d28935p-7 },
++  .c0 = 0x1.fffffffffdbcdp-2,
++  .c1 = 0x1.555555555444cp-3,
++  .c2 = 0x1.555573c6a9f7dp-5,
++  .c3 = 0x1.1111266d28935p-7,
+   .ln2_hi = 0x1.62e42fefa3800p-1,
+   .ln2_lo = 0x1.ef35793c76730p-45,
+   /* 1/ln2.  */
+@@ -36,7 +39,6 @@ static const struct data
+   .thres = 704.0,
+ };
+ 
+-#define C(i) sv_f64 (d->poly[i])
+ #define SpecialOffset 0x6000000000000000 /* 0x1p513.  */
+ /* SpecialBias1 + SpecialBias1 = asuint(1.0).  */
+ #define SpecialBias1 0x7000000000000000 /* 0x1p769.  */
+@@ -56,20 +58,20 @@ special_case (svbool_t pg, svfloat64_t s, svfloat64_t y, svfloat64_t n)
+   svuint64_t b
+       = svdup_u64_z (p_sign, SpecialOffset); /* Inactive lanes set to 0.  */
+ 
+-  /* Set s1 to generate overflow depending on sign of exponent n.  */
+-  svfloat64_t s1 = svreinterpret_f64 (
+-      svsubr_x (pg, b, SpecialBias1)); /* 0x70...0 - b.  */
+-  /* Offset s to avoid overflow in final result if n is below threshold.  */
++  /* Set s1 to generate overflow depending on sign of exponent n,
++     ie. s1 = 0x70...0 - b.  */
++  svfloat64_t s1 = svreinterpret_f64 (svsubr_x (pg, b, SpecialBias1));
++  /* Offset s to avoid overflow in final result if n is below threshold.
++     ie. s2 = as_u64 (s) - 0x3010...0 + b.  */
+   svfloat64_t s2 = svreinterpret_f64 (
+-      svadd_x (pg, svsub_x (pg, svreinterpret_u64 (s), SpecialBias2),
+-	       b)); /* as_u64 (s) - 0x3010...0 + b.  */
++      svadd_x (pg, svsub_x (pg, svreinterpret_u64 (s), SpecialBias2), b));
+ 
+   /* |n| > 1280 => 2^(n) overflows.  */
+   svbool_t p_cmp = svacgt (pg, n, 1280.0);
+ 
+-  svfloat64_t r1 = svmul_x (pg, s1, s1);
++  svfloat64_t r1 = svmul_x (svptrue_b64 (), s1, s1);
+   svfloat64_t r2 = svmla_x (pg, s2, s2, y);
+-  svfloat64_t r0 = svmul_x (pg, r2, s1);
++  svfloat64_t r0 = svmul_x (svptrue_b64 (), r2, s1);
+ 
+   return svsel (p_cmp, r1, r0);
+ }
+@@ -103,16 +105,16 @@ svfloat64_t SV_NAME_D1 (exp) (svfloat64_t x, const svbool_t pg)
+   svfloat64_t z = svmla_x (pg, sv_f64 (d->shift), x, d->inv_ln2);
+   svuint64_t u = svreinterpret_u64 (z);
+   svfloat64_t n = svsub_x (pg, z, d->shift);
+-
++  svfloat64_t c13 = svld1rq (svptrue_b64 (), &d->c1);
+   /* r = x - n * ln2, r is in [-ln2/(2N), ln2/(2N)].  */
+   svfloat64_t ln2 = svld1rq (svptrue_b64 (), &d->ln2_hi);
+   svfloat64_t r = svmls_lane (x, n, ln2, 0);
+   r = svmls_lane (r, n, ln2, 1);
+ 
+   /* y = exp(r) - 1 ~= r + C0 r^2 + C1 r^3 + C2 r^4 + C3 r^5.  */
+-  svfloat64_t r2 = svmul_x (pg, r, r);
+-  svfloat64_t p01 = svmla_x (pg, C (0), C (1), r);
+-  svfloat64_t p23 = svmla_x (pg, C (2), C (3), r);
++  svfloat64_t r2 = svmul_x (svptrue_b64 (), r, r);
++  svfloat64_t p01 = svmla_lane (sv_f64 (d->c0), r, c13, 0);
++  svfloat64_t p23 = svmla_lane (sv_f64 (d->c2), r, c13, 1);
+   svfloat64_t p04 = svmla_x (pg, p01, p23, r2);
+   svfloat64_t y = svmla_x (pg, r, p04, r2);
+ 
+diff --git a/sysdeps/aarch64/fpu/pow_sve.c b/sysdeps/aarch64/fpu/pow_sve.c
+index 42d551ca92..b8c1b39dca 100644
+--- a/sysdeps/aarch64/fpu/pow_sve.c
++++ b/sysdeps/aarch64/fpu/pow_sve.c
+@@ -44,19 +44,18 @@
+ 
+ /* Data is defined in v_pow_log_data.c.  */
+ #define N_LOG (1 << V_POW_LOG_TABLE_BITS)
+-#define A __v_pow_log_data.poly
+ #define Off 0x3fe6955500000000
+ 
+ /* Data is defined in v_pow_exp_data.c.  */
+ #define N_EXP (1 << V_POW_EXP_TABLE_BITS)
+ #define SignBias (0x800 << V_POW_EXP_TABLE_BITS)
+-#define C __v_pow_exp_data.poly
+ #define SmallExp 0x3c9 /* top12(0x1p-54).  */
+ #define BigExp 0x408   /* top12(512.).  */
+ #define ThresExp 0x03f /* BigExp - SmallExp.  */
+ #define HugeExp 0x409  /* top12(1024.).  */
+ 
+ /* Constants associated with pow.  */
++#define SmallBoundX 0x1p-126
+ #define SmallPowX 0x001 /* top12(0x1p-126).  */
+ #define BigPowX 0x7ff	/* top12(INFINITY).  */
+ #define ThresPowX 0x7fe /* BigPowX - SmallPowX.  */
+@@ -64,6 +63,31 @@
+ #define BigPowY 0x43e	/* top12(0x1.749p62).  */
+ #define ThresPowY 0x080 /* BigPowY - SmallPowY.  */
+ 
++static const struct data
++{
++  double log_c0, log_c2, log_c4, log_c6, ln2_hi, ln2_lo;
++  double log_c1, log_c3, log_c5, off;
++  double n_over_ln2, exp_c2, ln2_over_n_hi, ln2_over_n_lo;
++  double exp_c0, exp_c1;
++} data = {
++  .log_c0 = -0x1p-1,
++  .log_c1 = -0x1.555555555556p-1,
++  .log_c2 = 0x1.0000000000006p-1,
++  .log_c3 = 0x1.999999959554ep-1,
++  .log_c4 = -0x1.555555529a47ap-1,
++  .log_c5 = -0x1.2495b9b4845e9p0,
++  .log_c6 = 0x1.0002b8b263fc3p0,
++  .off = Off,
++  .exp_c0 = 0x1.fffffffffffd4p-2,
++  .exp_c1 = 0x1.5555571d6ef9p-3,
++  .exp_c2 = 0x1.5555576a5adcep-5,
++  .ln2_hi = 0x1.62e42fefa3800p-1,
++  .ln2_lo = 0x1.ef35793c76730p-45,
++  .n_over_ln2 = 0x1.71547652b82fep0 * N_EXP,
++  .ln2_over_n_hi = 0x1.62e42fefc0000p-9,
++  .ln2_over_n_lo = -0x1.c610ca86c3899p-45,
++};
++
+ /* Check if x is an integer.  */
+ static inline svbool_t
+ sv_isint (svbool_t pg, svfloat64_t x)
+@@ -82,7 +106,7 @@ sv_isnotint (svbool_t pg, svfloat64_t x)
+ static inline svbool_t
+ sv_isodd (svbool_t pg, svfloat64_t x)
+ {
+-  svfloat64_t y = svmul_x (pg, x, 0.5);
++  svfloat64_t y = svmul_x (svptrue_b64 (), x, 0.5);
+   return sv_isnotint (pg, y);
+ }
+ 
+@@ -121,7 +145,7 @@ zeroinfnan (uint64_t i)
+ static inline svbool_t
+ sv_zeroinfnan (svbool_t pg, svuint64_t i)
+ {
+-  return svcmpge (pg, svsub_x (pg, svmul_x (pg, i, 2), 1),
++  return svcmpge (pg, svsub_x (pg, svadd_x (pg, i, i), 1),
+ 		  2 * asuint64 (INFINITY) - 1);
+ }
+ 
+@@ -174,16 +198,17 @@ sv_call_specialcase (svfloat64_t x1, svuint64_t u1, svuint64_t u2,
+    additional 15 bits precision.  IX is the bit representation of x, but
+    normalized in the subnormal range using the sign bit for the exponent.  */
+ static inline svfloat64_t
+-sv_log_inline (svbool_t pg, svuint64_t ix, svfloat64_t *tail)
++sv_log_inline (svbool_t pg, svuint64_t ix, svfloat64_t *tail,
++	       const struct data *d)
+ {
+   /* x = 2^k z; where z is in range [Off,2*Off) and exact.
+      The range is split into N subintervals.
+      The ith subinterval contains z and c is near its center.  */
+-  svuint64_t tmp = svsub_x (pg, ix, Off);
++  svuint64_t tmp = svsub_x (pg, ix, d->off);
+   svuint64_t i = svand_x (pg, svlsr_x (pg, tmp, 52 - V_POW_LOG_TABLE_BITS),
+ 			  sv_u64 (N_LOG - 1));
+   svint64_t k = svasr_x (pg, svreinterpret_s64 (tmp), 52);
+-  svuint64_t iz = svsub_x (pg, ix, svand_x (pg, tmp, sv_u64 (0xfffULL << 52)));
++  svuint64_t iz = svsub_x (pg, ix, svlsl_x (pg, svreinterpret_u64 (k), 52));
+   svfloat64_t z = svreinterpret_f64 (iz);
+   svfloat64_t kd = svcvt_f64_x (pg, k);
+ 
+@@ -199,40 +224,85 @@ sv_log_inline (svbool_t pg, svuint64_t ix, svfloat64_t *tail)
+      |z/c - 1| < 1/N, so r = z/c - 1 is exactly representible.  */
+   svfloat64_t r = svmad_x (pg, z, invc, -1.0);
+   /* k*Ln2 + log(c) + r.  */
+-  svfloat64_t t1 = svmla_x (pg, logc, kd, __v_pow_log_data.ln2_hi);
++
++  svfloat64_t ln2_hilo = svld1rq_f64 (svptrue_b64 (), &d->ln2_hi);
++  svfloat64_t t1 = svmla_lane_f64 (logc, kd, ln2_hilo, 0);
+   svfloat64_t t2 = svadd_x (pg, t1, r);
+-  svfloat64_t lo1 = svmla_x (pg, logctail, kd, __v_pow_log_data.ln2_lo);
++  svfloat64_t lo1 = svmla_lane_f64 (logctail, kd, ln2_hilo, 1);
+   svfloat64_t lo2 = svadd_x (pg, svsub_x (pg, t1, t2), r);
+ 
+   /* Evaluation is optimized assuming superscalar pipelined execution.  */
+-  svfloat64_t ar = svmul_x (pg, r, -0.5); /* A[0] = -0.5.  */
+-  svfloat64_t ar2 = svmul_x (pg, r, ar);
+-  svfloat64_t ar3 = svmul_x (pg, r, ar2);
++
++  svfloat64_t log_c02 = svld1rq_f64 (svptrue_b64 (), &d->log_c0);
++  svfloat64_t ar = svmul_lane_f64 (r, log_c02, 0);
++  svfloat64_t ar2 = svmul_x (svptrue_b64 (), r, ar);
++  svfloat64_t ar3 = svmul_x (svptrue_b64 (), r, ar2);
+   /* k*Ln2 + log(c) + r + A[0]*r*r.  */
+   svfloat64_t hi = svadd_x (pg, t2, ar2);
+-  svfloat64_t lo3 = svmla_x (pg, svneg_x (pg, ar2), ar, r);
++  svfloat64_t lo3 = svmls_x (pg, ar2, ar, r);
+   svfloat64_t lo4 = svadd_x (pg, svsub_x (pg, t2, hi), ar2);
+   /* p = log1p(r) - r - A[0]*r*r.  */
+   /* p = (ar3 * (A[1] + r * A[2] + ar2 * (A[3] + r * A[4] + ar2 * (A[5] + r *
+      A[6])))).  */
+-  svfloat64_t a56 = svmla_x (pg, sv_f64 (A[5]), r, A[6]);
+-  svfloat64_t a34 = svmla_x (pg, sv_f64 (A[3]), r, A[4]);
+-  svfloat64_t a12 = svmla_x (pg, sv_f64 (A[1]), r, A[2]);
++
++  svfloat64_t log_c46 = svld1rq_f64 (svptrue_b64 (), &d->log_c4);
++  svfloat64_t a56 = svmla_lane_f64 (sv_f64 (d->log_c5), r, log_c46, 1);
++  svfloat64_t a34 = svmla_lane_f64 (sv_f64 (d->log_c3), r, log_c46, 0);
++  svfloat64_t a12 = svmla_lane_f64 (sv_f64 (d->log_c1), r, log_c02, 1);
+   svfloat64_t p = svmla_x (pg, a34, ar2, a56);
+   p = svmla_x (pg, a12, ar2, p);
+-  p = svmul_x (pg, ar3, p);
++  p = svmul_x (svptrue_b64 (), ar3, p);
+   svfloat64_t lo = svadd_x (
+-      pg, svadd_x (pg, svadd_x (pg, svadd_x (pg, lo1, lo2), lo3), lo4), p);
++      pg, svadd_x (pg, svsub_x (pg, svadd_x (pg, lo1, lo2), lo3), lo4), p);
+   svfloat64_t y = svadd_x (pg, hi, lo);
+   *tail = svadd_x (pg, svsub_x (pg, hi, y), lo);
+   return y;
+ }
+ 
++static inline svfloat64_t
++sv_exp_core (svbool_t pg, svfloat64_t x, svfloat64_t xtail,
++	     svuint64_t sign_bias, svfloat64_t *tmp, svuint64_t *sbits,
++	     svuint64_t *ki, const struct data *d)
++{
++  /* exp(x) = 2^(k/N) * exp(r), with exp(r) in [2^(-1/2N),2^(1/2N)].  */
++  /* x = ln2/N*k + r, with int k and r in [-ln2/2N, ln2/2N].  */
++  svfloat64_t n_over_ln2_and_c2 = svld1rq_f64 (svptrue_b64 (), &d->n_over_ln2);
++  svfloat64_t z = svmul_lane_f64 (x, n_over_ln2_and_c2, 0);
++  /* z - kd is in [-1, 1] in non-nearest rounding modes.  */
++  svfloat64_t kd = svrinta_x (pg, z);
++  *ki = svreinterpret_u64 (svcvt_s64_x (pg, kd));
++
++  svfloat64_t ln2_over_n_hilo
++      = svld1rq_f64 (svptrue_b64 (), &d->ln2_over_n_hi);
++  svfloat64_t r = x;
++  r = svmls_lane_f64 (r, kd, ln2_over_n_hilo, 0);
++  r = svmls_lane_f64 (r, kd, ln2_over_n_hilo, 1);
++  /* The code assumes 2^-200 < |xtail| < 2^-8/N.  */
++  r = svadd_x (pg, r, xtail);
++  /* 2^(k/N) ~= scale.  */
++  svuint64_t idx = svand_x (pg, *ki, N_EXP - 1);
++  svuint64_t top
++      = svlsl_x (pg, svadd_x (pg, *ki, sign_bias), 52 - V_POW_EXP_TABLE_BITS);
++  /* This is only a valid scale when -1023*N < k < 1024*N.  */
++  *sbits = svld1_gather_index (pg, __v_pow_exp_data.sbits, idx);
++  *sbits = svadd_x (pg, *sbits, top);
++  /* exp(x) = 2^(k/N) * exp(r) ~= scale + scale * (exp(r) - 1).  */
++  svfloat64_t r2 = svmul_x (svptrue_b64 (), r, r);
++  *tmp = svmla_lane_f64 (sv_f64 (d->exp_c1), r, n_over_ln2_and_c2, 1);
++  *tmp = svmla_x (pg, sv_f64 (d->exp_c0), r, *tmp);
++  *tmp = svmla_x (pg, r, r2, *tmp);
++  svfloat64_t scale = svreinterpret_f64 (*sbits);
++  /* Note: tmp == 0 or |tmp| > 2^-200 and scale > 2^-739, so there
++     is no spurious underflow here even without fma.  */
++  z = svmla_x (pg, scale, scale, *tmp);
++  return z;
++}
++
+ /* Computes sign*exp(x+xtail) where |xtail| < 2^-8/N and |xtail| <= |x|.
+    The sign_bias argument is SignBias or 0 and sets the sign to -1 or 1.  */
+ static inline svfloat64_t
+ sv_exp_inline (svbool_t pg, svfloat64_t x, svfloat64_t xtail,
+-	       svuint64_t sign_bias)
++	       svuint64_t sign_bias, const struct data *d)
+ {
+   /* 3 types of special cases: tiny (uflow and spurious uflow), huge (oflow)
+      and other cases of large values of x (scale * (1 + TMP) oflow).  */
+@@ -240,73 +310,46 @@ sv_exp_inline (svbool_t pg, svfloat64_t x, svfloat64_t xtail,
+   /* |x| is large (|x| >= 512) or tiny (|x| <= 0x1p-54).  */
+   svbool_t uoflow = svcmpge (pg, svsub_x (pg, abstop, SmallExp), ThresExp);
+ 
+-  /* Conditions special, uflow and oflow are all expressed as uoflow &&
+-     something, hence do not bother computing anything if no lane in uoflow is
+-     true.  */
+-  svbool_t special = svpfalse_b ();
+-  svbool_t uflow = svpfalse_b ();
+-  svbool_t oflow = svpfalse_b ();
++  svfloat64_t tmp;
++  svuint64_t sbits, ki;
+   if (__glibc_unlikely (svptest_any (pg, uoflow)))
+     {
++      svfloat64_t z
++	  = sv_exp_core (pg, x, xtail, sign_bias, &tmp, &sbits, &ki, d);
++
+       /* |x| is tiny (|x| <= 0x1p-54).  */
+-      uflow = svcmpge (pg, svsub_x (pg, abstop, SmallExp), 0x80000000);
++      svbool_t uflow
++	  = svcmpge (pg, svsub_x (pg, abstop, SmallExp), 0x80000000);
+       uflow = svand_z (pg, uoflow, uflow);
+       /* |x| is huge (|x| >= 1024).  */
+-      oflow = svcmpge (pg, abstop, HugeExp);
++      svbool_t oflow = svcmpge (pg, abstop, HugeExp);
+       oflow = svand_z (pg, uoflow, svbic_z (pg, oflow, uflow));
++
+       /* For large |x| values (512 < |x| < 1024) scale * (1 + TMP) can overflow
+-	 or underflow.  */
+-      special = svbic_z (pg, uoflow, svorr_z (pg, uflow, oflow));
++    or underflow.  */
++      svbool_t special = svbic_z (pg, uoflow, svorr_z (pg, uflow, oflow));
++
++      /* Update result with special and large cases.  */
++      z = sv_call_specialcase (tmp, sbits, ki, z, special);
++
++      /* Handle underflow and overflow.  */
++      svbool_t x_is_neg = svcmplt (pg, x, 0);
++      svuint64_t sign_mask
++	  = svlsl_x (pg, sign_bias, 52 - V_POW_EXP_TABLE_BITS);
++      svfloat64_t res_uoflow
++	  = svsel (x_is_neg, sv_f64 (0.0), sv_f64 (INFINITY));
++      res_uoflow = svreinterpret_f64 (
++	  svorr_x (pg, svreinterpret_u64 (res_uoflow), sign_mask));
++      /* Avoid spurious underflow for tiny x.  */
++      svfloat64_t res_spurious_uflow
++	  = svreinterpret_f64 (svorr_x (pg, sign_mask, 0x3ff0000000000000));
++
++      z = svsel (oflow, res_uoflow, z);
++      z = svsel (uflow, res_spurious_uflow, z);
++      return z;
+     }
+ 
+-  /* exp(x) = 2^(k/N) * exp(r), with exp(r) in [2^(-1/2N),2^(1/2N)].  */
+-  /* x = ln2/N*k + r, with int k and r in [-ln2/2N, ln2/2N].  */
+-  svfloat64_t z = svmul_x (pg, x, __v_pow_exp_data.n_over_ln2);
+-  /* z - kd is in [-1, 1] in non-nearest rounding modes.  */
+-  svfloat64_t shift = sv_f64 (__v_pow_exp_data.shift);
+-  svfloat64_t kd = svadd_x (pg, z, shift);
+-  svuint64_t ki = svreinterpret_u64 (kd);
+-  kd = svsub_x (pg, kd, shift);
+-  svfloat64_t r = x;
+-  r = svmls_x (pg, r, kd, __v_pow_exp_data.ln2_over_n_hi);
+-  r = svmls_x (pg, r, kd, __v_pow_exp_data.ln2_over_n_lo);
+-  /* The code assumes 2^-200 < |xtail| < 2^-8/N.  */
+-  r = svadd_x (pg, r, xtail);
+-  /* 2^(k/N) ~= scale.  */
+-  svuint64_t idx = svand_x (pg, ki, N_EXP - 1);
+-  svuint64_t top
+-      = svlsl_x (pg, svadd_x (pg, ki, sign_bias), 52 - V_POW_EXP_TABLE_BITS);
+-  /* This is only a valid scale when -1023*N < k < 1024*N.  */
+-  svuint64_t sbits = svld1_gather_index (pg, __v_pow_exp_data.sbits, idx);
+-  sbits = svadd_x (pg, sbits, top);
+-  /* exp(x) = 2^(k/N) * exp(r) ~= scale + scale * (exp(r) - 1).  */
+-  svfloat64_t r2 = svmul_x (pg, r, r);
+-  svfloat64_t tmp = svmla_x (pg, sv_f64 (C[1]), r, C[2]);
+-  tmp = svmla_x (pg, sv_f64 (C[0]), r, tmp);
+-  tmp = svmla_x (pg, r, r2, tmp);
+-  svfloat64_t scale = svreinterpret_f64 (sbits);
+-  /* Note: tmp == 0 or |tmp| > 2^-200 and scale > 2^-739, so there
+-     is no spurious underflow here even without fma.  */
+-  z = svmla_x (pg, scale, scale, tmp);
+-
+-  /* Update result with special and large cases.  */
+-  if (__glibc_unlikely (svptest_any (pg, special)))
+-    z = sv_call_specialcase (tmp, sbits, ki, z, special);
+-
+-  /* Handle underflow and overflow.  */
+-  svuint64_t sign_bit = svlsr_x (pg, svreinterpret_u64 (x), 63);
+-  svbool_t x_is_neg = svcmpne (pg, sign_bit, 0);
+-  svuint64_t sign_mask = svlsl_x (pg, sign_bias, 52 - V_POW_EXP_TABLE_BITS);
+-  svfloat64_t res_uoflow = svsel (x_is_neg, sv_f64 (0.0), sv_f64 (INFINITY));
+-  res_uoflow = svreinterpret_f64 (
+-      svorr_x (pg, svreinterpret_u64 (res_uoflow), sign_mask));
+-  z = svsel (oflow, res_uoflow, z);
+-  /* Avoid spurious underflow for tiny x.  */
+-  svfloat64_t res_spurious_uflow
+-      = svreinterpret_f64 (svorr_x (pg, sign_mask, 0x3ff0000000000000));
+-  z = svsel (uflow, res_spurious_uflow, z);
+-
+-  return z;
++  return sv_exp_core (pg, x, xtail, sign_bias, &tmp, &sbits, &ki, d);
+ }
+ 
+ static inline double
+@@ -341,47 +384,39 @@ pow_sc (double x, double y)
+ 
+ svfloat64_t SV_NAME_D2 (pow) (svfloat64_t x, svfloat64_t y, const svbool_t pg)
+ {
++  const struct data *d = ptr_barrier (&data);
++
+   /* This preamble handles special case conditions used in the final scalar
+      fallbacks. It also updates ix and sign_bias, that are used in the core
+      computation too, i.e., exp( y * log (x) ).  */
+   svuint64_t vix0 = svreinterpret_u64 (x);
+   svuint64_t viy0 = svreinterpret_u64 (y);
+-  svuint64_t vtopx0 = svlsr_x (svptrue_b64 (), vix0, 52);
+ 
+   /* Negative x cases.  */
+-  svuint64_t sign_bit = svlsr_m (pg, vix0, 63);
+-  svbool_t xisneg = svcmpeq (pg, sign_bit, 1);
++  svbool_t xisneg = svcmplt (pg, x, 0);
+ 
+   /* Set sign_bias and ix depending on sign of x and nature of y.  */
+-  svbool_t yisnotint_xisneg = svpfalse_b ();
++  svbool_t yint_or_xpos = pg;
+   svuint64_t sign_bias = sv_u64 (0);
+   svuint64_t vix = vix0;
+-  svuint64_t vtopx1 = vtopx0;
+   if (__glibc_unlikely (svptest_any (pg, xisneg)))
+     {
+       /* Determine nature of y.  */
+-      yisnotint_xisneg = sv_isnotint (xisneg, y);
+-      svbool_t yisint_xisneg = sv_isint (xisneg, y);
++      yint_or_xpos = sv_isint (xisneg, y);
+       svbool_t yisodd_xisneg = sv_isodd (xisneg, y);
+       /* ix set to abs(ix) if y is integer.  */
+-      vix = svand_m (yisint_xisneg, vix0, 0x7fffffffffffffff);
+-      vtopx1 = svand_m (yisint_xisneg, vtopx0, 0x7ff);
++      vix = svand_m (yint_or_xpos, vix0, 0x7fffffffffffffff);
+       /* Set to SignBias if x is negative and y is odd.  */
+       sign_bias = svsel (yisodd_xisneg, sv_u64 (SignBias), sv_u64 (0));
+     }
+ 
+-  /* Special cases of x or y: zero, inf and nan.  */
+-  svbool_t xspecial = sv_zeroinfnan (pg, vix0);
+-  svbool_t yspecial = sv_zeroinfnan (pg, viy0);
+-  svbool_t special = svorr_z (pg, xspecial, yspecial);
+-
+   /* Small cases of x: |x| < 0x1p-126.  */
+-  svuint64_t vabstopx0 = svand_x (pg, vtopx0, 0x7ff);
+-  svbool_t xsmall = svcmplt (pg, vabstopx0, SmallPowX);
+-  if (__glibc_unlikely (svptest_any (pg, xsmall)))
++  svbool_t xsmall = svaclt (yint_or_xpos, x, SmallBoundX);
++  if (__glibc_unlikely (svptest_any (yint_or_xpos, xsmall)))
+     {
+       /* Normalize subnormal x so exponent becomes negative.  */
+-      svbool_t topx_is_null = svcmpeq (xsmall, vtopx1, 0);
++      svuint64_t vtopx = svlsr_x (svptrue_b64 (), vix, 52);
++      svbool_t topx_is_null = svcmpeq (xsmall, vtopx, 0);
+ 
+       svuint64_t vix_norm = svreinterpret_u64 (svmul_m (xsmall, x, 0x1p52));
+       vix_norm = svand_m (xsmall, vix_norm, 0x7fffffffffffffff);
+@@ -391,20 +426,24 @@ svfloat64_t SV_NAME_D2 (pow) (svfloat64_t x, svfloat64_t y, const svbool_t pg)
+ 
+   /* y_hi = log(ix, &y_lo).  */
+   svfloat64_t vlo;
+-  svfloat64_t vhi = sv_log_inline (pg, vix, &vlo);
++  svfloat64_t vhi = sv_log_inline (yint_or_xpos, vix, &vlo, d);
+ 
+   /* z = exp(y_hi, y_lo, sign_bias).  */
+-  svfloat64_t vehi = svmul_x (pg, y, vhi);
+-  svfloat64_t velo = svmul_x (pg, y, vlo);
+-  svfloat64_t vemi = svmls_x (pg, vehi, y, vhi);
+-  velo = svsub_x (pg, velo, vemi);
+-  svfloat64_t vz = sv_exp_inline (pg, vehi, velo, sign_bias);
++  svfloat64_t vehi = svmul_x (svptrue_b64 (), y, vhi);
++  svfloat64_t vemi = svmls_x (yint_or_xpos, vehi, y, vhi);
++  svfloat64_t velo = svnmls_x (yint_or_xpos, vemi, y, vlo);
++  svfloat64_t vz = sv_exp_inline (yint_or_xpos, vehi, velo, sign_bias, d);
+ 
+   /* Cases of finite y and finite negative x.  */
+-  vz = svsel (yisnotint_xisneg, sv_f64 (__builtin_nan ("")), vz);
++  vz = svsel (yint_or_xpos, vz, sv_f64 (__builtin_nan ("")));
++
++  /* Special cases of x or y: zero, inf and nan.  */
++  svbool_t xspecial = sv_zeroinfnan (svptrue_b64 (), vix0);
++  svbool_t yspecial = sv_zeroinfnan (svptrue_b64 (), viy0);
++  svbool_t special = svorr_z (svptrue_b64 (), xspecial, yspecial);
+ 
+   /* Cases of zero/inf/nan x or y.  */
+-  if (__glibc_unlikely (svptest_any (pg, special)))
++  if (__glibc_unlikely (svptest_any (svptrue_b64 (), special)))
+     vz = sv_call2_f64 (pow_sc, x, y, vz, special);
+ 
+   return vz;
+diff --git a/sysdeps/aarch64/fpu/powf_sve.c b/sysdeps/aarch64/fpu/powf_sve.c
+index 29e9acb6fb..7046990aa1 100644
+--- a/sysdeps/aarch64/fpu/powf_sve.c
++++ b/sysdeps/aarch64/fpu/powf_sve.c
+@@ -26,7 +26,6 @@
+ #define Tlogc __v_powf_data.logc
+ #define Texp __v_powf_data.scale
+ #define SignBias (1 << (V_POWF_EXP2_TABLE_BITS + 11))
+-#define Shift 0x1.8p52
+ #define Norm 0x1p23f /* 0x4b000000.  */
+ 
+ /* Overall ULP error bound for pow is 2.6 ulp
+@@ -36,7 +35,7 @@ static const struct data
+   double log_poly[4];
+   double exp_poly[3];
+   float uflow_bound, oflow_bound, small_bound;
+-  uint32_t sign_bias, sign_mask, subnormal_bias, off;
++  uint32_t sign_bias, subnormal_bias, off;
+ } data = {
+   /* rel err: 1.5 * 2^-30. Each coefficients is multiplied the value of
+      V_POWF_EXP2_N.  */
+@@ -53,7 +52,6 @@ static const struct data
+   .small_bound = 0x1p-126f,
+   .off = 0x3f35d000,
+   .sign_bias = SignBias,
+-  .sign_mask = 0x80000000,
+   .subnormal_bias = 0x0b800000, /* 23 << 23.  */
+ };
+ 
+@@ -86,7 +84,7 @@ svisodd (svbool_t pg, svfloat32_t x)
+ static inline svbool_t
+ sv_zeroinfnan (svbool_t pg, svuint32_t i)
+ {
+-  return svcmpge (pg, svsub_x (pg, svmul_x (pg, i, 2u), 1),
++  return svcmpge (pg, svsub_x (pg, svadd_x (pg, i, i), 1),
+ 		  2u * 0x7f800000 - 1);
+ }
+ 
+@@ -150,9 +148,14 @@ powf_specialcase (float x, float y, float z)
+ }
+ 
+ /* Scalar fallback for special case routines with custom signature.  */
+-static inline svfloat32_t
+-sv_call_powf_sc (svfloat32_t x1, svfloat32_t x2, svfloat32_t y, svbool_t cmp)
++static svfloat32_t NOINLINE
++sv_call_powf_sc (svfloat32_t x1, svfloat32_t x2, svfloat32_t y)
+ {
++  /* Special cases of x or y: zero, inf and nan.  */
++  svbool_t xspecial = sv_zeroinfnan (svptrue_b32 (), svreinterpret_u32 (x1));
++  svbool_t yspecial = sv_zeroinfnan (svptrue_b32 (), svreinterpret_u32 (x2));
++  svbool_t cmp = svorr_z (svptrue_b32 (), xspecial, yspecial);
++
+   svbool_t p = svpfirst (cmp, svpfalse ());
+   while (svptest_any (cmp, p))
+     {
+@@ -182,30 +185,30 @@ sv_powf_core_ext (const svbool_t pg, svuint64_t i, svfloat64_t z, svint64_t k,
+ 
+   /* Polynomial to approximate log1p(r)/ln2.  */
+   svfloat64_t logx = A (0);
+-  logx = svmla_x (pg, A (1), r, logx);
+-  logx = svmla_x (pg, A (2), r, logx);
+-  logx = svmla_x (pg, A (3), r, logx);
+-  logx = svmla_x (pg, y0, r, logx);
++  logx = svmad_x (pg, r, logx, A (1));
++  logx = svmad_x (pg, r, logx, A (2));
++  logx = svmad_x (pg, r, logx, A (3));
++  logx = svmad_x (pg, r, logx, y0);
+   *pylogx = svmul_x (pg, y, logx);
+ 
+   /* z - kd is in [-1, 1] in non-nearest rounding modes.  */
+-  svfloat64_t kd = svadd_x (pg, *pylogx, Shift);
+-  svuint64_t ki = svreinterpret_u64 (kd);
+-  kd = svsub_x (pg, kd, Shift);
++  svfloat64_t kd = svrinta_x (svptrue_b64 (), *pylogx);
++  svuint64_t ki = svreinterpret_u64 (svcvt_s64_x (svptrue_b64 (), kd));
+ 
+   r = svsub_x (pg, *pylogx, kd);
+ 
+   /* exp2(x) = 2^(k/N) * 2^r ~= s * (C0*r^3 + C1*r^2 + C2*r + 1).  */
+-  svuint64_t t
+-      = svld1_gather_index (pg, Texp, svand_x (pg, ki, V_POWF_EXP2_N - 1));
+-  svuint64_t ski = svadd_x (pg, ki, sign_bias);
+-  t = svadd_x (pg, t, svlsl_x (pg, ski, 52 - V_POWF_EXP2_TABLE_BITS));
++  svuint64_t t = svld1_gather_index (
++      svptrue_b64 (), Texp, svand_x (svptrue_b64 (), ki, V_POWF_EXP2_N - 1));
++  svuint64_t ski = svadd_x (svptrue_b64 (), ki, sign_bias);
++  t = svadd_x (svptrue_b64 (), t,
++	       svlsl_x (svptrue_b64 (), ski, 52 - V_POWF_EXP2_TABLE_BITS));
+   svfloat64_t s = svreinterpret_f64 (t);
+ 
+   svfloat64_t p = C (0);
+   p = svmla_x (pg, C (1), p, r);
+   p = svmla_x (pg, C (2), p, r);
+-  p = svmla_x (pg, s, p, svmul_x (pg, s, r));
++  p = svmla_x (pg, s, p, svmul_x (svptrue_b64 (), s, r));
+ 
+   return p;
+ }
+@@ -219,19 +222,16 @@ sv_powf_core (const svbool_t pg, svuint32_t i, svuint32_t iz, svint32_t k,
+ {
+   const svbool_t ptrue = svptrue_b64 ();
+ 
+-  /* Unpack and promote input vectors (pg, y, z, i, k and sign_bias) into two in
+-     order to perform core computation in double precision.  */
++  /* Unpack and promote input vectors (pg, y, z, i, k and sign_bias) into two
++   * in order to perform core computation in double precision.  */
+   const svbool_t pg_lo = svunpklo (pg);
+   const svbool_t pg_hi = svunpkhi (pg);
+-  svfloat64_t y_lo = svcvt_f64_x (
+-      ptrue, svreinterpret_f32 (svunpklo (svreinterpret_u32 (y))));
+-  svfloat64_t y_hi = svcvt_f64_x (
+-      ptrue, svreinterpret_f32 (svunpkhi (svreinterpret_u32 (y))));
+-  svfloat32_t z = svreinterpret_f32 (iz);
+-  svfloat64_t z_lo = svcvt_f64_x (
+-      ptrue, svreinterpret_f32 (svunpklo (svreinterpret_u32 (z))));
+-  svfloat64_t z_hi = svcvt_f64_x (
+-      ptrue, svreinterpret_f32 (svunpkhi (svreinterpret_u32 (z))));
++  svfloat64_t y_lo
++      = svcvt_f64_x (pg, svreinterpret_f32 (svunpklo (svreinterpret_u32 (y))));
++  svfloat64_t y_hi
++      = svcvt_f64_x (pg, svreinterpret_f32 (svunpkhi (svreinterpret_u32 (y))));
++  svfloat64_t z_lo = svcvt_f64_x (pg, svreinterpret_f32 (svunpklo (iz)));
++  svfloat64_t z_hi = svcvt_f64_x (pg, svreinterpret_f32 (svunpkhi (iz)));
+   svuint64_t i_lo = svunpklo (i);
+   svuint64_t i_hi = svunpkhi (i);
+   svint64_t k_lo = svunpklo (k);
+@@ -258,9 +258,9 @@ sv_powf_core (const svbool_t pg, svuint32_t i, svuint32_t iz, svint32_t k,
+ /* Implementation of SVE powf.
+    Provides the same accuracy as AdvSIMD powf, since it relies on the same
+    algorithm. The theoretical maximum error is under 2.60 ULPs.
+-   Maximum measured error is 2.56 ULPs:
+-   SV_NAME_F2 (pow) (0x1.004118p+0, 0x1.5d14a4p+16) got 0x1.fd4bp+127
+-						   want 0x1.fd4b06p+127.  */
++   Maximum measured error is 2.57 ULPs:
++   SV_NAME_F2 (pow) (0x1.031706p+0, 0x1.ce2ec2p+12) got 0x1.fff868p+127
++						   want 0x1.fff862p+127.  */
+ svfloat32_t SV_NAME_F2 (pow) (svfloat32_t x, svfloat32_t y, const svbool_t pg)
+ {
+   const struct data *d = ptr_barrier (&data);
+@@ -269,21 +269,19 @@ svfloat32_t SV_NAME_F2 (pow) (svfloat32_t x, svfloat32_t y, const svbool_t pg)
+   svuint32_t viy0 = svreinterpret_u32 (y);
+ 
+   /* Negative x cases.  */
+-  svuint32_t sign_bit = svand_m (pg, vix0, d->sign_mask);
+-  svbool_t xisneg = svcmpeq (pg, sign_bit, d->sign_mask);
++  svbool_t xisneg = svcmplt (pg, x, sv_f32 (0));
+ 
+   /* Set sign_bias and ix depending on sign of x and nature of y.  */
+-  svbool_t yisnotint_xisneg = svpfalse_b ();
++  svbool_t yint_or_xpos = pg;
+   svuint32_t sign_bias = sv_u32 (0);
+   svuint32_t vix = vix0;
+   if (__glibc_unlikely (svptest_any (pg, xisneg)))
+     {
+       /* Determine nature of y.  */
+-      yisnotint_xisneg = svisnotint (xisneg, y);
+-      svbool_t yisint_xisneg = svisint (xisneg, y);
++      yint_or_xpos = svisint (xisneg, y);
+       svbool_t yisodd_xisneg = svisodd (xisneg, y);
+       /* ix set to abs(ix) if y is integer.  */
+-      vix = svand_m (yisint_xisneg, vix0, 0x7fffffff);
++      vix = svand_m (yint_or_xpos, vix0, 0x7fffffff);
+       /* Set to SignBias if x is negative and y is odd.  */
+       sign_bias = svsel (yisodd_xisneg, sv_u32 (d->sign_bias), sv_u32 (0));
+     }
+@@ -294,8 +292,8 @@ svfloat32_t SV_NAME_F2 (pow) (svfloat32_t x, svfloat32_t y, const svbool_t pg)
+   svbool_t cmp = svorr_z (pg, xspecial, yspecial);
+ 
+   /* Small cases of x: |x| < 0x1p-126.  */
+-  svbool_t xsmall = svaclt (pg, x, d->small_bound);
+-  if (__glibc_unlikely (svptest_any (pg, xsmall)))
++  svbool_t xsmall = svaclt (yint_or_xpos, x, d->small_bound);
++  if (__glibc_unlikely (svptest_any (yint_or_xpos, xsmall)))
+     {
+       /* Normalize subnormal x so exponent becomes negative.  */
+       svuint32_t vix_norm = svreinterpret_u32 (svmul_x (xsmall, x, Norm));
+@@ -304,32 +302,35 @@ svfloat32_t SV_NAME_F2 (pow) (svfloat32_t x, svfloat32_t y, const svbool_t pg)
+       vix = svsel (xsmall, vix_norm, vix);
+     }
+   /* Part of core computation carried in working precision.  */
+-  svuint32_t tmp = svsub_x (pg, vix, d->off);
+-  svuint32_t i = svand_x (pg, svlsr_x (pg, tmp, (23 - V_POWF_LOG2_TABLE_BITS)),
+-			  V_POWF_LOG2_N - 1);
+-  svuint32_t top = svand_x (pg, tmp, 0xff800000);
+-  svuint32_t iz = svsub_x (pg, vix, top);
+-  svint32_t k
+-      = svasr_x (pg, svreinterpret_s32 (top), (23 - V_POWF_EXP2_TABLE_BITS));
++  svuint32_t tmp = svsub_x (yint_or_xpos, vix, d->off);
++  svuint32_t i = svand_x (
++      yint_or_xpos, svlsr_x (yint_or_xpos, tmp, (23 - V_POWF_LOG2_TABLE_BITS)),
++      V_POWF_LOG2_N - 1);
++  svuint32_t top = svand_x (yint_or_xpos, tmp, 0xff800000);
++  svuint32_t iz = svsub_x (yint_or_xpos, vix, top);
++  svint32_t k = svasr_x (yint_or_xpos, svreinterpret_s32 (top),
++			 (23 - V_POWF_EXP2_TABLE_BITS));
+ 
+-  /* Compute core in extended precision and return intermediate ylogx results to
+-      handle cases of underflow and underflow in exp.  */
++  /* Compute core in extended precision and return intermediate ylogx results
++   * to handle cases of underflow and underflow in exp.  */
+   svfloat32_t ylogx;
+-  svfloat32_t ret = sv_powf_core (pg, i, iz, k, y, sign_bias, &ylogx, d);
++  svfloat32_t ret
++      = sv_powf_core (yint_or_xpos, i, iz, k, y, sign_bias, &ylogx, d);
+ 
+   /* Handle exp special cases of underflow and overflow.  */
+-  svuint32_t sign = svlsl_x (pg, sign_bias, 20 - V_POWF_EXP2_TABLE_BITS);
++  svuint32_t sign
++      = svlsl_x (yint_or_xpos, sign_bias, 20 - V_POWF_EXP2_TABLE_BITS);
+   svfloat32_t ret_oflow
+-      = svreinterpret_f32 (svorr_x (pg, sign, asuint (INFINITY)));
++      = svreinterpret_f32 (svorr_x (yint_or_xpos, sign, asuint (INFINITY)));
+   svfloat32_t ret_uflow = svreinterpret_f32 (sign);
+-  ret = svsel (svcmple (pg, ylogx, d->uflow_bound), ret_uflow, ret);
+-  ret = svsel (svcmpgt (pg, ylogx, d->oflow_bound), ret_oflow, ret);
++  ret = svsel (svcmple (yint_or_xpos, ylogx, d->uflow_bound), ret_uflow, ret);
++  ret = svsel (svcmpgt (yint_or_xpos, ylogx, d->oflow_bound), ret_oflow, ret);
+ 
+   /* Cases of finite y and finite negative x.  */
+-  ret = svsel (yisnotint_xisneg, sv_f32 (__builtin_nanf ("")), ret);
++  ret = svsel (yint_or_xpos, ret, sv_f32 (__builtin_nanf ("")));
+ 
+-  if (__glibc_unlikely (svptest_any (pg, cmp)))
+-    return sv_call_powf_sc (x, y, ret, cmp);
++  if (__glibc_unlikely (svptest_any (cmp, cmp)))
++    return sv_call_powf_sc (x, y, ret);
+ 
+   return ret;
+ }
+diff --git a/sysdeps/aarch64/fpu/sv_expf_inline.h b/sysdeps/aarch64/fpu/sv_expf_inline.h
+index f208d33896..16b81fc738 100644
+--- a/sysdeps/aarch64/fpu/sv_expf_inline.h
++++ b/sysdeps/aarch64/fpu/sv_expf_inline.h
+@@ -61,7 +61,7 @@ expf_inline (svfloat32_t x, const svbool_t pg, const struct sv_expf_data *d)
+   /* scale = 2^(n/N).  */
+   svfloat32_t scale = svexpa (svreinterpret_u32 (z));
+ 
+-  /* y = exp(r) - 1 ~= r + C0 r^2 + C1 r^3 + C2 r^4 + C3 r^5 + C4 r^6.  */
++  /* poly(r) = exp(r) - 1 ~= C0 r + C1 r^2 + C2 r^3 + C3 r^4 + C4 r^5.  */
+   svfloat32_t p12 = svmla_lane (sv_f32 (d->c1), r, lane_consts, 2);
+   svfloat32_t p34 = svmla_lane (sv_f32 (d->c3), r, lane_consts, 3);
+   svfloat32_t r2 = svmul_x (svptrue_b32 (), r, r);
+@@ -71,5 +71,4 @@ expf_inline (svfloat32_t x, const svbool_t pg, const struct sv_expf_data *d)
+ 
+   return svmla_x (pg, scale, scale, poly);
+ }
+-
+ #endif
+diff --git a/sysdeps/aarch64/multiarch/Makefile b/sysdeps/aarch64/multiarch/Makefile
+index 772b16a358..1c3c392513 100644
+--- a/sysdeps/aarch64/multiarch/Makefile
++++ b/sysdeps/aarch64/multiarch/Makefile
+@@ -14,6 +14,7 @@ sysdep_routines += \
+   memset_kunpeng \
+   memset_mops \
+   memset_oryon1 \
++  memset_sve_zva64 \
+   memset_zva64 \
+   strlen_asimd \
+   strlen_generic \
+diff --git a/sysdeps/aarch64/multiarch/ifunc-impl-list.c b/sysdeps/aarch64/multiarch/ifunc-impl-list.c
+index 0481e450be..8dc314b67d 100644
+--- a/sysdeps/aarch64/multiarch/ifunc-impl-list.c
++++ b/sysdeps/aarch64/multiarch/ifunc-impl-list.c
+@@ -57,6 +57,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 	      IFUNC_IMPL_ADD (array, i, memset, 1, __memset_kunpeng)
+ #if HAVE_AARCH64_SVE_ASM
+ 	      IFUNC_IMPL_ADD (array, i, memset, sve && !bti && zva_size == 256, __memset_a64fx)
++	      IFUNC_IMPL_ADD (array, i, memset, sve && zva_size == 64, __memset_sve_zva64)
+ #endif
+ 	      IFUNC_IMPL_ADD (array, i, memset, mops, __memset_mops)
+ 	      IFUNC_IMPL_ADD (array, i, memset, 1, __memset_generic))
+diff --git a/sysdeps/aarch64/multiarch/memset.c b/sysdeps/aarch64/multiarch/memset.c
+index f6194e4a93..872f39f00f 100644
+--- a/sysdeps/aarch64/multiarch/memset.c
++++ b/sysdeps/aarch64/multiarch/memset.c
+@@ -36,6 +36,7 @@ extern __typeof (__redirect_memset) __memset_a64fx attribute_hidden;
+ extern __typeof (__redirect_memset) __memset_generic attribute_hidden;
+ extern __typeof (__redirect_memset) __memset_mops attribute_hidden;
+ extern __typeof (__redirect_memset) __memset_oryon1 attribute_hidden;
++extern __typeof (__redirect_memset) __memset_sve_zva64 attribute_hidden;
+ 
+ static inline __typeof (__redirect_memset) *
+ select_memset_ifunc (void)
+@@ -49,6 +50,9 @@ select_memset_ifunc (void)
+     {
+       if (IS_A64FX (midr) && zva_size == 256)
+ 	return __memset_a64fx;
++
++      if (prefer_sve_ifuncs && zva_size == 64)
++	return __memset_sve_zva64;
+     }
+ 
+   if (IS_ORYON1 (midr) && zva_size == 64)
+diff --git a/sysdeps/aarch64/multiarch/memset_sve_zva64.S b/sysdeps/aarch64/multiarch/memset_sve_zva64.S
+new file mode 100644
+index 0000000000..7fb40fdd9e
+--- /dev/null
++++ b/sysdeps/aarch64/multiarch/memset_sve_zva64.S
+@@ -0,0 +1,123 @@
++/* Optimized memset for SVE.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdep.h>
++
++/* Assumptions:
++ *
++ * ARMv8-a, AArch64, Advanced SIMD, SVE, unaligned accesses.
++ * ZVA size is 64.
++ */
++
++#if HAVE_AARCH64_SVE_ASM
++
++.arch armv8.2-a+sve
++
++#define dstin	x0
++#define val	x1
++#define valw	w1
++#define count	x2
++#define dst	x3
++#define dstend	x4
++#define zva_val	x5
++#define vlen	x5
++#define off	x3
++#define dstend2 x5
++
++ENTRY (__memset_sve_zva64)
++	dup	v0.16B, valw
++	cmp	count, 16
++	b.lo	L(set_16)
++
++	add	dstend, dstin, count
++	cmp	count, 64
++	b.hs	L(set_128)
++
++	/* Set 16..63 bytes.  */
++	mov	off, 16
++	and	off, off, count, lsr 1
++	sub	dstend2, dstend, off
++	str	q0, [dstin]
++	str	q0, [dstin, off]
++	str	q0, [dstend2, -16]
++	str	q0, [dstend, -16]
++	ret
++
++	.p2align 4
++L(set_16):
++	whilelo p0.b, xzr, count
++	st1b	z0.b, p0, [dstin]
++	ret
++
++	.p2align 4
++L(set_128):
++	bic	dst, dstin, 15
++	cmp	count, 128
++	b.hi	L(set_long)
++	stp	q0, q0, [dstin]
++	stp	q0, q0, [dstin, 32]
++	stp	q0, q0, [dstend, -64]
++	stp	q0, q0, [dstend, -32]
++	ret
++
++	.p2align 4
++L(set_long):
++	cmp	count, 256
++	b.lo	L(no_zva)
++	tst	valw, 255
++	b.ne	L(no_zva)
++
++	str	q0, [dstin]
++	str	q0, [dst, 16]
++	bic	dst, dstin, 31
++	stp	q0, q0, [dst, 32]
++	bic	dst, dstin, 63
++	sub	count, dstend, dst	/* Count is now 64 too large.  */
++	sub	count, count, 128	/* Adjust count and bias for loop.  */
++
++	sub	x8, dstend, 1		/* Write last bytes before ZVA loop.  */
++	bic	x8, x8, 15
++	stp	q0, q0, [x8, -48]
++	str	q0, [x8, -16]
++	str	q0, [dstend, -16]
++
++	.p2align 4
++L(zva64_loop):
++	add	dst, dst, 64
++	dc	zva, dst
++	subs	count, count, 64
++	b.hi	L(zva64_loop)
++	ret
++
++L(no_zva):
++	str	q0, [dstin]
++	sub	count, dstend, dst	/* Count is 16 too large.  */
++	sub	count, count, 64 + 16	/* Adjust count and bias for loop.  */
++L(no_zva_loop):
++	stp	q0, q0, [dst, 16]
++	stp	q0, q0, [dst, 48]
++	add	dst, dst, 64
++	subs	count, count, 64
++	b.hi	L(no_zva_loop)
++	stp	q0, q0, [dstend, -64]
++	stp	q0, q0, [dstend, -32]
++	ret
++
++END (__memset_sve_zva64)
++#endif
+diff --git a/sysdeps/ieee754/dbl-64/math_config.h b/sysdeps/ieee754/dbl-64/math_config.h
+index 299a2ff8c1..3382e385f9 100644
+--- a/sysdeps/ieee754/dbl-64/math_config.h
++++ b/sysdeps/ieee754/dbl-64/math_config.h
+@@ -195,16 +195,18 @@ check_uflow (double x)
+ extern const struct exp_data
+ {
+   double invln2N;
+-  double shift;
+   double negln2hiN;
+   double negln2loN;
+   double poly[4]; /* Last four coefficients.  */
++  double shift;
++
+   double exp2_shift;
+   double exp2_poly[EXP2_POLY_ORDER];
+-  double invlog10_2N;
++
+   double neglog10_2hiN;
+   double neglog10_2loN;
+   double exp10_poly[5];
++  double invlog10_2N;
+   uint64_t tab[2*(1 << EXP_TABLE_BITS)];
+ } __exp_data attribute_hidden;
+ 
+diff --git a/sysdeps/ieee754/dbl-64/s_fma.c b/sysdeps/ieee754/dbl-64/s_fma.c
+index 20f617b996..42351c6b34 100644
+--- a/sysdeps/ieee754/dbl-64/s_fma.c
++++ b/sysdeps/ieee754/dbl-64/s_fma.c
+@@ -244,6 +244,9 @@ __fma (double x, double y, double z)
+   /* Reset rounding mode and test for inexact simultaneously.  */
+   int j = libc_feupdateenv_test (&env, FE_INEXACT) != 0;
+ 
++  /* Ensure value of a1 + u.d is not reused.  */
++  a1 = math_opt_barrier (a1);
++
+   if (__glibc_likely (adjust == 0))
+     {
+       if ((u.ieee.mantissa1 & 1) == 0 && u.ieee.exponent != 0x7ff)
 diff --git a/sysdeps/ieee754/flt-32/e_sinhf.c b/sysdeps/ieee754/flt-32/e_sinhf.c
 index c007c7d174..dee96fc7cb 100644
 --- a/sysdeps/ieee754/flt-32/e_sinhf.c
@@ -801,6 +2744,311 @@ index dfe56fc2a0..5ee1d6f35e 100644
  	    {
  	      if (sgn)
  		return -st[j].rh - st[j].rl;
+diff --git a/sysdeps/nptl/bits/thread-shared-types.h b/sysdeps/nptl/bits/thread-shared-types.h
+index 7c24c0a6be..e614c7f3c9 100644
+--- a/sysdeps/nptl/bits/thread-shared-types.h
++++ b/sysdeps/nptl/bits/thread-shared-types.h
+@@ -99,6 +99,8 @@ struct __pthread_cond_s
+   unsigned int __g1_orig_size;
+   unsigned int __wrefs;
+   unsigned int __g_signals[2];
++  unsigned int __unused_initialized_1;
++  unsigned int __unused_initialized_2;
+ };
+ 
+ typedef unsigned int __tss_t;
+diff --git a/sysdeps/nptl/dl-tls_init_tp.c b/sysdeps/nptl/dl-tls_init_tp.c
+index f487bfb66e..8629b5d41b 100644
+--- a/sysdeps/nptl/dl-tls_init_tp.c
++++ b/sysdeps/nptl/dl-tls_init_tp.c
+@@ -23,6 +23,7 @@
+ #include <tls.h>
+ #include <rseq-internal.h>
+ #include <thread_pointer.h>
++#include <dl-symbol-redir-ifunc.h>
+ 
+ #define TUNABLE_NAMESPACE pthread
+ #include <dl-tunables.h>
+diff --git a/sysdeps/nptl/pthread.h b/sysdeps/nptl/pthread.h
+index 050b4ab8d1..9ad36cabe9 100644
+--- a/sysdeps/nptl/pthread.h
++++ b/sysdeps/nptl/pthread.h
+@@ -152,7 +152,7 @@ enum
+ 
+ 
+ /* Conditional variable handling.  */
+-#define PTHREAD_COND_INITIALIZER { { {0}, {0}, {0, 0}, 0, 0, {0, 0} } }
++#define PTHREAD_COND_INITIALIZER { { {0}, {0}, {0, 0}, 0, 0, {0, 0}, 0, 0 } }
+ 
+ 
+ /* Cleanup buffers */
+diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
+index a123e28a57..2e0ce773a0 100644
+--- a/sysdeps/pthread/Makefile
++++ b/sysdeps/pthread/Makefile
+@@ -106,6 +106,7 @@ tests += \
+   tst-cancel28 \
+   tst-cancel29 \
+   tst-cancel30 \
++  tst-cancel32 \
+   tst-cleanup0 \
+   tst-cleanup1 \
+   tst-cleanup2 \
+diff --git a/sysdeps/pthread/tst-cancel32.c b/sysdeps/pthread/tst-cancel32.c
+new file mode 100644
+index 0000000000..ab550c16bf
+--- /dev/null
++++ b/sysdeps/pthread/tst-cancel32.c
+@@ -0,0 +1,73 @@
++/* Check if pthread_setcanceltype disables asynchronous cancellation
++   once cancellation happens (BZ 32782)
++
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++/* The pthread_setcanceltype is a cancellation entrypoint, and if
++   asynchronous is enabled and the cancellation starts (on the second
++   pthread_setcanceltype call), the asynchronous should not restart
++   the process.  */
++
++#include <support/xthread.h>
++
++#define NITER     1000
++#define NTHREADS     8
++
++static void
++tf_cleanup (void *arg)
++{
++}
++
++static void *
++tf (void *closure)
++{
++  pthread_cleanup_push (tf_cleanup, NULL);
++  for (;;)
++    {
++      /* The only possible failure for pthread_setcanceltype is an
++	 invalid state type.  */
++      pthread_setcanceltype (PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
++      pthread_setcanceltype (PTHREAD_CANCEL_DEFERRED, NULL);
++    }
++  pthread_cleanup_pop (1);
++
++  return NULL;
++}
++
++static void
++poll_threads (int nthreads)
++{
++  pthread_t thr[nthreads];
++  for (int i = 0; i < nthreads; i++)
++    thr[i] = xpthread_create (NULL, tf, NULL);
++  for (int i = 0; i < nthreads; i++)
++    xpthread_cancel (thr[i]);
++  for (int i = 0; i < nthreads; i++)
++    xpthread_join (thr[i]);
++}
++
++static int
++do_test (void)
++{
++  for (int k = 0; k < NITER; k++)
++    poll_threads (NTHREADS);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/riscv/dl-machine.h b/sysdeps/riscv/dl-machine.h
+index a30892f080..dcc3e0883b 100644
+--- a/sysdeps/riscv/dl-machine.h
++++ b/sysdeps/riscv/dl-machine.h
+@@ -348,7 +348,8 @@ elf_machine_runtime_setup (struct link_map *l, struct r_scope_elem *scope[],
+       gotplt[1] = (ElfW(Addr)) l;
+     }
+ 
+-  if (l->l_type == lt_executable && l->l_relocated)
++#ifdef SHARED
++  if (l->l_type == lt_executable)
+     {
+       /* The __global_pointer$ may not be defined by the linker if the
+ 	 $gp register does not be used to access the global variable
+@@ -362,12 +363,16 @@ elf_machine_runtime_setup (struct link_map *l, struct r_scope_elem *scope[],
+       _dl_lookup_symbol_x ("__global_pointer$", l, &ref,
+ 			   l->l_scope, NULL, 0, 0, NULL);
+       if (ref)
+-        asm (
+-          "mv gp, %0\n"
+-          :
+-          : "r" (ref->st_value)
+-        );
++	asm (
++	  "mv gp, %0\n"
++	  :
++	  : "r" (ref->st_value + l->l_addr)
++	  /* Don't use SYMBOL_ADDRESS here since __global_pointer$
++	     can be SHN_ABS type, but we need the address relative to
++	     PC, not the absolute address.  */
++	);
+     }
++#endif
+ #endif
+   return lazy;
+ }
+diff --git a/sysdeps/unix/sysv/linux/aarch64/Makefile b/sysdeps/unix/sysv/linux/aarch64/Makefile
+index 1fdad67fae..0839f0b08c 100644
+--- a/sysdeps/unix/sysv/linux/aarch64/Makefile
++++ b/sysdeps/unix/sysv/linux/aarch64/Makefile
+@@ -3,7 +3,134 @@ sysdep_headers += sys/elf.h
+ tests += \
+   tst-aarch64-pkey \
+   # tests
+-endif
++
++ifneq (no,$(findstring no,$(have-cc-gcs) $(have-test-cc-gcs) $(have-ld-gcs)))
++
++gcs-tests-dynamic = \
++  tst-gcs-disabled \
++  tst-gcs-dlopen-disabled \
++  tst-gcs-dlopen-enforced \
++  tst-gcs-dlopen-optional-off \
++  tst-gcs-dlopen-optional-on \
++  tst-gcs-dlopen-override \
++  tst-gcs-enforced \
++  tst-gcs-enforced-abort \
++  tst-gcs-noreturn \
++  tst-gcs-optional-off \
++  tst-gcs-optional-on \
++  tst-gcs-override \
++  tst-gcs-shared-disabled \
++  tst-gcs-shared-enforced-abort \
++  tst-gcs-shared-optional \
++  tst-gcs-shared-override \
++  # gcs-tests-dynamic
++
++gcs-tests-static = \
++  tst-gcs-disabled-static \
++  tst-gcs-enforced-static \
++  tst-gcs-enforced-static-abort \
++  tst-gcs-optional-static-off \
++  tst-gcs-optional-static-on \
++  tst-gcs-override-static \
++  # gcs-tests-static
++
++tests += \
++  $(gcs-tests-dynamic) \
++  $(gcs-tests-static) \
++  # tests
++
++tests-static += \
++  $(gcs-tests-static) \
++  # tests-static
++
++define run-gcs-abort-test
++  $(test-wrapper-env) $(run-program-env) \
++  $(tst-gcs-$*-abort-ENV) $(host-test-program-cmd)
++endef
++
++$(objpfx)tst-gcs-%-abort.out: $(..)sysdeps/unix/sysv/linux/aarch64/tst-gcs-abort.sh \
++	$(objpfx)tst-gcs-%-abort
++	$(SHELL) $< $(common-objpfx) $(test-name) '$(run-gcs-abort-test)'; \
++	$(evaluate-test)
++
++LDFLAGS-tst-gcs-disabled += -Wl,-z gcs=always
++LDFLAGS-tst-gcs-enforced += -Wl,-z gcs=always
++LDFLAGS-tst-gcs-enforced-abort += -Wl,-z gcs=never
++LDFLAGS-tst-gcs-optional-on += -Wl,-z gcs=always
++LDFLAGS-tst-gcs-optional-off += -Wl,-z gcs=never
++LDFLAGS-tst-gcs-override += -Wl,-z gcs=never
++
++LDFLAGS-tst-gcs-disabled-static += -Wl,-z gcs=always
++LDFLAGS-tst-gcs-enforced-static += -Wl,-z gcs=always
++LDFLAGS-tst-gcs-enforced-static-abort += -Wl,-z gcs=never
++LDFLAGS-tst-gcs-optional-static-on += -Wl,-z gcs=always
++LDFLAGS-tst-gcs-optional-static-off += -Wl,-z gcs=never
++LDFLAGS-tst-gcs-override-static += -Wl,-z gcs=never
++
++tst-gcs-disabled-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=0
++tst-gcs-enforced-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1
++tst-gcs-enforced-abort-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1
++tst-gcs-optional-on-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=2
++tst-gcs-optional-off-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=2
++tst-gcs-override-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=3
++
++tst-gcs-disabled-static-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=0
++tst-gcs-enforced-static-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1
++tst-gcs-enforced-static-abort-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1
++tst-gcs-optional-static-on-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=2
++tst-gcs-optional-static-off-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=2
++tst-gcs-override-static-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=3
++
++# force one of the dependencies to be unmarked
++LDFLAGS-tst-gcs-mod2.so += -Wl,-z gcs=never
++
++LDFLAGS-tst-gcs-shared-disabled = -Wl,-z gcs=always
++LDFLAGS-tst-gcs-shared-enforced-abort = -Wl,-z gcs=always
++LDFLAGS-tst-gcs-shared-optional = -Wl,-z gcs=always
++LDFLAGS-tst-gcs-shared-override = -Wl,-z gcs=always
++
++modules-names += \
++  tst-gcs-mod1 \
++  tst-gcs-mod2 \
++  tst-gcs-mod3 \
++  # modules-names
++
++$(objpfx)tst-gcs-shared-disabled: $(objpfx)tst-gcs-mod1.so $(objpfx)tst-gcs-mod3.so
++$(objpfx)tst-gcs-shared-enforced-abort: $(objpfx)tst-gcs-mod1.so $(objpfx)tst-gcs-mod3.so
++$(objpfx)tst-gcs-shared-optional: $(objpfx)tst-gcs-mod1.so $(objpfx)tst-gcs-mod3.so
++$(objpfx)tst-gcs-shared-override: $(objpfx)tst-gcs-mod1.so $(objpfx)tst-gcs-mod3.so
++$(objpfx)tst-gcs-mod1.so: $(objpfx)tst-gcs-mod2.so
++
++tst-gcs-shared-disabled-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=0
++tst-gcs-shared-enforced-abort-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1
++tst-gcs-shared-optional-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=2
++tst-gcs-shared-override-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=3
++
++LDFLAGS-tst-gcs-dlopen-disabled = -Wl,-z gcs=always
++LDFLAGS-tst-gcs-dlopen-enforced = -Wl,-z gcs=always
++LDFLAGS-tst-gcs-dlopen-optional-on = -Wl,-z gcs=always
++LDFLAGS-tst-gcs-dlopen-optional-off = -Wl,-z gcs=never
++LDFLAGS-tst-gcs-dlopen-override = -Wl,-z gcs=always
++
++tst-gcs-dlopen-disabled-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=0
++tst-gcs-dlopen-enforced-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1
++tst-gcs-dlopen-optional-on-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=2
++tst-gcs-dlopen-optional-off-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=2
++tst-gcs-dlopen-override-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=3
++
++$(objpfx)tst-gcs-dlopen-disabled.out: $(objpfx)tst-gcs-mod2.so
++$(objpfx)tst-gcs-dlopen-enforced.out: $(objpfx)tst-gcs-mod2.so
++$(objpfx)tst-gcs-dlopen-optional-on.out: $(objpfx)tst-gcs-mod2.so
++$(objpfx)tst-gcs-dlopen-optional-off.out: $(objpfx)tst-gcs-mod2.so
++$(objpfx)tst-gcs-dlopen-override.out: $(objpfx)tst-gcs-mod2.so
++
++LDFLAGS-tst-gcs-noreturn = -Wl,-z gcs=always
++
++tst-gcs-noreturn-ENV = GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=0
++
++endif # ifeq ($(have-test-cc-gcs),yes)
++
++endif # ifeq ($(subdir),misc)
+ 
+ ifeq ($(subdir),stdlib)
+ gen-as-const-headers += ucontext_i.sym
 diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-aarch64-pkey.c b/sysdeps/unix/sysv/linux/aarch64/tst-aarch64-pkey.c
 index 3ff33ef72a..c884efc3b4 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/tst-aarch64-pkey.c
@@ -816,6 +3064,665 @@ index 3ff33ef72a..c884efc3b4 100644
        FAIL_EXIT1 ("pkey_alloc: %m");
      }
  
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-abort.sh b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-abort.sh
+new file mode 100644
+index 0000000000..9e2be2d5c5
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-abort.sh
+@@ -0,0 +1,39 @@
++#!/bin/sh
++# Test wrapper for AArch64 tests for GCS that are expected to abort.
++# Copyright (C) 2025 Free Software Foundation, Inc.
++# This file is part of the GNU C Library.
++
++# The GNU C Library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++
++# The GNU C Library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++
++# You should have received a copy of the GNU Lesser General Public
++# License along with the GNU C Library; if not, see
++# <https://www.gnu.org/licenses/>.
++
++objpfx=$1; shift
++tstname=$1; shift
++tstrun=$1; shift
++
++logfile=$objpfx/$tstname.out
++
++rm -vf $logfile
++touch $logfile
++
++${tstrun} 2>> $logfile >> $logfile; status=$?
++
++if test $status -eq 127 \
++  && grep -q -w "not GCS compatible" "$logfile" ; then
++  exit 0
++elif test $status -eq 77; then
++  exit 77
++else
++  echo "unexpected test output or exit status $status"
++  exit 1
++fi
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-disabled-static.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-disabled-static.c
+new file mode 100644
+index 0000000000..c71d68cb86
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-disabled-static.c
+@@ -0,0 +1 @@
++#include "tst-gcs-disabled.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-disabled.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-disabled.c
+new file mode 100644
+index 0000000000..bd688785bb
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-disabled.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 0
++#include "tst-gcs-skeleton.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-disabled.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-disabled.c
+new file mode 100644
+index 0000000000..34395280a3
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-disabled.c
+@@ -0,0 +1,3 @@
++#define TEST_GCS_EXPECT_ENABLED 0
++#define TEST_GCS_EXPECT_DLOPEN 1
++#include "tst-gcs-dlopen.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-enforced.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-enforced.c
+new file mode 100644
+index 0000000000..d8489ecd24
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-enforced.c
+@@ -0,0 +1,3 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#define TEST_GCS_EXPECT_DLOPEN 0
++#include "tst-gcs-dlopen.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-optional-off.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-optional-off.c
+new file mode 100644
+index 0000000000..34395280a3
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-optional-off.c
+@@ -0,0 +1,3 @@
++#define TEST_GCS_EXPECT_ENABLED 0
++#define TEST_GCS_EXPECT_DLOPEN 1
++#include "tst-gcs-dlopen.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-optional-on.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-optional-on.c
+new file mode 100644
+index 0000000000..d8489ecd24
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-optional-on.c
+@@ -0,0 +1,3 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#define TEST_GCS_EXPECT_DLOPEN 0
++#include "tst-gcs-dlopen.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-override.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-override.c
+new file mode 100644
+index 0000000000..152ffcf207
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen-override.c
+@@ -0,0 +1,3 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#define TEST_GCS_EXPECT_DLOPEN 1
++#include "tst-gcs-dlopen.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen.c
+new file mode 100644
+index 0000000000..6e0801c63a
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-dlopen.c
+@@ -0,0 +1,62 @@
++/* AArch64 tests for GCS for dlopen use case.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include "tst-gcs-helper.h"
++
++#include <dlfcn.h>
++#include <string.h>
++
++static int
++do_test (void)
++{
++  /* Check if GCS could possible by enabled.  */
++  if (!(getauxval (AT_HWCAP) & HWCAP_GCS))
++    {
++      puts ("kernel or CPU does not support GCS");
++      return EXIT_UNSUPPORTED;
++    }
++  /* The tst-gcs-mod2.so test library does not have GCS marking.  */
++  void *h = dlopen ("tst-gcs-mod2.so", RTLD_NOW);
++  const char *err = dlerror ();
++
++#if TEST_GCS_EXPECT_DLOPEN
++  TEST_VERIFY (h != NULL);
++#else
++  TEST_VERIFY (h == NULL);
++  /* Only accept expected GCS-related errors.  */
++  TEST_VERIFY (strstr (err, "not GCS compatible") != NULL);
++#endif
++
++#if TEST_GCS_EXPECT_ENABLED
++  TEST_VERIFY (__check_gcs_status ());
++#else
++  TEST_VERIFY (!__check_gcs_status ());
++#endif
++
++  if (h == NULL)
++    printf ("dlopen error: %s\n", err);
++  else
++    {
++      puts ("library loaded normally");
++      dlclose (h);
++    }
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-abort.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-abort.c
+new file mode 100644
+index 0000000000..608318f26d
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-abort.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#include "tst-gcs-skeleton.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-static-abort.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-static-abort.c
+new file mode 100644
+index 0000000000..c20a999f6b
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-static-abort.c
+@@ -0,0 +1 @@
++#include "tst-gcs-enforced-abort.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-static.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-static.c
+new file mode 100644
+index 0000000000..bb39dada55
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced-static.c
+@@ -0,0 +1 @@
++#include "tst-gcs-enforced.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced.c
+new file mode 100644
+index 0000000000..608318f26d
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-enforced.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#include "tst-gcs-skeleton.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-helper.h b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-helper.h
+new file mode 100644
+index 0000000000..d8a586d2d8
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-helper.h
+@@ -0,0 +1,39 @@
++/* AArch64 tests for GCS.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#ifndef TST_GCS_HELPER_H
++#define TST_GCS_HELPER_H
++
++#include <support/check.h>
++#include <support/support.h>
++#include <support/test-driver.h>
++
++#include <stdio.h>
++#include <sys/auxv.h>
++
++static bool __check_gcs_status (void)
++{
++  register unsigned long x16 asm ("x16");
++  asm volatile (
++    "mov	x16, #1 /* _CHKFEAT_GCS */\n"
++    "hint	40 /* CHKFEAT_X16 */\n"
++    : "=r" (x16));
++  return x16 ^ 1;
++}
++
++#endif // POINTER_GUARD_H
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod1.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod1.c
+new file mode 100644
+index 0000000000..931ff81797
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod1.c
+@@ -0,0 +1,27 @@
++/* DSO for testing GCS.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++
++int fun2 (void); // tst-gcs-mod2.c
++
++int fun1 (void)
++{
++  puts ("called function fun1");
++  return fun2 ();
++}
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod2.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod2.c
+new file mode 100644
+index 0000000000..f9370eb8ff
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod2.c
+@@ -0,0 +1,25 @@
++/* DSO for testing GCS.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++
++int fun2 (void)
++{
++  puts ("called function fun2");
++  return 0;
++}
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod3.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod3.c
+new file mode 100644
+index 0000000000..38bb357547
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-mod3.c
+@@ -0,0 +1,25 @@
++/* DSO for testing GCS.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <stdio.h>
++
++int fun3 (void)
++{
++  puts ("called function fun3");
++  return 0;
++}
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-noreturn.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-noreturn.c
+new file mode 100644
+index 0000000000..f55057924f
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-noreturn.c
+@@ -0,0 +1,101 @@
++/* AArch64 test for GCS abort when returning to non-GCS address.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include "tst-gcs-helper.h"
++
++#include <sys/prctl.h>
++#include <stdlib.h>
++
++#include <support/xsignal.h>
++
++# ifndef PR_SET_SHADOW_STACK_STATUS
++#  define PR_SET_SHADOW_STACK_STATUS	75
++#  define PR_SHADOW_STACK_ENABLE	(1UL << 0)
++# endif
++
++static void
++run_with_gcs (void)
++{
++  int r = prctl (PR_SET_SHADOW_STACK_STATUS, PR_SHADOW_STACK_ENABLE, 0, 0, 0);
++  /* Syscall should succeed.  */
++  TEST_VERIFY (r == 0);
++  bool gcs_enabled = __check_gcs_status ();
++  /* Now GCS should be enabled.  */
++  TEST_VERIFY (gcs_enabled);
++  printf ("GCS is %s\n", gcs_enabled ? "enabled" : "disabled");
++}
++
++static struct _aarch64_ctx *
++extension (void *p)
++{
++  return p;
++}
++
++#ifndef GCS_MAGIC
++#define GCS_MAGIC 0x47435300
++#endif
++
++static void
++handler (int sig, siginfo_t *si, void *ctx)
++{
++  TEST_VERIFY (sig == SIGSEGV);
++  ucontext_t *uc = ctx;
++  void *p = uc->uc_mcontext.__reserved;
++  if (extension (p)->magic == FPSIMD_MAGIC)
++    p = (char *)p + extension (p)->size;
++  if (extension (p)->magic == GCS_MAGIC)
++    {
++      struct { uint64_t x, gcspr, y, z; } *q = p;
++      printf ("GCS pointer: %016lx\n", q->gcspr);
++      exit (0);
++    }
++  else
++    exit (3);
++}
++
++static int
++do_test (void)
++{
++  /* Check if GCS could possible by enabled.  */
++  if (!(getauxval (AT_HWCAP) & HWCAP_GCS))
++    {
++      puts ("kernel or CPU does not support GCS");
++      return EXIT_UNSUPPORTED;
++    }
++  bool gcs_enabled = __check_gcs_status ();
++  /* This test should be rung with GCS initially disabled.  */
++  TEST_VERIFY (!gcs_enabled);
++
++  /* We can't use EXPECTED_SIGNAL because of cases when
++     this test runs on a system that does not support GCS
++     which is being detected at runtime.  */
++  struct sigaction sigact;
++  sigemptyset (&sigact.sa_mask);
++  sigact.sa_flags = 0;
++  sigact.sa_flags = sigact.sa_flags | SA_SIGINFO;
++  sigact.sa_sigaction = handler;
++  xsigaction (SIGSEGV, &sigact, NULL);
++
++  run_with_gcs ();
++  /* If we reached this point, then something went wrong.
++     Returning from a function that enabled GCS should result in
++     SIGSEGV that we catch with the handler set up above.  */
++  return 2;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-off.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-off.c
+new file mode 100644
+index 0000000000..bd688785bb
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-off.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 0
++#include "tst-gcs-skeleton.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-on.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-on.c
+new file mode 100644
+index 0000000000..608318f26d
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-on.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#include "tst-gcs-skeleton.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-static-off.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-static-off.c
+new file mode 100644
+index 0000000000..54e3b9a0d5
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-static-off.c
+@@ -0,0 +1 @@
++#include "tst-gcs-optional-off.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-static-on.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-static-on.c
+new file mode 100644
+index 0000000000..11b884b429
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-optional-static-on.c
+@@ -0,0 +1 @@
++#include "tst-gcs-optional-on.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-override-static.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-override-static.c
+new file mode 100644
+index 0000000000..09055dcdc4
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-override-static.c
+@@ -0,0 +1 @@
++#include "tst-gcs-override.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-override.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-override.c
+new file mode 100644
+index 0000000000..608318f26d
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-override.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#include "tst-gcs-skeleton.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-disabled.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-disabled.c
+new file mode 100644
+index 0000000000..8598dc44b5
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-disabled.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 0
++#include "tst-gcs-shared.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-enforced-abort.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-enforced-abort.c
+new file mode 100644
+index 0000000000..f1333cee9d
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-enforced-abort.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#include "tst-gcs-shared.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-optional.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-optional.c
+new file mode 100644
+index 0000000000..8598dc44b5
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-optional.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 0
++#include "tst-gcs-shared.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-override.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-override.c
+new file mode 100644
+index 0000000000..f1333cee9d
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared-override.c
+@@ -0,0 +1,2 @@
++#define TEST_GCS_EXPECT_ENABLED 1
++#include "tst-gcs-shared.c"
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared.c
+new file mode 100644
+index 0000000000..1192de69fc
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-shared.c
+@@ -0,0 +1,41 @@
++/* AArch64 tests for GCS.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include "tst-gcs-helper.h"
++
++int fun1 (void); // tst-gcs-mod1.c
++int fun3 (void); // tst-gcs-mod3.c
++
++static int
++do_test (void)
++{
++  /* Check if GCS could possible by enabled.  */
++  if (!(getauxval (AT_HWCAP) & HWCAP_GCS))
++    {
++      puts ("kernel or CPU does not support GCS");
++      return EXIT_UNSUPPORTED;
++    }
++#if TEST_GCS_EXPECT_ENABLED
++  TEST_VERIFY (__check_gcs_status ());
++#else
++  TEST_VERIFY (!__check_gcs_status ());
++#endif
++  return fun1 () + fun3 ();
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/aarch64/tst-gcs-skeleton.c b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-skeleton.c
+new file mode 100644
+index 0000000000..feb5e33ebf
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/aarch64/tst-gcs-skeleton.c
+@@ -0,0 +1,43 @@
++/* AArch64 tests for GCS.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include "tst-gcs-helper.h"
++
++static int
++do_test (void)
++{
++  /* Check if GCS could possible by enabled.  */
++  if (!(getauxval (AT_HWCAP) & HWCAP_GCS))
++    {
++      puts ("kernel or CPU does not support GCS");
++      return EXIT_UNSUPPORTED;
++    }
++  bool gcs_enabled = __check_gcs_status ();
++  if (gcs_enabled)
++    puts ("GCS enabled");
++  else
++    puts ("GCS not enabled");
++#if TEST_GCS_EXPECT_ENABLED
++  TEST_VERIFY (gcs_enabled);
++#else
++  TEST_VERIFY (!gcs_enabled);
++#endif
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/unix/sysv/linux/bits/sched.h b/sysdeps/unix/sysv/linux/bits/sched.h
+index 3656e98eda..39b0b3d19c 100644
+--- a/sysdeps/unix/sysv/linux/bits/sched.h
++++ b/sysdeps/unix/sysv/linux/bits/sched.h
+@@ -152,7 +152,7 @@ int sched_setattr (pid_t tid, struct sched_attr *attr, unsigned int flags)
+    store it in *ATTR.  */
+ int sched_getattr (pid_t tid, struct sched_attr *attr, unsigned int size,
+ 		   unsigned int flags)
+-  __THROW __nonnull ((2)) __attr_access ((__write_only__, 2, 3));
++  __THROW __nonnull ((2));
+ 
+ #endif
+ 
+diff --git a/sysdeps/unix/sysv/linux/rseq-internal.h b/sysdeps/unix/sysv/linux/rseq-internal.h
+index f89e784243..d2ab4cb829 100644
+--- a/sysdeps/unix/sysv/linux/rseq-internal.h
++++ b/sysdeps/unix/sysv/linux/rseq-internal.h
+@@ -108,13 +108,12 @@ rseq_register_current_thread (struct pthread *self, bool do_rseq)
+       if (size < RSEQ_AREA_SIZE_INITIAL)
+         size = RSEQ_AREA_SIZE_INITIAL;
+ 
+-      /* Initialize the rseq fields that are read by the kernel on
+-         registration, there is no guarantee that struct pthread is
+-         cleared on all architectures.  */
++      /* Initialize the whole rseq area to zero prior to registration.  */
++      memset (RSEQ_SELF (), 0, size);
++
++      /* Set the cpu_id field to RSEQ_CPU_ID_UNINITIALIZED, this is checked by
++         the kernel at registration when CONFIG_DEBUG_RSEQ is enabled.  */
+       RSEQ_SETMEM (cpu_id, RSEQ_CPU_ID_UNINITIALIZED);
+-      RSEQ_SETMEM (cpu_id_start, 0);
+-      RSEQ_SETMEM (rseq_cs, 0);
+-      RSEQ_SETMEM (flags, 0);
+ 
+       int ret = INTERNAL_SYSCALL_CALL (rseq, RSEQ_SELF (), size, 0, RSEQ_SIG);
+       if (!INTERNAL_SYSCALL_ERROR_P (ret))
 diff --git a/sysdeps/x86/bits/floatn.h b/sysdeps/x86/bits/floatn.h
 index d197cb10dd..4674165bd7 100644
 --- a/sysdeps/x86/bits/floatn.h
