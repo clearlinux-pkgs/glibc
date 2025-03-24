@@ -40,6 +40,11 @@ Sam James (1):
 Siddhesh Poyarekar (1):
       assert: Add test for CVE-2025-0395
 
+Sunil K Pandey (3):
+      x86_64: Add tanh with FMA
+      x86_64: Add sinh with FMA
+      x86_64: Add atanh with FMA
+
 Wilco Dijkstra (3):
       math: Improve layout of exp/exp10 data
       AArch64: Add SVE memset
@@ -667,6 +672,30 @@ index 0000000000..102cb0078d
 +#define EXPECTED_SIGNAL SIGABRT
 +#define TEST_FUNCTION_ARGV do_test
 +#include <support/test-driver.c>
+diff --git a/benchtests/atanh-inputs b/benchtests/atanh-inputs
+index 455aa65b65..4985293254 100644
+--- a/benchtests/atanh-inputs
++++ b/benchtests/atanh-inputs
+@@ -1,6 +1,7 @@
+ ## args: double
+ ## ret: double
+ ## includes: math.h
++## name: workload-random
+ 0x1.5a2730bacd94ap-1
+ -0x1.b57eb40fc048ep-21
+ -0x1.c0b185fb450e2p-17
+diff --git a/benchtests/sinh-inputs b/benchtests/sinh-inputs
+index 7b1ac46a39..2fcb2fabf8 100644
+--- a/benchtests/sinh-inputs
++++ b/benchtests/sinh-inputs
+@@ -1,6 +1,7 @@
+ ## args: double
+ ## ret: double
+ ## includes: math.h
++## name: workload-random
+ 0x1.bcb6129b5ff2bp8
+ -0x1.63057386325ebp9
+ 0x1.62f1d7dc4e8bfp9
 diff --git a/config.make.in b/config.make.in
 index 36096881b7..59897eaec2 100644
 --- a/config.make.in
@@ -2666,6 +2695,54 @@ index 0000000000..7fb40fdd9e
 +
 +END (__memset_sve_zva64)
 +#endif
+diff --git a/sysdeps/ieee754/dbl-64/e_atanh.c b/sysdeps/ieee754/dbl-64/e_atanh.c
+index 1e09e46f0f..d1c71b2aa4 100644
+--- a/sysdeps/ieee754/dbl-64/e_atanh.c
++++ b/sysdeps/ieee754/dbl-64/e_atanh.c
+@@ -44,6 +44,11 @@
+ 
+ static const double huge = 1e300;
+ 
++#ifndef SECTION
++# define SECTION
++#endif
++
++SECTION
+ double
+ __ieee754_atanh (double x)
+ {
+@@ -73,4 +78,7 @@ __ieee754_atanh (double x)
+ 
+   return copysign (t, x);
+ }
++
++#ifndef __ieee754_atanh
+ libm_alias_finite (__ieee754_atanh, __atanh)
++#endif
+diff --git a/sysdeps/ieee754/dbl-64/e_sinh.c b/sysdeps/ieee754/dbl-64/e_sinh.c
+index b4b5857ddd..3f787967f9 100644
+--- a/sysdeps/ieee754/dbl-64/e_sinh.c
++++ b/sysdeps/ieee754/dbl-64/e_sinh.c
+@@ -41,6 +41,11 @@ static char rcsid[] = "$NetBSD: e_sinh.c,v 1.7 1995/05/10 20:46:13 jtc Exp $";
+ 
+ static const double one = 1.0, shuge = 1.0e307;
+ 
++#ifndef SECTION
++# define SECTION
++#endif
++
++SECTION
+ double
+ __ieee754_sinh (double x)
+ {
+@@ -90,4 +95,7 @@ __ieee754_sinh (double x)
+   /* |x| > overflowthresold, sinh(x) overflow */
+   return math_narrow_eval (x * shuge);
+ }
++
++#ifndef __ieee754_sinh
+ libm_alias_finite (__ieee754_sinh, __sinh)
++#endif
 diff --git a/sysdeps/ieee754/dbl-64/math_config.h b/sysdeps/ieee754/dbl-64/math_config.h
 index 299a2ff8c1..3382e385f9 100644
 --- a/sysdeps/ieee754/dbl-64/math_config.h
@@ -2705,6 +2782,22 @@ index 20f617b996..42351c6b34 100644
    if (__glibc_likely (adjust == 0))
      {
        if ((u.ieee.mantissa1 & 1) == 0 && u.ieee.exponent != 0x7ff)
+diff --git a/sysdeps/ieee754/dbl-64/s_tanh.c b/sysdeps/ieee754/dbl-64/s_tanh.c
+index 673a97102d..13063db04e 100644
+--- a/sysdeps/ieee754/dbl-64/s_tanh.c
++++ b/sysdeps/ieee754/dbl-64/s_tanh.c
+@@ -46,6 +46,11 @@ static char rcsid[] = "$NetBSD: s_tanh.c,v 1.7 1995/05/10 20:48:22 jtc Exp $";
+ 
+ static const double one = 1.0, two = 2.0, tiny = 1.0e-300;
+ 
++#ifndef SECTION
++# define SECTION
++#endif
++
++SECTION
+ double
+ __tanh (double x)
+ {
 diff --git a/sysdeps/ieee754/flt-32/e_sinhf.c b/sysdeps/ieee754/flt-32/e_sinhf.c
 index c007c7d174..dee96fc7cb 100644
 --- a/sysdeps/ieee754/flt-32/e_sinhf.c
@@ -3754,3 +3847,215 @@ index d197cb10dd..4674165bd7 100644
  typedef __float128 _Float128;
  #  endif
  
+diff --git a/sysdeps/x86_64/fpu/multiarch/Makefile b/sysdeps/x86_64/fpu/multiarch/Makefile
+index e823d2fcc6..3403422443 100644
+--- a/sysdeps/x86_64/fpu/multiarch/Makefile
++++ b/sysdeps/x86_64/fpu/multiarch/Makefile
+@@ -1,15 +1,18 @@
+ ifeq ($(subdir),math)
+ CFLAGS-e_asin-fma.c = -mfma -mavx2
+ CFLAGS-e_atan2-fma.c = -mfma -mavx2
++CFLAGS-e_atanh-fma.c = -mfma -mavx2
+ CFLAGS-e_exp-fma.c = -mfma -mavx2
+ CFLAGS-e_log-fma.c = -mfma -mavx2
+ CFLAGS-e_log2-fma.c = -mfma -mavx2
+ CFLAGS-e_pow-fma.c = -mfma -mavx2
++CFLAGS-e_sinh-fma.c = -mfma -mavx2
+ CFLAGS-s_atan-fma.c = -mfma -mavx2
+ CFLAGS-s_expm1-fma.c = -mfma -mavx2
+ CFLAGS-s_log1p-fma.c = -mfma -mavx2
+ CFLAGS-s_sin-fma.c = -mfma -mavx2
+ CFLAGS-s_tan-fma.c = -mfma -mavx2
++CFLAGS-s_tanh-fma.c = -mfma -mavx2
+ CFLAGS-s_sincos-fma.c = -mfma -mavx2
+ CFLAGS-s_exp10m1f-fma.c = -mfma -mavx2
+ CFLAGS-s_exp2m1f-fma.c = -mfma -mavx2
+@@ -57,6 +60,7 @@ libm-sysdep_routines += \
+   e_asin-fma \
+   e_atan2-avx \
+   e_atan2-fma \
++  e_atanh-fma \
+   e_exp-avx \
+   e_exp-fma \
+   e_exp2f-fma \
+@@ -68,6 +72,7 @@ libm-sysdep_routines += \
+   e_logf-fma \
+   e_pow-fma \
+   e_powf-fma \
++  e_sinh-fma \
+   s_atan-avx \
+   s_atan-fma \
+   s_ceil-sse4_1 \
+@@ -96,6 +101,7 @@ libm-sysdep_routines += \
+   s_sinf-sse2 \
+   s_tan-avx \
+   s_tan-fma \
++  s_tanh-fma \
+   s_trunc-sse4_1 \
+   s_truncf-sse4_1 \
+ # libm-sysdep_routines
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_atanh-fma.c b/sysdeps/x86_64/fpu/multiarch/e_atanh-fma.c
+new file mode 100644
+index 0000000000..c3f2f9e550
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/e_atanh-fma.c
+@@ -0,0 +1,6 @@
++#define __ieee754_atanh __ieee754_atanh_fma
++#define __log1p __log1p_fma
++
++#define SECTION __attribute__ ((section (".text.fma")))
++
++#include <sysdeps/ieee754/dbl-64/e_atanh.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_atanh.c b/sysdeps/x86_64/fpu/multiarch/e_atanh.c
+new file mode 100644
+index 0000000000..d2b785dfc0
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/e_atanh.c
+@@ -0,0 +1,34 @@
++/* Multiple versions of atanh.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-finite.h>
++
++extern double __redirect_ieee754_atanh (double);
++
++# define SYMBOL_NAME ieee754_atanh
++# include "ifunc-fma.h"
++
++libc_ifunc_redirected (__redirect_ieee754_atanh, __ieee754_atanh, IFUNC_SELECTOR ());
++
++libm_alias_finite (__ieee754_atanh, __atanh)
++
++# define __ieee754_atanh __ieee754_atanh_sse2
++#endif
++#include <sysdeps/ieee754/dbl-64/e_atanh.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_sinh-fma.c b/sysdeps/x86_64/fpu/multiarch/e_sinh-fma.c
+new file mode 100644
+index 0000000000..e0e1e39a7a
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/e_sinh-fma.c
+@@ -0,0 +1,12 @@
++#define __ieee754_sinh __ieee754_sinh_fma
++#define __ieee754_exp __ieee754_exp_fma
++#define __expm1 __expm1_fma
++
++/* NB: __expm1 may be expanded to __expm1_fma in the following
++   prototypes.  */
++extern long double __expm1l (long double);
++extern long double __expm1f128 (long double);
++
++#define SECTION __attribute__ ((section (".text.fma")))
++
++#include <sysdeps/ieee754/dbl-64/e_sinh.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/e_sinh.c b/sysdeps/x86_64/fpu/multiarch/e_sinh.c
+new file mode 100644
+index 0000000000..3d3c18ccdf
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/e_sinh.c
+@@ -0,0 +1,35 @@
++/* Multiple versions of sinh.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++# include <libm-alias-finite.h>
++
++extern double __redirect_ieee754_sinh (double);
++
++# define SYMBOL_NAME ieee754_sinh
++# include "ifunc-fma.h"
++
++libc_ifunc_redirected (__redirect_ieee754_sinh, __ieee754_sinh,
++		       IFUNC_SELECTOR ());
++
++libm_alias_finite (__ieee754_sinh, __sinh)
++
++# define __ieee754_sinh __ieee754_sinh_sse2
++#endif
++#include <sysdeps/ieee754/dbl-64/e_sinh.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_tanh-fma.c b/sysdeps/x86_64/fpu/multiarch/s_tanh-fma.c
+new file mode 100644
+index 0000000000..1b808b1227
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_tanh-fma.c
+@@ -0,0 +1,11 @@
++#define __tanh __tanh_fma
++#define __expm1 __expm1_fma
++
++/* NB: __expm1 may be expanded to __expm1_fma in the following
++   prototypes.  */
++extern long double __expm1l (long double);
++extern long double __expm1f128 (long double);
++
++#define SECTION __attribute__ ((section (".text.fma")))
++
++#include <sysdeps/ieee754/dbl-64/s_tanh.c>
+diff --git a/sysdeps/x86_64/fpu/multiarch/s_tanh.c b/sysdeps/x86_64/fpu/multiarch/s_tanh.c
+new file mode 100644
+index 0000000000..5539b6c61c
+--- /dev/null
++++ b/sysdeps/x86_64/fpu/multiarch/s_tanh.c
+@@ -0,0 +1,31 @@
++/* Multiple versions of tanh.
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <sysdeps/x86/isa-level.h>
++#if MINIMUM_X86_ISA_LEVEL < AVX2_X86_ISA_LEVEL
++
++extern double __redirect_tanh (double);
++
++# define SYMBOL_NAME tanh
++# include "ifunc-fma.h"
++
++libc_ifunc_redirected (__redirect_tanh, __tanh, IFUNC_SELECTOR ());
++
++# define __tanh __tanh_sse2
++#endif
++#include <sysdeps/ieee754/dbl-64/s_tanh.c>
