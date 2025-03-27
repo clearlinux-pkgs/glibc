@@ -452,7 +452,7 @@ pushd ../glibc-buildrootapx
 
 unset ASFLAGS
 unset LDFLAGS
-export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz -mapxf -mavx10.1"
+export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz -mapxf "
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
 
