@@ -342,8 +342,7 @@ export LDFLAGS="-Wl,-z,max-page-size=0x1000 -Wl,--compress-debug-sections=zstd"
     libc_cv_slibdir=/usr/lib64 \
     libc_cv_complocaledir=/usr/share/locale
 
-make 
-#%{?_smp_mflags}
+make %{?_smp_mflags}
 popd
 
 mkdir ../glibc-buildroot-avx512
