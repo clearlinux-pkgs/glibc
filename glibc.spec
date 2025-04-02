@@ -249,10 +249,10 @@ mv -v $supported.new $supported
 mkdir ../glibc-buildroot
 pushd ../glibc-buildroot
 
-export CFLAGS="-O3 -march=westmere -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -gz -ffunction-sections"
+export CFLAGS="-O3 -march=westmere -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -falign-functions=32 -ffunction-sections -gno-column-info -gno-variable-location-views -gz=zstd "
 export ASFLAGS=""
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 -Wl,--compress-debug-sections=zstd"
 
 ../glibc-2.41/configure \
     --prefix=/usr \
@@ -300,10 +300,10 @@ popd
 mkdir ../glibc-buildroot-avx2
 pushd ../glibc-buildroot-avx2
 
-export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz -ffunction-sections"
+export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3  -ffunction-sections -ffunction-sections -gno-column-info -gno-variable-location-views -gz=zstd"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 -Wl,--compress-debug-sections=zstd"
 
 ../glibc-2.41/configure \
     --prefix=/usr \
@@ -349,10 +349,10 @@ popd
 mkdir ../glibc-buildroot-avx512
 pushd ../glibc-buildroot-avx512
 
-export CFLAGS="-O3 -march=x86-64-v4 -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -Wl,-z,x86-64-v4 -gz -ffunction-sections"
+export CFLAGS="-O3 -march=x86-64-v4 -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC -Wl,-z,x86-64-v4 -ffunction-sections -gno-column-info -gno-variable-location-views -gz=zstd"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -D__AVX512__=1 -msse2avx -D__FMA__=1 "
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 -Wl,--compress-debug-sections=zstd"
 
 ../glibc-2.41/configure \
     --prefix=/usr \
@@ -400,7 +400,7 @@ pushd ../glibc-buildroot32
 unset ASFLAGS
 export CFLAGS="-O3 -m32 -march=westmere -mtune=sapphirerapids -mstackrealign -g1  -Wl,-z,max-page-size=0x1000 -gdwarf-4 -gz"
 unset LDFLAGS
-export LDFLAGS="-Wl,-z,max-page-size=0x1000"
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 -Wl,--compress-debug-sections=zstd"
 
 ../glibc-2.41/configure \
     --prefix=/usr \
@@ -452,9 +452,9 @@ pushd ../glibc-buildrootapx
 
 unset ASFLAGS
 unset LDFLAGS
-export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz -mapxf "
+export CFLAGS="-O3 -march=haswell -mtune=sapphirerapids -g1 -m64  -Wl,-z,max-page-size=0x1000 -fPIC  -Wl,-z,x86-64-v3 -gz -mapxf -ffunction-sections -gno-column-info -gno-variable-location-views -gz=zstd"
 export ASFLAGS="-D__AVX__=1 -D__AVX2__=1 -msse2avx -D__FMA__=1 "
-export LDFLAGS="-Wl,-z,max-page-size=0x1000 "
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 -Wl,--compress-debug-sections=zstd"
 
 ../glibc-2.41/configure \
     --prefix=/usr \
@@ -505,6 +505,7 @@ export GCC_IGNORE_WERROR=1
 
 unset LDFLAGS
 unset CFLAGS
+export LDFLAGS="-Wl,-z,max-page-size=0x1000 -Wl,--compress-debug-sections=zstd"
 
 # first we install the 32 bit build, so that any overlap gets resolved in
 # favor of the 64 bit build
