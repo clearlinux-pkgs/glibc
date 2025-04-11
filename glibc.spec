@@ -10,7 +10,7 @@
 
 Name:           glibc
 Version:        2.41
-Release:        710
+Release:        711
 License:        GPL-2.0
 Summary:        GNU C library
 Url:            http://www.gnu.org/software/libc/libc.html
@@ -612,6 +612,9 @@ strip --remove-section=".note.gnu.build-id" %{buildroot}/usr/lib64/gconv/*.so
 pushd ../glibc-buildroot
 #make check %{?_smp_mflags} || :
 popd
+
+# Need an (empty) %files section to make the base package
+%files
 
 %files bin
 #/usr/bin/catchsegv
