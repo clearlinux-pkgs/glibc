@@ -1,18 +1,20 @@
-Adhemerval Zanella (6):
+Adhemerval Zanella (7):
       math: Fix log10p1f internal table value (BZ 32626)
       math: Fix sinhf for some inputs (BZ 32627)
       math: Fix tanf for some inputs (BZ 32630)
       nptl: Check if thread is already terminated in sigcancel_handler (BZ 32782)
       elf: Extend glibc.rtld.execstack tunable to force executable stack (BZ 32653)
       elf: Fix arm-linux-gnueabihf build break from b861755a84
+      nptl: Fix pthread_getattr_np when modules with execstack are allowed (BZ 32897)
 
 Andreas K. Hüttel (2):
       Remove advisories from release branch
       NEWS: start new section
 
-Aurelien Jarno (2):
+Aurelien Jarno (3):
       Fix tst-aarch64-pkey to handle ENOSPC as not supported
       math: Remove an extra semicolon in math function declarations
+      elf: tst-audit10: split AVX512F code into dedicated functions [BZ #32882]
 
 Florian Weimer (7):
       configure: Fix spelling of -Wl,--no-error-execstack option
@@ -99,10 +101,10 @@ index d0108d2caa..aa547a443f 100644
  $(common-objdir):$(subst $(empty) ,:,$(patsubst ../$(subdir),.,$(rpath-dirs:%=$(common-objpfx)%)))
  else  # build-static
 diff --git a/NEWS b/NEWS
-index b11422b060..8740f5956a 100644
+index b11422b060..51586aaad7 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,28 @@ See the end for copying conditions.
+@@ -5,6 +5,31 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -127,6 +129,9 @@ index b11422b060..8740f5956a 100644
 +  [32782] nptl: Race conditions in pthread cancellation causing crash
 +  [32786] nptl: PTHREAD_COND_INITIALIZER compatibility with pre-2.41 versions
 +  [32810] Crash on x86-64 if XSAVEC disable via tunable
++  [32882] tst-audit10 fails with SIGILL on CPUs without AVX
++  [32897] dynamic-link: pthread_getattr_np fails when executable stack
++    tunable is set
 +
  Version 2.41
  
@@ -1063,7 +1068,7 @@ index 4b1d0d8741..3a3ae56a24 100644
  $(objpfx)tst-piemod1.so: $(libsupport)
 diff --git a/elf/dl-execstack-tunable.c b/elf/dl-execstack-tunable.c
 new file mode 100644
-index 0000000000..6cef1a3036
+index 0000000000..e3b638aeaa
 --- /dev/null
 +++ b/elf/dl-execstack-tunable.c
 @@ -0,0 +1,39 @@
@@ -1100,12 +1105,47 @@ index 0000000000..6cef1a3036
 +      break;
 +
 +    case stack_tunable_mode_force:
-+      if (_dl_make_stack_executable (&__libc_stack_end) != 0)
++      if (_dl_make_stack_executable (__libc_stack_end) != 0)
 +	_dl_fatal_printf (
 +"Fatal glibc error: cannot enable executable stack as tunable requires");
 +      break;
 +    }
 +}
+diff --git a/elf/dl-execstack.c b/elf/dl-execstack.c
+index e4d7dbe7f8..ceec5b2def 100644
+--- a/elf/dl-execstack.c
++++ b/elf/dl-execstack.c
+@@ -23,7 +23,7 @@
+    so as to mprotect it.  */
+ 
+ int
+-_dl_make_stack_executable (void **stack_endp)
++_dl_make_stack_executable (const void *stack_endp)
+ {
+   return ENOSYS;
+ }
+diff --git a/elf/dl-load.c b/elf/dl-load.c
+index f905578a65..945dd8a231 100644
+--- a/elf/dl-load.c
++++ b/elf/dl-load.c
+@@ -945,7 +945,7 @@ struct link_map *
+ _dl_map_object_from_fd (const char *name, const char *origname, int fd,
+ 			struct filebuf *fbp, char *realname,
+ 			struct link_map *loader, int l_type, int mode,
+-			void **stack_endp, Lmid_t nsid)
++			const void *stack_endp, Lmid_t nsid)
+ {
+   struct link_map *l = NULL;
+   const ElfW(Ehdr) *header;
+@@ -2180,7 +2180,7 @@ _dl_map_object (struct link_map *loader, const char *name,
+ 
+   void *stack_end = __libc_stack_end;
+   return _dl_map_object_from_fd (name, origname, fd, &fb, realname, loader,
+-				 type, mode, &stack_end, nsid);
++				 type, mode, stack_end, nsid);
+ }
+ 
+ struct add_path_state
 diff --git a/elf/dl-reloc-static-pie.c b/elf/dl-reloc-static-pie.c
 index e34bf5f7ce..758bf9893e 100644
 --- a/elf/dl-reloc-static-pie.c
@@ -2888,10 +2928,10 @@ index 0000000000..7fb40fdd9e
 +END (__memset_sve_zva64)
 +#endif
 diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
-index e871f27ff2..4b44beb3f4 100644
+index e871f27ff2..ddb34a1588 100644
 --- a/sysdeps/generic/ldsodefs.h
 +++ b/sysdeps/generic/ldsodefs.h
-@@ -695,6 +695,19 @@ extern const ElfW(Phdr) *_dl_phdr;
+@@ -695,10 +695,23 @@ extern const ElfW(Phdr) *_dl_phdr;
  extern size_t _dl_phnum;
  #endif
  
@@ -2911,6 +2951,11 @@ index e871f27ff2..4b44beb3f4 100644
  /* This function changes the permission of the memory region pointed
     by STACK_ENDP to executable and update the internal memory protection
     flags for future thread stack creation.  */
+-int _dl_make_stack_executable (void **stack_endp) attribute_hidden;
++int _dl_make_stack_executable (const void *stack_endp) attribute_hidden;
+ 
+ /* Variable pointing to the end of the stack (or close to it).  This value
+    must be constant over the runtime of the application.  Some programs
 diff --git a/sysdeps/ieee754/dbl-64/e_atanh.c b/sysdeps/ieee754/dbl-64/e_atanh.c
 index 1e09e46f0f..d1c71b2aa4 100644
 --- a/sysdeps/ieee754/dbl-64/e_atanh.c
@@ -3053,6 +3098,25 @@ index dfe56fc2a0..5ee1d6f35e 100644
  	    {
  	      if (sgn)
  		return -st[j].rh - st[j].rl;
+diff --git a/sysdeps/mach/hurd/dl-execstack.c b/sysdeps/mach/hurd/dl-execstack.c
+index 0617d3a161..dc4719bd38 100644
+--- a/sysdeps/mach/hurd/dl-execstack.c
++++ b/sysdeps/mach/hurd/dl-execstack.c
+@@ -26,12 +26,11 @@ extern struct hurd_startup_data *_dl_hurd_data attribute_hidden;
+    so as to mprotect it.  */
+ 
+ int
+-_dl_make_stack_executable (void **stack_endp)
++_dl_make_stack_executable (const void *stack_endp)
+ {
+   /* Challenge the caller.  */
+-  if (__builtin_expect (*stack_endp != __libc_stack_end, 0))
++  if (__glibc_unlikely (stack_endp != __libc_stack_end))
+     return EPERM;
+-  *stack_endp = NULL;
+ 
+ #if IS_IN (rtld)
+   if (__mprotect ((void *)_dl_hurd_data->stack_base, _dl_hurd_data->stack_size,
 diff --git a/sysdeps/nptl/bits/thread-shared-types.h b/sysdeps/nptl/bits/thread-shared-types.h
 index 7c24c0a6be..e614c7f3c9 100644
 --- a/sysdeps/nptl/bits/thread-shared-types.h
@@ -3092,7 +3156,7 @@ index 050b4ab8d1..9ad36cabe9 100644
  
  /* Cleanup buffers */
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
-index a123e28a57..2e0ce773a0 100644
+index a123e28a57..17bdd6f49d 100644
 --- a/sysdeps/pthread/Makefile
 +++ b/sysdeps/pthread/Makefile
 @@ -106,6 +106,7 @@ tests += \
@@ -3103,6 +3167,34 @@ index a123e28a57..2e0ce773a0 100644
    tst-cleanup0 \
    tst-cleanup1 \
    tst-cleanup2 \
+@@ -271,6 +272,7 @@ tests += \
+   tst-spin4 \
+   tst-spin5 \
+   tst-stack1 \
++  tst-stack2 \
+   tst-stdio1 \
+   tst-stdio2 \
+   tst-thrd-detach \
+@@ -366,6 +368,7 @@ modules-names += \
+   tst-atfork4mod \
+   tst-create1mod \
+   tst-fini1mod \
++  tst-stack2-mod \
+   tst-tls4moda \
+   tst-tls4modb \
+   # modules-names
+@@ -539,4 +542,11 @@ LDFLAGS-tst-create1 = -Wl,-export-dynamic
+ $(objpfx)tst-create1: $(shared-thread-library)
+ $(objpfx)tst-create1.out: $(objpfx)tst-create1mod.so
+ 
++$(objpfx)tst-stack2.out: $(objpfx)tst-stack2-mod.so
++LDFLAGS-tst-stack2-mod.so = -Wl,-z,execstack
++ifeq ($(have-no-error-execstack),yes)
++LDFLAGS-tst-stack2-mod.so += -Wl,--no-error-execstack
++endif
++tst-stack2-ENV = GLIBC_TUNABLES=glibc.rtld.execstack=2
++
+ endif
 diff --git a/sysdeps/pthread/tst-cancel32.c b/sysdeps/pthread/tst-cancel32.c
 new file mode 100644
 index 0000000000..ab550c16bf
@@ -3177,6 +3269,104 @@ index 0000000000..ab550c16bf
 +{
 +  for (int k = 0; k < NITER; k++)
 +    poll_threads (NTHREADS);
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/sysdeps/pthread/tst-stack2-mod.c b/sysdeps/pthread/tst-stack2-mod.c
+new file mode 100644
+index 0000000000..806fdbcd8d
+--- /dev/null
++++ b/sysdeps/pthread/tst-stack2-mod.c
+@@ -0,0 +1,39 @@
++/* Check if pthread_getattr_np works within modules with non-exectuble
++   stacks (BZ 32897).
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <pthread.h>
++
++bool init_result;
++
++void
++__attribute__ ((constructor))
++init (void)
++{
++  pthread_t me = pthread_self ();
++  pthread_attr_t attr;
++  init_result = pthread_getattr_np (me, &attr) == 0;
++}
++
++int
++mod_func (void)
++{
++  pthread_t me = pthread_self ();
++  pthread_attr_t attr;
++  return pthread_getattr_np (me, &attr);
++}
+diff --git a/sysdeps/pthread/tst-stack2.c b/sysdeps/pthread/tst-stack2.c
+new file mode 100644
+index 0000000000..20ab5af166
+--- /dev/null
++++ b/sysdeps/pthread/tst-stack2.c
+@@ -0,0 +1,47 @@
++/* Check if pthread_getattr_np works within modules with non-exectuble
++   stacks (BZ 32897).
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <pthread.h>
++#include <stdbool.h>
++#include <support/xdlfcn.h>
++#include <support/check.h>
++
++static int
++do_test (void)
++{
++  {
++    pthread_t me = pthread_self ();
++    pthread_attr_t attr;
++    TEST_COMPARE (pthread_getattr_np (me, &attr), 0);
++  }
++
++  void *h = xdlopen ("tst-stack2-mod.so", RTLD_NOW);
++
++  bool *init_result = xdlsym (h, "init_result");
++  TEST_COMPARE (*init_result, true);
++
++  int (*mod_func)(void) = xdlsym (h, "mod_func");
++  TEST_COMPARE (mod_func (), 0);
++
++  xdlclose (h);
 +
 +  return 0;
 +}
@@ -4009,6 +4199,33 @@ index 3656e98eda..39b0b3d19c 100644
  
  #endif
  
+diff --git a/sysdeps/unix/sysv/linux/dl-execstack.c b/sysdeps/unix/sysv/linux/dl-execstack.c
+index 9791b339ca..6db9601656 100644
+--- a/sysdeps/unix/sysv/linux/dl-execstack.c
++++ b/sysdeps/unix/sysv/linux/dl-execstack.c
+@@ -19,10 +19,10 @@
+ #include <ldsodefs.h>
+ 
+ int
+-_dl_make_stack_executable (void **stack_endp)
++_dl_make_stack_executable (const void *stack_endp)
+ {
+   /* This gives us the highest/lowest page that needs to be changed.  */
+-  uintptr_t page = ((uintptr_t) *stack_endp
++  uintptr_t page = ((uintptr_t) stack_endp
+ 		    & -(intptr_t) GLRO(dl_pagesize));
+ 
+   if (__mprotect ((void *) page, GLRO(dl_pagesize),
+@@ -35,9 +35,6 @@ _dl_make_stack_executable (void **stack_endp)
+ 		  ) != 0)
+     return errno;
+ 
+-  /* Clear the address.  */
+-  *stack_endp = NULL;
+-
+   /* Remember that we changed the permission.  */
+   GL(dl_stack_flags) |= PF_X;
+ 
 diff --git a/sysdeps/unix/sysv/linux/rseq-internal.h b/sysdeps/unix/sysv/linux/rseq-internal.h
 index f89e784243..d2ab4cb829 100644
 --- a/sysdeps/unix/sysv/linux/rseq-internal.h
@@ -4745,6 +4962,18 @@ index 0000000000..f0024c143d
 +++ b/sysdeps/x86/tst-gnu2-tls2-x86-noxsavexsavec.c
 @@ -0,0 +1 @@
 +#include <elf/tst-gnu2-tls2.c>
+diff --git a/sysdeps/x86_64/Makefile b/sysdeps/x86_64/Makefile
+index 9d31685e02..5723ec1847 100644
+--- a/sysdeps/x86_64/Makefile
++++ b/sysdeps/x86_64/Makefile
+@@ -142,7 +142,6 @@ CFLAGS-tst-avxmod.c += $(AVX-CFLAGS)
+ AVX512-CFLAGS = -mavx512f
+ CFLAGS-tst-audit10-aux.c += $(AVX512-CFLAGS)
+ CFLAGS-tst-auditmod10a.c += $(AVX512-CFLAGS)
+-CFLAGS-tst-auditmod10b.c += $(AVX512-CFLAGS)
+ CFLAGS-tst-avx512-aux.c += $(AVX512-CFLAGS)
+ CFLAGS-tst-avx512mod.c += $(AVX512-CFLAGS)
+ 
 diff --git a/sysdeps/x86_64/dl-tlsdesc-dynamic.h b/sysdeps/x86_64/dl-tlsdesc-dynamic.h
 index 9965ddd2c0..4f496de8c8 100644
 --- a/sysdeps/x86_64/dl-tlsdesc-dynamic.h
@@ -4970,3 +5199,152 @@ index 0000000000..5539b6c61c
 +# define __tanh __tanh_sse2
 +#endif
 +#include <sysdeps/ieee754/dbl-64/s_tanh.c>
+diff --git a/sysdeps/x86_64/tst-auditmod10b.c b/sysdeps/x86_64/tst-auditmod10b.c
+index 6eb21b6f06..0b994ef0f0 100644
+--- a/sysdeps/x86_64/tst-auditmod10b.c
++++ b/sysdeps/x86_64/tst-auditmod10b.c
+@@ -125,7 +125,6 @@ la_symbind64 (Elf64_Sym *sym, unsigned int ndx, uintptr_t *refcook,
+ 
+ #include <tst-audit.h>
+ 
+-#ifdef __AVX512F__
+ #include <immintrin.h>
+ #include <cpuid.h>
+ 
+@@ -148,9 +147,37 @@ check_avx512 (void)
+   return (eax & 0xe6) == 0xe6;
+ }
+ 
+-#else
+-#include <emmintrin.h>
+-#endif
++void
++__attribute__ ((target ("avx512f")))
++pltenter_avx512f (La_regs *regs, long int *framesizep)
++{
++  __m512i zero = _mm512_setzero_si512 ();
++  if (memcmp (&regs->lr_vector[0], &zero, sizeof (zero))
++      || memcmp (&regs->lr_vector[1], &zero, sizeof (zero))
++      || memcmp (&regs->lr_vector[2], &zero, sizeof (zero))
++      || memcmp (&regs->lr_vector[3], &zero, sizeof (zero))
++      || memcmp (&regs->lr_vector[4], &zero, sizeof (zero))
++      || memcmp (&regs->lr_vector[5], &zero, sizeof (zero))
++      || memcmp (&regs->lr_vector[6], &zero, sizeof (zero))
++      || memcmp (&regs->lr_vector[7], &zero, sizeof (zero)))
++    abort ();
++
++  for (int i = 0; i < 8; i++)
++    regs->lr_vector[i].zmm[0]
++      = (La_x86_64_zmm) _mm512_set1_epi64 (i + 1);
++
++  __m512i zmm = _mm512_set1_epi64 (-1);
++  asm volatile ("vmovdqa64 %0, %%zmm0" : : "x" (zmm) : "xmm0" );
++  asm volatile ("vmovdqa64 %0, %%zmm1" : : "x" (zmm) : "xmm1" );
++  asm volatile ("vmovdqa64 %0, %%zmm2" : : "x" (zmm) : "xmm2" );
++  asm volatile ("vmovdqa64 %0, %%zmm3" : : "x" (zmm) : "xmm3" );
++  asm volatile ("vmovdqa64 %0, %%zmm4" : : "x" (zmm) : "xmm4" );
++  asm volatile ("vmovdqa64 %0, %%zmm5" : : "x" (zmm) : "xmm5" );
++  asm volatile ("vmovdqa64 %0, %%zmm6" : : "x" (zmm) : "xmm6" );
++  asm volatile ("vmovdqa64 %0, %%zmm7" : : "x" (zmm) : "xmm7" );
++
++  *framesizep = 1024;
++}
+ 
+ ElfW(Addr)
+ pltenter (ElfW(Sym) *sym, unsigned int ndx, uintptr_t *refcook,
+@@ -160,41 +187,35 @@ pltenter (ElfW(Sym) *sym, unsigned int ndx, uintptr_t *refcook,
+   printf ("pltenter: symname=%s, st_value=%#lx, ndx=%u, flags=%u\n",
+ 	  symname, (long int) sym->st_value, ndx, *flags);
+ 
+-#ifdef __AVX512F__
+   if (check_avx512 () && strcmp (symname, "audit_test") == 0)
+-    {
+-      __m512i zero = _mm512_setzero_si512 ();
+-      if (memcmp (&regs->lr_vector[0], &zero, sizeof (zero))
+-	  || memcmp (&regs->lr_vector[1], &zero, sizeof (zero))
+-	  || memcmp (&regs->lr_vector[2], &zero, sizeof (zero))
+-	  || memcmp (&regs->lr_vector[3], &zero, sizeof (zero))
+-	  || memcmp (&regs->lr_vector[4], &zero, sizeof (zero))
+-	  || memcmp (&regs->lr_vector[5], &zero, sizeof (zero))
+-	  || memcmp (&regs->lr_vector[6], &zero, sizeof (zero))
+-	  || memcmp (&regs->lr_vector[7], &zero, sizeof (zero)))
+-	abort ();
+-
+-      for (int i = 0; i < 8; i++)
+-	regs->lr_vector[i].zmm[0]
+-	  = (La_x86_64_zmm) _mm512_set1_epi64 (i + 1);
+-
+-      __m512i zmm = _mm512_set1_epi64 (-1);
+-      asm volatile ("vmovdqa64 %0, %%zmm0" : : "x" (zmm) : "xmm0" );
+-      asm volatile ("vmovdqa64 %0, %%zmm1" : : "x" (zmm) : "xmm1" );
+-      asm volatile ("vmovdqa64 %0, %%zmm2" : : "x" (zmm) : "xmm2" );
+-      asm volatile ("vmovdqa64 %0, %%zmm3" : : "x" (zmm) : "xmm3" );
+-      asm volatile ("vmovdqa64 %0, %%zmm4" : : "x" (zmm) : "xmm4" );
+-      asm volatile ("vmovdqa64 %0, %%zmm5" : : "x" (zmm) : "xmm5" );
+-      asm volatile ("vmovdqa64 %0, %%zmm6" : : "x" (zmm) : "xmm6" );
+-      asm volatile ("vmovdqa64 %0, %%zmm7" : : "x" (zmm) : "xmm7" );
+-
+-      *framesizep = 1024;
+-    }
+-#endif
++    pltenter_avx512f (regs, framesizep);
+ 
+   return sym->st_value;
+ }
+ 
++void
++__attribute__ ((target ("avx512f")))
++pltexit_avx512f (const La_regs *inregs, La_retval *outregs)
++{
++  __m512i zero = _mm512_setzero_si512 ();
++  if (memcmp (&outregs->lrv_vector0, &zero, sizeof (zero)))
++    abort ();
++
++  for (int i = 0; i < 8; i++)
++    {
++      __m512i zmm = _mm512_set1_epi64 (i + 1);
++      if (memcmp (&inregs->lr_vector[i], &zmm, sizeof (zmm)) != 0)
++        abort ();
++    }
++
++  outregs->lrv_vector0.zmm[0]
++    = (La_x86_64_zmm) _mm512_set1_epi64 (0x12349876);
++
++  __m512i zmm = _mm512_set1_epi64 (-1);
++  asm volatile ("vmovdqa64 %0, %%zmm0" : : "x" (zmm) : "xmm0" );
++  asm volatile ("vmovdqa64 %0, %%zmm1" : : "x" (zmm) : "xmm1" );
++}
++
+ unsigned int
+ pltexit (ElfW(Sym) *sym, unsigned int ndx, uintptr_t *refcook,
+ 	 uintptr_t *defcook, const La_regs *inregs, La_retval *outregs,
+@@ -204,28 +225,8 @@ pltexit (ElfW(Sym) *sym, unsigned int ndx, uintptr_t *refcook,
+ 	  symname, (long int) sym->st_value, ndx,
+ 	  (ptrdiff_t) outregs->int_retval);
+ 
+-#ifdef __AVX512F__
+   if (check_avx512 () && strcmp (symname, "audit_test") == 0)
+-    {
+-      __m512i zero = _mm512_setzero_si512 ();
+-      if (memcmp (&outregs->lrv_vector0, &zero, sizeof (zero)))
+-	abort ();
+-
+-      for (int i = 0; i < 8; i++)
+-	{
+-	  __m512i zmm = _mm512_set1_epi64 (i + 1);
+-	  if (memcmp (&inregs->lr_vector[i], &zmm, sizeof (zmm)) != 0)
+-	    abort ();
+-	}
+-
+-      outregs->lrv_vector0.zmm[0]
+-	= (La_x86_64_zmm) _mm512_set1_epi64 (0x12349876);
+-
+-      __m512i zmm = _mm512_set1_epi64 (-1);
+-      asm volatile ("vmovdqa64 %0, %%zmm0" : : "x" (zmm) : "xmm0" );
+-      asm volatile ("vmovdqa64 %0, %%zmm1" : : "x" (zmm) : "xmm1" );
+-    }
+-#endif
++    pltexit_avx512f (inregs, outregs);
+ 
+   return 0;
+ }
