@@ -1,4 +1,4 @@
-Adhemerval Zanella (7):
+Adhemerval Zanella (8):
       math: Fix log10p1f internal table value (BZ 32626)
       math: Fix sinhf for some inputs (BZ 32627)
       math: Fix tanf for some inputs (BZ 32630)
@@ -6,6 +6,7 @@ Adhemerval Zanella (7):
       elf: Extend glibc.rtld.execstack tunable to force executable stack (BZ 32653)
       elf: Fix arm-linux-gnueabihf build break from b861755a84
       nptl: Fix pthread_getattr_np when modules with execstack are allowed (BZ 32897)
+      hurd: Fix tst-stack2 test build on Hurd
 
 Andreas K. Hüttel (2):
       Remove advisories from release branch
@@ -3156,7 +3157,7 @@ index 050b4ab8d1..9ad36cabe9 100644
  
  /* Cleanup buffers */
 diff --git a/sysdeps/pthread/Makefile b/sysdeps/pthread/Makefile
-index a123e28a57..17bdd6f49d 100644
+index a123e28a57..7fcbc72bc0 100644
 --- a/sysdeps/pthread/Makefile
 +++ b/sysdeps/pthread/Makefile
 @@ -106,6 +106,7 @@ tests += \
@@ -3183,11 +3184,12 @@ index a123e28a57..17bdd6f49d 100644
    tst-tls4moda \
    tst-tls4modb \
    # modules-names
-@@ -539,4 +542,11 @@ LDFLAGS-tst-create1 = -Wl,-export-dynamic
+@@ -539,4 +542,12 @@ LDFLAGS-tst-create1 = -Wl,-export-dynamic
  $(objpfx)tst-create1: $(shared-thread-library)
  $(objpfx)tst-create1.out: $(objpfx)tst-create1mod.so
  
 +$(objpfx)tst-stack2.out: $(objpfx)tst-stack2-mod.so
++$(objpfx)tst-stack2-mod.so: $(shared-thread-library)
 +LDFLAGS-tst-stack2-mod.so = -Wl,-z,execstack
 +ifeq ($(have-no-error-execstack),yes)
 +LDFLAGS-tst-stack2-mod.so += -Wl,--no-error-execstack
