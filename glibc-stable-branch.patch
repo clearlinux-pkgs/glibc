@@ -17,7 +17,7 @@ Aurelien Jarno (3):
       math: Remove an extra semicolon in math function declarations
       elf: tst-audit10: split AVX512F code into dedicated functions [BZ #32882]
 
-Florian Weimer (7):
+Florian Weimer (11):
       configure: Fix spelling of -Wl,--no-error-execstack option
       posix: Move environ helper variables next to environ definition (bug 32541)
       Linux: Remove attribute access from sched_getattr (bug 32781)
@@ -25,6 +25,10 @@ Florian Weimer (7):
       x86: Skip XSAVE state size reset if ISA level requires XSAVE
       x86: Use separate variable for TLSDESC XSAVE/XSAVEC state size (bug 32810)
       x86: Link tst-gnu2-tls2-x86-noxsave{,c,xsavec} with libpthread
+      elf: Keep using minimal malloc after early DTV resize (bug 32412)
+      support: Use const char * argument in support_capture_subprogram_self_sgid
+      elf: Test case for bug 32976 (CVE-2025-4802)
+      elf: Fix subprocess status handling for tst-dlopen-sgid (bug 32987)
 
 H.J. Lu (4):
       x86 (__HAVE_FLOAT128): Defined to 0 for Intel SYCL compiler [BZ #32723]
@@ -49,13 +53,14 @@ Sam James (1):
 Siddhesh Poyarekar (1):
       assert: Add test for CVE-2025-0395
 
-Sunil K Pandey (6):
+Sunil K Pandey (7):
       x86_64: Add tanh with FMA
       x86_64: Add sinh with FMA
       x86_64: Add atanh with FMA
       x86: Optimize xstate size calculation
       x86: Add ARL/PTL/CWF model detection support
       x86: Handle unknown Intel processor with default tuning
+      x86_64: Fix typo in ifunc-impl-list.c.
 
 Wilco Dijkstra (3):
       math: Improve layout of exp/exp10 data
@@ -102,10 +107,10 @@ index d0108d2caa..aa547a443f 100644
  $(common-objdir):$(subst $(empty) ,:,$(patsubst ../$(subdir),.,$(rpath-dirs:%=$(common-objpfx)%)))
  else  # build-static
 diff --git a/NEWS b/NEWS
-index b11422b060..51586aaad7 100644
+index b11422b060..e5d4a83048 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,31 @@ See the end for copying conditions.
+@@ -5,6 +5,32 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -133,6 +138,7 @@ index b11422b060..51586aaad7 100644
 +  [32882] tst-audit10 fails with SIGILL on CPUs without AVX
 +  [32897] dynamic-link: pthread_getattr_np fails when executable stack
 +    tunable is set
++  [32987] elf: Fix subprocess status handling for tst-dlopen-sgid
 +
  Version 2.41
  
@@ -984,7 +990,7 @@ index 050bfa65e3..57cd24c87d 100644
  AC_COMPILE_IFELSE([AC_LANG_SOURCE([[#ifdef PIE_UNSUPPORTED
  # error PIE is not supported
 diff --git a/elf/Makefile b/elf/Makefile
-index 4b1d0d8741..3a3ae56a24 100644
+index 4b1d0d8741..f42cb154fb 100644
 --- a/elf/Makefile
 +++ b/elf/Makefile
 @@ -61,6 +61,7 @@ dl-routines = \
@@ -995,7 +1001,23 @@ index 4b1d0d8741..3a3ae56a24 100644
    dl-fini \
    dl-init \
    dl-load \
-@@ -567,9 +568,11 @@ tests-execstack-yes = \
+@@ -266,6 +267,7 @@ tests-static-normal := \
+   tst-array1-static \
+   tst-array5-static \
+   tst-dl-iter-static \
++  tst-dlopen-sgid \
+   tst-dst-static \
+   tst-env-setuid-static \
+   tst-getauxval-static \
+@@ -379,6 +381,7 @@ tests += \
+   tst-align3 \
+   tst-audit-tlsdesc \
+   tst-audit-tlsdesc-dlopen \
++  tst-audit-tlsdesc-dlopen2 \
+   tst-audit1 \
+   tst-audit2 \
+   tst-audit8 \
+@@ -567,9 +570,11 @@ tests-execstack-yes = \
    tst-execstack \
    tst-execstack-needed \
    tst-execstack-prog \
@@ -1008,7 +1030,23 @@ index 4b1d0d8741..3a3ae56a24 100644
    # tests-execstack-static-yes
  ifeq (yes,$(run-built-tests))
  tests-execstack-special-yes = \
-@@ -1144,6 +1147,10 @@ tests-pie += \
+@@ -863,6 +868,7 @@ modules-names += \
+   tst-auditmanymod8 \
+   tst-auditmanymod9 \
+   tst-auditmod-tlsdesc  \
++  tst-auditmod-tlsdesc2 \
+   tst-auditmod1 \
+   tst-auditmod11 \
+   tst-auditmod12 \
+@@ -905,6 +911,7 @@ modules-names += \
+   tst-dlmopen1mod \
+   tst-dlopen-auditdup-auditmod \
+   tst-dlopen-auditdupmod \
++  tst-dlopen-sgid-mod \
+   tst-dlopen-tlsreinitmod1 \
+   tst-dlopen-tlsreinitmod2 \
+   tst-dlopen-tlsreinitmod3 \
+@@ -1144,6 +1151,10 @@ tests-pie += \
    tst-pie1 \
    tst-pie2 \
    # tests-pie
@@ -1019,7 +1057,7 @@ index 4b1d0d8741..3a3ae56a24 100644
  ifneq (,$(load-address-ldflag))
  tests += \
    tst-pie-address \
-@@ -1159,6 +1166,10 @@ tests += \
+@@ -1159,6 +1170,10 @@ tests += \
  tests-static += \
    tst-pie-address-static \
    # tests-static
@@ -1030,7 +1068,7 @@ index 4b1d0d8741..3a3ae56a24 100644
  LDFLAGS-tst-pie-address-static += \
    $(load-address-ldflag)=$(pde-load-address)
  endif
-@@ -1988,6 +1999,9 @@ $(objpfx)tst-execstack.out: $(objpfx)tst-execstack-mod.so
+@@ -1988,6 +2003,9 @@ $(objpfx)tst-execstack.out: $(objpfx)tst-execstack-mod.so
  CPPFLAGS-tst-execstack.c += -DUSE_PTHREADS=0
  LDFLAGS-tst-execstack = -Wl,-z,noexecstack
  LDFLAGS-tst-execstack-mod.so = -Wl,-z,execstack
@@ -1040,7 +1078,7 @@ index 4b1d0d8741..3a3ae56a24 100644
  
  $(objpfx)tst-execstack-needed: $(objpfx)tst-execstack-mod.so
  LDFLAGS-tst-execstack-needed = -Wl,-z,noexecstack
-@@ -1996,7 +2010,18 @@ LDFLAGS-tst-execstack-prog = -Wl,-z,execstack
+@@ -1996,7 +2014,18 @@ LDFLAGS-tst-execstack-prog = -Wl,-z,execstack
  CFLAGS-tst-execstack-prog.c += -Wno-trampolines
  CFLAGS-tst-execstack-mod.c += -Wno-trampolines
  
@@ -1059,7 +1097,7 @@ index 4b1d0d8741..3a3ae56a24 100644
  CFLAGS-tst-execstack-prog-static.c += -Wno-trampolines
  
  ifeq (yes,$(build-hardcoded-path-in-tests))
-@@ -2074,6 +2099,7 @@ $(objpfx)tst-array5-static-cmp.out: tst-array5-static.exp \
+@@ -2074,6 +2103,7 @@ $(objpfx)tst-array5-static-cmp.out: tst-array5-static.exp \
  
  CFLAGS-tst-pie1.c += $(pie-ccflag)
  CFLAGS-tst-pie2.c += $(pie-ccflag)
@@ -1067,6 +1105,22 @@ index 4b1d0d8741..3a3ae56a24 100644
  CFLAGS-tst-pie-address.c += $(pie-ccflag)
  
  $(objpfx)tst-piemod1.so: $(libsupport)
+@@ -3189,6 +3219,9 @@ $(objpfx)tst-audit-tlsdesc.out: $(objpfx)tst-auditmod-tlsdesc.so
+ tst-audit-tlsdesc-ENV = LD_AUDIT=$(objpfx)tst-auditmod-tlsdesc.so
+ $(objpfx)tst-audit-tlsdesc-dlopen.out: $(objpfx)tst-auditmod-tlsdesc.so
+ tst-audit-tlsdesc-dlopen-ENV = LD_AUDIT=$(objpfx)tst-auditmod-tlsdesc.so
++$(objpfx)tst-audit-tlsdesc-dlopen2.out: $(objpfx)tst-auditmod-tlsdesc2.so \
++  $(patsubst %, $(objpfx)%.so, $(tlsmod17a-modules))
++tst-audit-tlsdesc-dlopen2-ENV = LD_AUDIT=$(objpfx)tst-auditmod-tlsdesc2.so
+ 
+ $(objpfx)tst-dlmopen-twice.out: \
+   $(objpfx)tst-dlmopen-twice-mod1.so \
+@@ -3392,3 +3425,5 @@ $(objpfx)tst-nolink-libc-2: $(objpfx)tst-nolink-libc.o
+ 	  -Wl,--dynamic-linker=$(objpfx)ld.so
+ $(objpfx)tst-nolink-libc-2.out: $(objpfx)tst-nolink-libc-2 $(objpfx)ld.so
+ 	$< > $@ 2>&1; $(evaluate-test)
++
++$(objpfx)tst-dlopen-sgid.out: $(objpfx)tst-dlopen-sgid-mod.so
 diff --git a/elf/dl-execstack-tunable.c b/elf/dl-execstack-tunable.c
 new file mode 100644
 index 0000000000..e3b638aeaa
@@ -1176,6 +1230,24 @@ index a7d5a5e8ab..0388e23448 100644
  
    call_function_static_weak (_dl_find_object_init);
  
+diff --git a/elf/dl-tls.c b/elf/dl-tls.c
+index 8306a39e8d..5686df5ad2 100644
+--- a/elf/dl-tls.c
++++ b/elf/dl-tls.c
+@@ -560,6 +560,13 @@ _dl_resize_dtv (dtv_t *dtv, size_t max_modid)
+       if (newp == NULL)
+ 	oom ();
+       memcpy (newp, &dtv[-1], (2 + oldsize) * sizeof (dtv_t));
++#ifdef SHARED
++      /* Auditors can trigger a DTV resize event while the full malloc
++	 is not yet in use.  Mark the new DTV allocation as the
++	 initial allocation.  */
++      if (!__rtld_malloc_is_complete ())
++	GL(dl_initial_dtv) = &newp[1];
++#endif
+     }
+   else
+     {
 diff --git a/elf/dl-tunables.list b/elf/dl-tunables.list
 index 0b6721bc51..c03c9967f0 100644
 --- a/elf/dl-tunables.list
@@ -1206,6 +1278,248 @@ index 00bec15316..7a8aa56377 100644
  
    /* If the current libname is different from the SONAME, add the
       latter as well.  */
+diff --git a/elf/tst-audit-tlsdesc-dlopen2.c b/elf/tst-audit-tlsdesc-dlopen2.c
+new file mode 100644
+index 0000000000..7ba2c4129a
+--- /dev/null
++++ b/elf/tst-audit-tlsdesc-dlopen2.c
+@@ -0,0 +1,46 @@
++/* Loading TLS-using modules from auditors (bug 32412).  Main program.
++   Copyright (C) 2021-2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <support/xdlfcn.h>
++#include <stdio.h>
++
++static int
++do_test (void)
++{
++  puts ("info: start of main program");
++
++  /* Load TLS-using modules, to trigger DTV resizing.  The dynamic
++     linker will load them again (requiring their own TLS) because the
++     dlopen calls from the auditor were in the auditing namespace.  */
++  for (int i = 1; i <= 19; ++i)
++    {
++      char dso[30];
++      snprintf (dso, sizeof (dso), "tst-tlsmod17a%d.so", i);
++      char sym[30];
++      snprintf (sym, sizeof(sym), "tlsmod17a%d", i);
++
++      void *handle = xdlopen (dso, RTLD_LAZY);
++      int (*func) (void) = xdlsym (handle, sym);
++      /* Trigger TLS allocation.  */
++      func ();
++    }
++
++  return 0;
++}
++
++#include <support/test-driver.c>
+diff --git a/elf/tst-auditmod-tlsdesc2.c b/elf/tst-auditmod-tlsdesc2.c
+new file mode 100644
+index 0000000000..50275cd34d
+--- /dev/null
++++ b/elf/tst-auditmod-tlsdesc2.c
+@@ -0,0 +1,59 @@
++/* Loading TLS-using modules from auditors (bug 32412).  Audit module.
++   Copyright (C) 2021-2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <dlfcn.h>
++#include <link.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <unistd.h>
++
++unsigned int
++la_version (unsigned int version)
++{
++  /* Open some modules, to trigger DTV resizing before the switch to
++     the main malloc.  */
++  for (int i = 1; i <= 19; ++i)
++    {
++      char dso[30];
++      snprintf (dso, sizeof (dso), "tst-tlsmod17a%d.so", i);
++      char sym[30];
++      snprintf (sym, sizeof(sym), "tlsmod17a%d", i);
++
++      void *handle = dlopen (dso, RTLD_LAZY);
++      if (handle == NULL)
++        {
++          printf ("error: dlmopen from auditor: %s\n", dlerror  ());
++          fflush (stdout);
++          _exit (1);
++        }
++      int (*func) (void) = dlsym (handle, sym);
++      if (func == NULL)
++        {
++          printf ("error: dlsym from auditor: %s\n", dlerror  ());
++          fflush (stdout);
++          _exit (1);
++        }
++      /* Trigger TLS allocation.  */
++      func ();
++    }
++
++  puts ("info: TLS-using modules loaded from auditor");
++  fflush (stdout);
++
++  return LAV_CURRENT;
++}
+diff --git a/elf/tst-dlopen-sgid-mod.c b/elf/tst-dlopen-sgid-mod.c
+new file mode 100644
+index 0000000000..5eb79eef48
+--- /dev/null
++++ b/elf/tst-dlopen-sgid-mod.c
+@@ -0,0 +1 @@
++/* Opening this object should not succeed.  */
+diff --git a/elf/tst-dlopen-sgid.c b/elf/tst-dlopen-sgid.c
+new file mode 100644
+index 0000000000..5688b79f2e
+--- /dev/null
++++ b/elf/tst-dlopen-sgid.c
+@@ -0,0 +1,112 @@
++/* Test case for ignored LD_LIBRARY_PATH in static startug (bug 32976).
++   Copyright (C) 2025 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <dlfcn.h>
++#include <gnu/lib-names.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <support/capture_subprocess.h>
++#include <support/check.h>
++#include <support/support.h>
++#include <support/temp_file.h>
++#include <support/test-driver.h>
++#include <sys/wait.h>
++#include <unistd.h>
++
++/* This is the name of our test object.  Use a custom module for
++   testing, so that this object does not get picked up from the system
++   path.  */
++static const char dso_name[] = "tst-dlopen-sgid-mod.so";
++
++/* Used to mark the recursive invocation.  */
++static const char magic_argument[] = "run-actual-test";
++
++static int
++do_test (void)
++{
++/* Pathname of the directory that receives the shared objects this
++   test attempts to load.  */
++  char *libdir = support_create_temp_directory ("tst-dlopen-sgid-");
++
++  /* This is supposed to be ignored and stripped.  */
++  TEST_COMPARE (setenv ("LD_LIBRARY_PATH", libdir, 1), 0);
++
++  /* Copy of libc.so.6.  */
++  {
++    char *from = xasprintf ("%s/%s", support_objdir_root, LIBC_SO);
++    char *to = xasprintf ("%s/%s", libdir, LIBC_SO);
++    add_temp_file (to);
++    support_copy_file (from, to);
++    free (to);
++    free (from);
++  }
++
++  /* Copy of the test object.   */
++  {
++    char *from = xasprintf ("%s/elf/%s", support_objdir_root, dso_name);
++    char *to = xasprintf ("%s/%s", libdir, dso_name);
++    add_temp_file (to);
++    support_copy_file (from, to);
++    free (to);
++    free (from);
++  }
++
++  free (libdir);
++
++  int status = support_capture_subprogram_self_sgid (magic_argument);
++
++  if (WEXITSTATUS (status) == EXIT_UNSUPPORTED)
++    return EXIT_UNSUPPORTED;
++
++  if (!WIFEXITED (status))
++    FAIL_EXIT1 ("Unexpected exit status %d from child process\n", status);
++
++  return 0;
++}
++
++static void
++alternative_main (int argc, char **argv)
++{
++  if (argc == 2 && strcmp (argv[1], magic_argument) == 0)
++    {
++      if (getgid () == getegid ())
++        /* This can happen if the file system is mounted nosuid.  */
++        FAIL_UNSUPPORTED ("SGID failed: GID and EGID match (%jd)\n",
++                          (intmax_t) getgid ());
++
++      /* Should be removed due to SGID.  */
++      TEST_COMPARE_STRING (getenv ("LD_LIBRARY_PATH"), NULL);
++
++      TEST_VERIFY (dlopen (dso_name, RTLD_NOW) == NULL);
++      {
++        const char *message = dlerror ();
++        TEST_COMPARE_STRING (message,
++                             "tst-dlopen-sgid-mod.so:"
++                             " cannot open shared object file:"
++                             " No such file or directory");
++      }
++
++      support_record_failure_barrier ();
++      exit (EXIT_SUCCESS);
++    }
++}
++
++#define PREPARE alternative_main
++#include <support/test-driver.c>
 diff --git a/elf/tst-execstack-prog-static-tunable.c b/elf/tst-execstack-prog-static-tunable.c
 new file mode 100644
 index 0000000000..88b0ca1263
@@ -1626,6 +1940,51 @@ index 0000000000..f5f484c83a
 +}
 +
 +#include <support/test-driver.c>
+diff --git a/support/capture_subprocess.h b/support/capture_subprocess.h
+index 91d75e5d6b..77140430d2 100644
+--- a/support/capture_subprocess.h
++++ b/support/capture_subprocess.h
+@@ -45,8 +45,7 @@ struct support_capture_subprocess support_capture_subprogram
+ /* Copy the running program into a setgid binary and run it with CHILD_ID
+    argument.  If execution is successful, return the exit status of the child
+    program, otherwise return a non-zero failure exit code.  */
+-int support_capture_subprogram_self_sgid
+-  (char *child_id);
++int support_capture_subprogram_self_sgid (const char *child_id);
+ 
+ /* Deallocate the subprocess data captured by
+    support_capture_subprocess.  */
+diff --git a/support/support_capture_subprocess.c b/support/support_capture_subprocess.c
+index c3ef478d17..d99aafd370 100644
+--- a/support/support_capture_subprocess.c
++++ b/support/support_capture_subprocess.c
+@@ -110,7 +110,7 @@ support_capture_subprogram (const char *file, char *const argv[],
+    safely make it SGID with the TARGET group ID.  Then runs the
+    executable.  */
+ static int
+-copy_and_spawn_sgid (char *child_id, gid_t gid)
++copy_and_spawn_sgid (const char *child_id, gid_t gid)
+ {
+   char *dirname = xasprintf ("%s/tst-tunables-setuid.%jd",
+ 			     test_dir, (intmax_t) getpid ());
+@@ -182,7 +182,7 @@ copy_and_spawn_sgid (char *child_id, gid_t gid)
+   ret = 0;
+   infd = outfd = -1;
+ 
+-  char * const args[] = {execname, child_id, NULL};
++  char * const args[] = {execname, (char *) child_id, NULL};
+ 
+   status = support_subprogram_wait (args[0], args);
+ 
+@@ -211,7 +211,7 @@ err:
+ }
+ 
+ int
+-support_capture_subprogram_self_sgid (char *child_id)
++support_capture_subprogram_self_sgid (const char *child_id)
+ {
+   gid_t target = 0;
+   const int count = 64;
 diff --git a/sysdeps/aarch64/fpu/asinh_sve.c b/sysdeps/aarch64/fpu/asinh_sve.c
 index 0889f79dbb..ff6b71390c 100644
 --- a/sysdeps/aarch64/fpu/asinh_sve.c
@@ -5201,6 +5560,28 @@ index 0000000000..5539b6c61c
 +# define __tanh __tanh_sse2
 +#endif
 +#include <sysdeps/ieee754/dbl-64/s_tanh.c>
+diff --git a/sysdeps/x86_64/multiarch/ifunc-impl-list.c b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
+index a8349775df..c2dcadd1a9 100644
+--- a/sysdeps/x86_64/multiarch/ifunc-impl-list.c
++++ b/sysdeps/x86_64/multiarch/ifunc-impl-list.c
+@@ -922,7 +922,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 				     (CPU_FEATURE_USABLE (AVX2)
+ 				      && CPU_FEATURE_USABLE (BMI2)),
+ 				     __wcsncpy_avx2)
+-	      X86_IFUNC_IMPL_ADD_V2 (array, i, wcpncpy,
++	      X86_IFUNC_IMPL_ADD_V2 (array, i, wcsncpy,
+ 				     1,
+ 				     __wcsncpy_generic))
+ 
+@@ -952,7 +952,7 @@ __libc_ifunc_impl_list (const char *name, struct libc_ifunc_impl *array,
+ 				     (CPU_FEATURE_USABLE (AVX2)
+ 				      && CPU_FEATURE_USABLE (BMI2)),
+ 				     __wcpncpy_avx2)
+-	      X86_IFUNC_IMPL_ADD_V2 (array, i, wcsncpy,
++	      X86_IFUNC_IMPL_ADD_V2 (array, i, wcpncpy,
+ 				     1,
+ 				     __wcpncpy_generic))
+ 
 diff --git a/sysdeps/x86_64/tst-auditmod10b.c b/sysdeps/x86_64/tst-auditmod10b.c
 index 6eb21b6f06..0b994ef0f0 100644
 --- a/sysdeps/x86_64/tst-auditmod10b.c
