@@ -1,4 +1,4 @@
-Adhemerval Zanella (8):
+Adhemerval Zanella (9):
       math: Fix log10p1f internal table value (BZ 32626)
       math: Fix sinhf for some inputs (BZ 32627)
       math: Fix tanf for some inputs (BZ 32630)
@@ -7,6 +7,7 @@ Adhemerval Zanella (8):
       elf: Fix arm-linux-gnueabihf build break from b861755a84
       nptl: Fix pthread_getattr_np when modules with execstack are allowed (BZ 32897)
       hurd: Fix tst-stack2 test build on Hurd
+      sparc: Fix argument passing to __libc_start_main (BZ 32981)
 
 Andreas K. Hüttel (2):
       Remove advisories from release branch
@@ -107,10 +108,10 @@ index d0108d2caa..aa547a443f 100644
  $(common-objdir):$(subst $(empty) ,:,$(patsubst ../$(subdir),.,$(rpath-dirs:%=$(common-objpfx)%)))
  else  # build-static
 diff --git a/NEWS b/NEWS
-index b11422b060..e5d4a83048 100644
+index b11422b060..90d090ea77 100644
 --- a/NEWS
 +++ b/NEWS
-@@ -5,6 +5,32 @@ See the end for copying conditions.
+@@ -5,6 +5,34 @@ See the end for copying conditions.
  Please send GNU C library bug reports via <https://sourceware.org/bugzilla/>
  using `glibc' in the "product" field.
  
@@ -138,6 +139,8 @@ index b11422b060..e5d4a83048 100644
 +  [32882] tst-audit10 fails with SIGILL on CPUs without AVX
 +  [32897] dynamic-link: pthread_getattr_np fails when executable stack
 +    tunable is set
++  [32981] ports: elf/tst-execstack-prog-static-tunable fails on
++    sparc64-linux-gnu
 +  [32987] elf: Fix subprocess status handling for tst-dlopen-sgid
 +
  Version 2.41
@@ -3769,6 +3772,36 @@ index a30892f080..dcc3e0883b 100644
  #endif
    return lazy;
  }
+diff --git a/sysdeps/sparc/sparc32/start.S b/sysdeps/sparc/sparc32/start.S
+index 694b020ce0..cef7c96cac 100644
+--- a/sysdeps/sparc/sparc32/start.S
++++ b/sysdeps/sparc/sparc32/start.S
+@@ -73,6 +73,10 @@ _start:
+      be NULL.  */
+ 	mov	%g1, %o5
+ 
++  /* Provide the highest stack address to update the __libc_stack_end (used
++     to enable executable stacks if required).  */
++	st	%sp, [%sp+23*4]
++
+   /* Let libc do the rest of the initialization, and call main.  */
+ 	call	__libc_start_main
+ 	 nop
+diff --git a/sysdeps/sparc/sparc64/start.S b/sysdeps/sparc/sparc64/start.S
+index c9c25c2e47..08e1e77210 100644
+--- a/sysdeps/sparc/sparc64/start.S
++++ b/sysdeps/sparc/sparc64/start.S
+@@ -74,6 +74,10 @@ _start:
+      be NULL.  */
+ 	mov     %g1, %o5
+ 
++  /* Provide the highest stack address to update the __libc_stack_end (used
++     to enable executable stacks if required).  */
++	stx	%sp, [%sp+STACK_BIAS+22*8]
++
+   /* Let libc do the rest of the initialization, and call main.  */
+ 	call    __libc_start_main
+ 	 nop
 diff --git a/sysdeps/unix/sysv/linux/aarch64/Makefile b/sysdeps/unix/sysv/linux/aarch64/Makefile
 index 1fdad67fae..0839f0b08c 100644
 --- a/sysdeps/unix/sysv/linux/aarch64/Makefile
